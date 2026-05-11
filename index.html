@@ -2389,28 +2389,36 @@ const BriefScreen = ({ activePlatform }) => {
 
   // Map platforms to display stat cards using real numbers from the hydrated D.
   const PLATFORM_STAT = {
-    ig: { label: 'IG followers',    value: D.accounts?.ig?.followers, fmt: 'num', icon: 'users', color: '#D62976' },
-    tt: { label: 'TikTok followers', value: D.accounts?.tt?.followers, fmt: 'num', icon: 'users', color: '#FF2D6A' },
-    yt: { label: 'YT subscribers',  value: D.accounts?.yt?.subs,      fmt: 'num', icon: 'play',  color: '#FF0000' },
-    li: { label: 'LinkedIn',        value: D.accounts?.li?.connections, fmt: 'num', icon: 'message', color: '#0A66C2' },
-    fb: { label: 'Facebook',        value: D.accounts?.fb?.followers, fmt: 'num', icon: 'users', color: '#1877F2' },
-    x:  { label: 'X / Twitter',     value: 0,                          fmt: 'num', icon: 'users', color: '#0A0A0B' },
+    ig: { label: 'IG followers',    value: D.accounts?.ig?.followers, icon: 'users', color: '#D62976' },
+    tt: { label: 'TikTok followers', value: D.accounts?.tt?.followers, icon: 'users', color: '#FF2D6A' },
+    yt: { label: 'YT subscribers',  value: D.accounts?.yt?.subs,      icon: 'play',  color: '#FF0000' },
+    li: { label: 'LinkedIn',        value: D.accounts?.li?.connections, icon: 'message', color: '#0A66C2' },
+    fb: { label: 'Facebook',        value: D.accounts?.fb?.followers, icon: 'users', color: '#1877F2' },
+    x:  { label: 'X / Twitter',     value: 0,                          icon: 'users', color: '#0A0A0B' },
   };
   const statCards = connected.map(p => PLATFORM_STAT[p]).filter(Boolean).slice(0, 4);
+
+  // Real aggregates for the right-side panel (no fake numbers).
+  const totalReach = (D.posts || []).reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalEngActions = (D.posts || []).reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const avgEng = totalReach
+    ? Math.round((totalEngActions / totalReach) * 10000) / 100
+    : 0;
+  const ads = D.ads || null;
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader eyebrow={`Today · ${D.lastSync || '—'}`} title={greeting} sub={sub} right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>} />
 
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5 sm:mb-6">
-        {/* AI Verdict + 3 actions — full width without the dead-link right column */}
-        <div className="lg:col-span-12 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">
+        <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">
           <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-ultra/25 blur-2xl" />
           <div className="absolute -right-10 bottom-0 w-40 h-40 rounded-full bg-magenta/20 blur-2xl" />
           <div className="relative">
             <Pill color="lime" className="!h-5"><Icon name="sparkle" className="w-3 h-3" /> AI Verdict · Live</Pill>
-            <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-3xl">{D.verdict?.title || 'Your first brief is generating.'}</h2>
-            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-2xl mb-6 leading-relaxed">{D.verdict?.body || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
+            <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">{D.verdict?.title || 'Your first brief is generating.'}</h2>
+            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
             {(D.todayActions || []).length > 0 && (
               <div className="grid sm:grid-cols-3 gap-2.5">
                 {D.todayActions.map(a => (
@@ -2427,7 +2435,58 @@ const BriefScreen = ({ activePlatform }) => {
             )}
           </div>
         </div>
+
+        {/* Right column — real aggregates from your data, no dead links */}
+        <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-3">
+          <Card className="!p-4">
+            <Eyebrow>Total reach 30d</Eyebrow>
+            <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{formatNum(totalReach)}</div>
+            <div className="text-[11px] text-mute dark:text-muteDark mt-1">Across all platforms</div>
+          </Card>
+          <Card className="!p-4">
+            <Eyebrow>Avg eng. rate</Eyebrow>
+            <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{avgEng}%</div>
+            <div className="text-[11px] text-mute dark:text-muteDark mt-1">Last 30 days</div>
+          </Card>
+          <Card className="!p-4 col-span-2 lg:col-span-1 bg-magenta text-white border-transparent">
+            <Eyebrow color="text-white/70">Active signals</Eyebrow>
+            <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{signalCount}</div>
+            <div className="text-[11px] text-white/70 mt-1">{signalCount > 0 ? 'Generated this cycle' : 'None yet'}</div>
+          </Card>
+        </div>
       </div>
+
+      {/* Ads performance — only renders if Zernio returned ads */}
+      {ads && ads.count > 0 && (
+        <Card className="mb-5 sm:mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <Eyebrow color="text-amber">Ad performance · Last 30d</Eyebrow>
+              <h3 className="font-display text-[18px] font-semibold tracking-tight mt-1">{ads.count} active ad{ads.count === 1 ? '' : 's'}</h3>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Pill color="ink">{ads.currency} {formatNum(ads.total_spend)} spend</Pill>
+              <Pill color="ultraSoft">{formatNum(ads.total_impressions)} impressions</Pill>
+              <Pill color="lime">{ads.avg_ctr}% avg CTR</Pill>
+            </div>
+          </div>
+          <div className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
+            <span>Ad</span><span className="text-right">Spend</span><span className="text-right">Impressions</span><span className="text-right">CTR</span><span className="text-right">Status</span>
+          </div>
+          {ads.top.map(a => (
+            <div key={a.id} className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <Plat p={a.platform} className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{a.name || 'Untitled ad'}</span>
+              </div>
+              <span className="text-right font-mono text-[12.5px]">{ads.currency} {formatNum(a.spend)}</span>
+              <span className="text-right font-mono text-[12.5px]">{formatNum(a.impressions)}</span>
+              <span className="text-right font-mono text-[12.5px] text-ultra dark:text-lime">{a.ctr}%</span>
+              <span className="text-right text-[11px] text-mute dark:text-muteDark capitalize">{a.status || '—'}</span>
+            </div>
+          ))}
+        </Card>
+      )}
 
       {/* Connected-platform follower cards (only what's actually connected) */}
       {statCards.length > 0 && (
@@ -3781,6 +3840,8 @@ const hydrateD = (brief) => {
   // Which platforms are actually connected (keys of accountSummary).
   // Used by AccountBar to hide ghost tabs and by Brief's Pipeline status.
   D.connectedPlatforms = Object.keys(a || {});
+  // Ad performance summary — null when no ads running.
+  D.ads = brief.ads && brief.ads.count > 0 ? brief.ads : null;
 };
 
 // Empty-state UI (no accounts connected yet)

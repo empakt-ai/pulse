@@ -10,6 +10,7 @@ import { json } from '../_lib/auth.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
 import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
+import { pullAds } from '../_lib/ads.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -95,16 +96,24 @@ async function refreshWorkspace(ws) {
         const analytics = await zernio.getAnalytics(acct.zernio_account_id, fromDate, toDate);
         const posts = Array.isArray(analytics) ? analytics : (analytics?.posts || analytics?.data || []);
         postRows = posts.map(p => {
-          const rate = engagementRate(p);
+          // Zernio nests engagement under p.analytics. Same parsing as
+          // analytics/refresh.js — keep in sync.
+          const a = p.analytics || p.platforms?.[0]?.analytics || {};
+          const views    = Number(a.views || a.impressions || p.views || p.impressions || 0);
+          const likes    = Number(a.likes || p.likes || 0);
+          const comments = Number(a.comments || p.comments || 0);
+          const saves    = Number(a.saves || p.saves || 0);
+          const shares   = Number(a.shares || p.shares || 0);
+          const rate = a.engagementRate != null
+            ? Number(a.engagementRate)
+            : engagementRate({ views, likes, comments, saves, shares });
           return {
             workspace_id: ws.id, source: 'own', platform: acct.platform,
-            platform_post_id: String(p.id || p._id || p.postId || ''),
-            post_type: p.type || p.mediaType || null,
-            caption: p.caption || p.title || null,
-            posted_at: p.posted_at || p.publishedAt || p.created_at || null,
-            views: Number(p.views || p.impressions || 0),
-            likes: Number(p.likes || 0), comments: Number(p.comments || 0),
-            saves: Number(p.saves || 0), shares: Number(p.shares || 0),
+            platform_post_id: String(p._id || p.id || p.postId || p.platforms?.[0]?.platformPostId || ''),
+            post_type: p.type || p.mediaType || p.platforms?.[0]?.mediaType || null,
+            caption: p.content || p.caption || p.title || null,
+            posted_at: p.publishedAt || p.posted_at || p.created_at || p.scheduledFor || null,
+            views, likes, comments, saves, shares,
             engagement_rate: rate, signal: signalFor(rate), raw_data: p,
           };
         }).filter(r => r.platform_post_id);
@@ -146,6 +155,14 @@ async function refreshWorkspace(ws) {
     }).catch(() => {});
   }
 
+  // Pull ad performance (Zernio /ads). No-op when no ads are running.
+  let adsResult = null;
+  try {
+    adsResult = await pullAds(ws, accounts, { fromDate, toDate });
+  } catch (e) {
+    adsResult = { error: e.message };
+  }
+
   // Scrape competitors (Apify) before the AI brief so signals can see them.
   let competitors = null;
   try {
@@ -164,7 +181,7 @@ async function refreshWorkspace(ws) {
     }
   }
 
-  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts, competitors, brief };
+  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts, ads: adsResult, competitors, brief };
 }
 
 export default async function handler(req, res) {

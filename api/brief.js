@@ -62,9 +62,40 @@ export default async function handler(req, res) {
     }).catch(() => []),
   ]);
 
-  const ownPosts = (posts || []).filter(p => p.source === 'own');
+  // Split organic posts from ads. Ads live in the same table with post_type='ad'.
+  const ownPosts = (posts || []).filter(p => p.source === 'own' && p.post_type !== 'ad');
+  const ownAds = (posts || []).filter(p => p.source === 'own' && p.post_type === 'ad');
   const tier = tierFor(ws);
   const usage = await getMonthlyUsage(ws.id).catch(() => ({ used: 0, cost_cents: 0 }));
+
+  // Aggregate ad performance for the dashboard. Only meaningful when ads exist.
+  const totalSpend = ownAds.reduce((s, p) => s + Number(p.raw_data?.spend || 0), 0);
+  const totalAdImpressions = ownAds.reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalAdClicks = ownAds.reduce((s, p) => s + Number(p.raw_data?.clicks || 0), 0);
+  const avgCtr = ownAds.length
+    ? Math.round((ownAds.reduce((s, p) => s + Number(p.engagement_rate || 0), 0) / ownAds.length) * 100) / 100
+    : 0;
+  const adsSummary = {
+    count: ownAds.length,
+    total_spend: Math.round(totalSpend * 100) / 100,
+    total_impressions: totalAdImpressions,
+    total_clicks: totalAdClicks,
+    avg_ctr: avgCtr,
+    currency: ownAds[0]?.raw_data?.currency || 'USD',
+    top: [...ownAds]
+      .sort((a, b) => Number(b.raw_data?.spend || 0) - Number(a.raw_data?.spend || 0))
+      .slice(0, 5)
+      .map(p => ({
+        id: p.id,
+        platform: platformKey(p.platform),
+        name: p.caption,
+        spend: Number(p.raw_data?.spend || 0),
+        impressions: Number(p.views || 0),
+        clicks: Number(p.raw_data?.clicks || 0),
+        ctr: Number(p.engagement_rate || 0),
+        status: p.raw_data?.status || null,
+      })),
+  };
 
   // Build per-platform account summary keyed the way the prototype expects.
   const accountSummary = {};
@@ -119,6 +150,7 @@ export default async function handler(req, res) {
     usage: { used: usage.used, limit: tier.runs_per_month },
     accounts: accounts || [],
     accountSummary,
+    ads: adsSummary,
     competitors: (competitors || []).map(c => {
       // 7-day delta from account_snapshots (account_type='competitor')
       const compSnaps = (snapshots || [])

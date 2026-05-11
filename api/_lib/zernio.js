@@ -56,10 +56,22 @@ export const zernio = {
     return call(`/accounts?${params.toString()}`);
   },
 
-  // 30-day post analytics for an account
+  // 30-day post analytics for an account.
+  // Response shape: { posts: [...] } or array. Each post has top-level meta
+  // (publishedAt, content, _id, mediaType, platforms[]) and engagement fields
+  // NESTED under .analytics (impressions, reach, likes, comments, saves, etc.).
   async getAnalytics(accountId, fromDate, toDate) {
     const params = new URLSearchParams({ accountId, fromDate, toDate });
     return call(`/analytics?${params.toString()}`);
+  },
+
+  // Ad performance for the account. Returns { ads, pagination }.
+  // Empty when no ads are running or the account lacks ad permissions.
+  async getAds(accountId, { fromDate, toDate, limit = 50 } = {}) {
+    const params = new URLSearchParams({ accountId, limit: String(limit) });
+    if (fromDate) params.set('fromDate', fromDate);
+    if (toDate) params.set('toDate', toDate);
+    return call(`/ads?${params.toString()}`);
   },
 
   // Follower history
