@@ -35,6 +35,13 @@ export default async function handler(req, res) {
     metadata: a,
   })).filter(r => r.platform && r.zernio_account_id);
 
+  // Snapshot existing zernio_account_ids so we can detect what's new on this sync.
+  const existing = await supabase.select('connected_accounts', {
+    select: 'zernio_account_id,platform',
+    eq: { workspace_id: ws.id },
+  }).catch(() => []);
+  const existingIds = new Set((existing || []).map(r => r.zernio_account_id));
+
   let saved = [];
   if (rows.length) {
     try {
@@ -53,5 +60,10 @@ export default async function handler(req, res) {
     order: 'created_at.asc',
   }).catch(() => saved);
 
-  return json(res, 200, { synced: rows.length, accounts: accounts || [] });
+  // Newly-inserted accounts (i.e. just connected on this sync call)
+  const new_accounts = (accounts || [])
+    .filter(a => !existingIds.has(a.zernio_account_id))
+    .map(a => ({ platform: a.platform, handle: a.platform_username, id: a.id }));
+
+  return json(res, 200, { synced: rows.length, accounts: accounts || [], new_accounts });
 }

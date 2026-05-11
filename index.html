@@ -3099,12 +3099,18 @@ const SettingsScreen = () => {
         try {
           const synced = await api('/accounts/sync', { method: 'POST' });
           const connected = (synced.accounts || []).find(a => a.platform === platformId);
+          const isNewlyConnected = (synced.new_accounts || []).some(a => a.platform === platformId);
           if (connected) {
             clearInterval(poll);
             popup?.close();
             setAccounts(synced.accounts || []);
             setConnecting(null);
             showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label} connected ✓`);
+            // Fire first analytics refresh in the background — your dashboard
+            // will populate within ~30s. We don't await; the user can keep working.
+            if (isNewlyConnected) {
+              api('/analytics/refresh', { method: 'POST' }).catch(() => {});
+            }
           }
         } catch {}
       }, 2000);
