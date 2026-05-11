@@ -119,13 +119,30 @@ export default async function handler(req, res) {
     usage: { used: usage.used, limit: tier.runs_per_month },
     accounts: accounts || [],
     accountSummary,
-    competitors: (competitors || []).map(c => ({
-      handle: c.handle,
-      display_name: c.display_name,
-      platform: platformKey(c.platform),
-      followers: c.followers || 0,
-      delta: 0, // Phase 4 fills this in via Apify snapshots
-    })),
+    competitors: (competitors || []).map(c => {
+      // 7-day delta from account_snapshots (account_type='competitor')
+      const compSnaps = (snapshots || [])
+        .filter(s => s.account_type === 'competitor' && s.platform === c.platform && s.handle === c.handle)
+        .sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
+      let delta = 0;
+      if (compSnaps.length >= 2) {
+        const latest = compSnaps[compSnaps.length - 1];
+        // Find a snapshot ~7 days older than latest
+        const targetTs = new Date(latest.snapshot_date).getTime() - 7 * 86400000;
+        const baseline = [...compSnaps].reverse().find(s => new Date(s.snapshot_date).getTime() <= targetTs)
+          || compSnaps[0];
+        if (baseline.followers > 0) {
+          delta = Math.round(((latest.followers - baseline.followers) / baseline.followers) * 1000) / 10;
+        }
+      }
+      return {
+        handle: c.handle,
+        display_name: c.display_name,
+        platform: platformKey(c.platform),
+        followers: c.followers || 0,
+        delta,
+      };
+    }),
     posts: topPosts,
     snapshots: snapshots || [],
     // Segregate signals by kind. Verdict + actions live in signals table with

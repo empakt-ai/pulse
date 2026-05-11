@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabase.js';
 import { zernio } from '../lib/zernio.js';
 import { json } from '../lib/auth.js';
 import { generateBrief } from '../lib/intelligence.js';
+import { syncCompetitorsForWorkspace } from '../lib/competitor-sync.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -132,6 +133,14 @@ async function refreshWorkspace(ws) {
     }).catch(() => {});
   }
 
+  // Scrape competitors (Apify) before the AI brief so signals can see them.
+  let competitors = null;
+  try {
+    competitors = await syncCompetitorsForWorkspace(ws);
+  } catch (e) {
+    competitors = { error: e.message };
+  }
+
   // Generate the AI brief at the tail. Best-effort.
   let brief = null;
   if (totalPosts > 0) {
@@ -142,7 +151,7 @@ async function refreshWorkspace(ws) {
     }
   }
 
-  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts, brief };
+  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts, competitors, brief };
 }
 
 export default async function handler(req, res) {
