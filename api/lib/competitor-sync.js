@@ -44,7 +44,9 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
     try {
       const { profile, posts } = await runActor(comp.platform, comp.handle);
 
-      // Persist posts (source='competitor')
+      // Persist posts (source='competitor'). Drop prior posts for this
+      // competitor and re-insert — sidesteps the missing UNIQUE constraint on
+      // posts(workspace_id, platform, platform_post_id).
       const postRows = (posts || [])
         .filter(p => p.platform_post_id)
         .map(p => ({
@@ -56,9 +58,8 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
         }));
 
       if (postRows.length) {
-        await supabase.upsert('posts', postRows, {
-          onConflict: 'workspace_id,platform,platform_post_id',
-        });
+        await supabase.delete('posts', { eq: { competitor_id: comp.id } }).catch(() => {});
+        await supabase.insert('posts', postRows);
       }
 
       // Update competitor row
