@@ -1,9 +1,9 @@
 // Consolidated read for the dashboard. Returns everything the SPA needs to
 // hydrate Brief/Stats/Growth/Content/Intel/Targets/Settings in one call.
 
-import { authenticate, json } from './lib/auth.js';
-import { supabase } from './lib/supabase.js';
-import { tierFor, getMonthlyUsage } from './lib/tiers.js';
+import { authenticate, json } from './_lib/auth.js';
+import { supabase } from './_lib/supabase.js';
+import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 
 const PLATFORM_TO_ICON = {
   instagram: 'ig', tiktok: 'tt', youtube: 'yt',

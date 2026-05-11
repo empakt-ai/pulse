@@ -4,8 +4,8 @@
 // Body or query: { id: <connected_account_id> }  OR  { platform: <name> }
 // (platform variant disconnects all accounts of that platform in the workspace).
 
-import { authenticate, json } from './lib/auth.js';
-import { supabase } from './lib/supabase.js';
+import { authenticate, json } from './_lib/auth.js';
+import { supabase } from './_lib/supabase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'DELETE') {

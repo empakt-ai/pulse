@@ -4,11 +4,11 @@
 // Auth: Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` automatically
 // when you set CRON_SECRET as an env var. Reject any call without it.
 
-import { supabase } from '../lib/supabase.js';
-import { zernio } from '../lib/zernio.js';
-import { json } from '../lib/auth.js';
-import { generateBrief } from '../lib/intelligence.js';
-import { syncCompetitorsForWorkspace } from '../lib/competitor-sync.js';
+import { supabase } from '../_lib/supabase.js';
+import { zernio } from '../_lib/zernio.js';
+import { json } from '../_lib/auth.js';
+import { generateBrief } from '../_lib/intelligence.js';
+import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
 
 function daysAgo(n) {
   const d = new Date();

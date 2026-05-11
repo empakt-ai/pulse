@@ -6,10 +6,10 @@
 //   POST /api/competitors  {action: 'sync'}    → trigger Apify scrape
 //   DELETE /api/competitors?id=...             → soft-delete (is_active=false)
 
-import { authenticate, json } from './lib/auth.js';
-import { supabase } from './lib/supabase.js';
-import { checkCompetitorCap } from './lib/tiers.js';
-import { syncCompetitorsForWorkspace } from './lib/competitor-sync.js';
+import { authenticate, json } from './_lib/auth.js';
+import { supabase } from './_lib/supabase.js';
+import { checkCompetitorCap } from './_lib/tiers.js';
+import { syncCompetitorsForWorkspace } from './_lib/competitor-sync.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);

@@ -1,5 +1,5 @@
-import { authenticate, json } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
+import { authenticate, json } from '../_lib/auth.js';
+import { supabase } from '../_lib/supabase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });

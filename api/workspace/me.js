@@ -1,6 +1,6 @@
-import { authenticate, json } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
-import { tierFor, getMonthlyUsage } from '../lib/tiers.js';
+import { authenticate, json } from '../_lib/auth.js';
+import { supabase } from '../_lib/supabase.js';
+import { tierFor, getMonthlyUsage } from '../_lib/tiers.js';
 
 const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions'];
 

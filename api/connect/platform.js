@@ -1,6 +1,6 @@
-import { authenticate, json } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
-import { zernio } from '../lib/zernio.js';
+import { authenticate, json } from '../_lib/auth.js';
+import { supabase } from '../_lib/supabase.js';
+import { zernio } from '../_lib/zernio.js';
 
 const SUPPORTED = ['instagram', 'tiktok', 'youtube', 'facebook', 'linkedin', 'x', 'snapchat'];
 

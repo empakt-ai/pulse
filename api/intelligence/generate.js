@@ -2,8 +2,8 @@
 // caller's workspace. Also runs automatically at the tail of /api/analytics/refresh
 // and inside /api/cron/daily.
 
-import { authenticate, json } from '../lib/auth.js';
-import { generateBrief } from '../lib/intelligence.js';
+import { authenticate, json } from '../_lib/auth.js';
+import { generateBrief } from '../_lib/intelligence.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });

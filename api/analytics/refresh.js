@@ -1,8 +1,8 @@
-import { authenticate, json } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
-import { zernio } from '../lib/zernio.js';
-import { checkUsageCap } from '../lib/tiers.js';
-import { generateBrief } from '../lib/intelligence.js';
+import { authenticate, json } from '../_lib/auth.js';
+import { supabase } from '../_lib/supabase.js';
+import { zernio } from '../_lib/zernio.js';
+import { checkUsageCap } from '../_lib/tiers.js';
+import { generateBrief } from '../_lib/intelligence.js';
 
 function daysAgo(n) {
   const d = new Date();
