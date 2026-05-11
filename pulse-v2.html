@@ -1,0 +1,3556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Pulse — Social intelligence for serious creators</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700;12..96,800&amp;family=Geist:wght@300;400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;family=Instrument+Serif:ital@0;1&amp;display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        ink: '#0A0A0B',
+        paper: '#F5F1E8',
+        chalk: '#FBF9F4',
+        coal: '#15151A',
+        coalsoft: '#1C1C24',
+        line: 'rgba(10,10,11,0.08)',
+        lineDark: 'rgba(245,241,232,0.08)',
+        mute: '#6F6B62',
+        muteDark: '#9A958A',
+        lime: '#D6FF3E',
+        limeDeep: '#A8D200',
+        magenta: '#FF2D6A',
+        magentaSoft: '#FFE3EC',
+        ultra: '#6B5BFF',
+        ultraSoft: '#E8E4FF',
+        amber: '#FFB23E'
+      },
+      fontFamily: {
+        display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
+        sans: ['Geist', 'system-ui', 'sans-serif'],
+        mono: ['Geist Mono', 'ui-monospace', 'monospace'],
+        serif: ['Instrument Serif', 'Georgia', 'serif']
+      },
+      letterSpacing: {
+        tightest: '-0.04em',
+        tighter: '-0.025em'
+      },
+      boxShadow: {
+        soft: '0 1px 2px rgba(10,10,11,.04), 0 8px 24px -8px rgba(10,10,11,.08)',
+        pop: '0 8px 32px -8px rgba(107,91,255,.25), 0 2px 8px rgba(10,10,11,.06)'
+      }
+    }
+  }
+}
+</script>
+
+<style>
+  html, body { background: #F5F1E8; }
+  html.dark, html.dark body { background: #0A0A0B; }
+  body {
+    font-family: 'Geist', system-ui, sans-serif;
+    color: #0A0A0B;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  html.dark body { color: #F5F1E8; }
+
+  .font-display { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-stretch: 100%; }
+  .font-display-wide { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-stretch: 125%; }
+  .font-display-narrow { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-stretch: 75%; }
+
+  /* Grain texture overlay */
+  .grain::before {
+    content: ''; position: fixed; inset: 0; pointer-events: none;
+    z-index: 1; opacity: .04; mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  html.dark .grain::before { opacity: .025; mix-blend-mode: overlay; }
+
+  /* Marquee */
+  @keyframes scroll-x {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .marquee { animation: scroll-x 40s linear infinite; }
+
+  /* Pulse dot */
+  @keyframes ping-pulse {
+    0%   { transform: scale(1); opacity: .8; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  .pulse-dot::after {
+    content: ''; position: absolute; inset: 0; border-radius: 9999px;
+    background: currentColor; animation: ping-pulse 1.6s cubic-bezier(0,0,.2,1) infinite;
+  }
+
+  /* Fade up on mount */
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .fade-up { animation: fadeUp .35s cubic-bezier(.22,1,.36,1) both; }
+
+  /* Counter shimmer */
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  /* Hero gradient blob */
+  .blob {
+    position: absolute; border-radius: 9999px; filter: blur(80px); pointer-events: none;
+    opacity: .55; z-index: 0;
+  }
+
+  /* Range slider */
+  input[type=range] { -webkit-appearance: none; height: 4px; background: rgba(10,10,11,.1); border-radius: 9999px; }
+  html.dark input[type=range] { background: rgba(245,241,232,.15); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:9999px; background:#0A0A0B; cursor:pointer; }
+  html.dark input[type=range]::-webkit-slider-thumb { background: #D6FF3E; }
+
+  /* Hide scrollbar */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Custom checkbox/toggle */
+  .switch { width: 36px; height: 20px; background: rgba(10,10,11,.15); border-radius: 9999px; position: relative; transition: background .2s; }
+  .switch.on { background: #0A0A0B; }
+  html.dark .switch.on { background: #D6FF3E; }
+  .switch-knob { width: 14px; height: 14px; background: white; border-radius: 9999px; position: absolute; top: 3px; left: 3px; transition: transform .2s; }
+  .switch.on .switch-knob { transform: translateX(16px); }
+  html.dark .switch.on .switch-knob { background: #0A0A0B; }
+
+  /* Density */
+  .density-compact .stat-card { padding: 14px !important; }
+  .density-compact .card { padding: 14px !important; }
+  .density-compact .row-pad { padding: 10px 12px !important; }
+
+  /* SVG sparkline */
+  .spark-line { fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* Underlines + dotted */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .animate-spin { animation: spin 0.8s linear infinite; }
+
+  .u-dot { background-image: radial-gradient(currentColor 1px, transparent 1px); background-size: 6px 6px; background-position: 0 100%; background-repeat: repeat-x; padding-bottom: 6px; }
+</style>
+
+<!-- React + Babel -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body class="grain">
+<div id="root"></div>
+
+<!-- Order matters: utilities → icons → data → tweaks → screens → app -->
+<script type="text/babel">
+// Pulse Icons — Platform SVGs (real) + thin-stroke utility icons
+const PlatformIcons = () => (
+  <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
+    <defs>
+      {/* Instagram gradient */}
+      <linearGradient id="igg" x1="0%" y1="100%" x2="100%" y2="0%">
+        <stop offset="0%" stopColor="#feda75" />
+        <stop offset="25%" stopColor="#fa7e1e" />
+        <stop offset="50%" stopColor="#d62976" />
+        <stop offset="75%" stopColor="#962fbf" />
+        <stop offset="100%" stopColor="#4f5bd5" />
+      </linearGradient>
+    </defs>
+    <symbol id="ic-ig" viewBox="0 0 24 24">
+      <rect width="20" height="20" x="2" y="2" rx="6" fill="url(#igg)" />
+      <circle cx="12" cy="12" r="4.5" fill="none" stroke="white" strokeWidth="1.6" />
+      <circle cx="17" cy="7" r="1.2" fill="white" />
+    </symbol>
+    <symbol id="ic-tt" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="6" fill="#010101" />
+      <path d="M16.6 5.8A4.3 4.3 0 0 1 14.3 3h-2.4v12.4a2.1 2.1 0 0 1-2.1 1.8 2.1 2.1 0 0 1-2.1-2.1 2.1 2.1 0 0 1 2.1-2.1c.2 0 .4 0 .6.1v-2.4a4.5 4.5 0 0 0-.6 0A4.5 4.5 0 0 0 5.3 15.1a4.5 4.5 0 0 0 4.5 4.5 4.5 4.5 0 0 0 4.5-4.5V9.3a6.7 6.7 0 0 0 3.9 1.2V8.1A4.3 4.3 0 0 1 16.6 5.8z" fill="white" />
+    </symbol>
+    <symbol id="ic-yt" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="5" fill="#FF0000" />
+      <polygon points="10,8.5 10,15.5 16,12" fill="white" />
+    </symbol>
+    <symbol id="ic-li" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="5" fill="#0A66C2" />
+      <path d="M7.5 10h2v7h-2zM8.5 9a1.1 1.1 0 1 1 0-2.2A1.1 1.1 0 0 1 8.5 9zM11 10h1.9v1s.6-1.1 2.1-1.1c1.6 0 2.5 1 2.5 2.9V17h-2v-3.7c0-.9-.3-1.5-1.1-1.5-.8 0-1.4.6-1.4 1.6V17H11V10z" fill="white" />
+    </symbol>
+    <symbol id="ic-fb" viewBox="0 0 24 24">
+      <rect width="24" height="24" rx="5" fill="#1877F2" />
+      <path d="M13.5 19.5v-7h2.3l.3-2.7h-2.6V8c0-.8.2-1.3 1.3-1.3h1.4V4.4c-.2 0-1-.1-2-.1-2 0-3.3 1.2-3.3 3.4v1.9H8.6v2.7h2.3v7h2.6z" fill="white" />
+    </symbol>
+  </svg>
+);
+
+// Thin stroke icon set
+const Icon = ({ name, className = 'w-4 h-4', stroke = 1.5 }) => {
+  const props = { width: '100%', height: '100%', viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: stroke, strokeLinecap: 'round', strokeLinejoin: 'round' };
+  const paths = {
+    arrowRight: <path d="M5 12h14M13 6l6 6-6 6" />,
+    arrowUpRight: <path d="M7 17 17 7M9 7h8v8" />,
+    arrowDownRight: <path d="M7 7 17 17M17 9v8H9" />,
+    chevDown: <path d="m6 9 6 6 6-6" />,
+    chevRight: <path d="m9 6 6 6-6 6" />,
+    check: <path d="M5 13l4 4L19 7" />,
+    x: <path d="M6 6l12 12M18 6 6 18" />,
+    refresh: <><path d="M1 4v6h6" /><path d="M23 20v-6h-6" /><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" /></>,
+    plus: <path d="M12 5v14M5 12h14" />,
+    minus: <path d="M5 12h14" />,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
+    bell: <path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 21a2 2 0 0 0 4 0" />,
+    sparkle: <><path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.5 5.5l3.5 3.5M15 15l3.5 3.5M5.5 18.5 9 15M15 9l3.5-3.5" /></>,
+    brain: <path d="M9 4a3 3 0 0 0-3 3v1a3 3 0 0 0-2 3 3 3 0 0 0 2 3v1a3 3 0 0 0 3 3 3 3 0 0 0 3 3V4a3 3 0 0 0-3 0zm6 0a3 3 0 0 1 3 3v1a3 3 0 0 1 2 3 3 3 0 0 1-2 3v1a3 3 0 0 1-3 3 3 3 0 0 1-3 3V4a3 3 0 0 1 3 0z" />,
+    flame: <path d="M12 2c1 4-3 5-3 9a3 3 0 0 0 6 0c0-1-1-2-1-3 3 1 5 4 5 7a7 7 0 0 1-14 0c0-5 5-7 7-13z" />,
+    bolt: <path d="m13 2-9 12h7l-2 8 9-12h-7z" />,
+    target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>,
+    trending: <path d="M3 17 9 11l4 4 8-8M14 5h7v7" />,
+    pulse: <path d="M3 12h4l2-6 4 12 2-6h6" />,
+    eye: <><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></>,
+    heart: <path d="M12 21s-7-4.5-9.5-9.5C.5 7 4 3 7.5 3c2 0 3.5 1 4.5 2.5C13 4 14.5 3 16.5 3 20 3 23.5 7 21.5 11.5 19 16.5 12 21 12 21z" />,
+    message: <path d="M21 12c0 4.5-4 8-9 8-1.5 0-3-.3-4-.8L3 21l1.8-5C4.3 15 4 13.5 4 12c0-4.5 4-8 8.5-8S21 7.5 21 12z" />,
+    share: <><circle cx="6" cy="12" r="3" /><circle cx="18" cy="6" r="3" /><circle cx="18" cy="18" r="3" /><path d="M8.6 10.5 15.4 7.5M8.6 13.5l6.8 3" /></>,
+    bookmark: <path d="M6 4h12v17l-6-3-6 3z" />,
+    filter: <path d="M3 5h18M6 12h12M10 19h4" />,
+    download: <path d="M12 4v12m0 0-4-4m4 4 4-4M4 20h16" />,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="m19.4 15-.3.5a1.7 1.7 0 0 0 .3 2l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2-.3 1.7 1.7 0 0 0-1 1.5V22a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-2 .3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-2A1.7 1.7 0 0 0 2.1 14H2a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-2l-.1-.1A2 2 0 1 1 6 4.1l.1.1a1.7 1.7 0 0 0 2 .3H8a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 2-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 2v0a1.7 1.7 0 0 0 1.5 1H22a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4 12H2m20 0h-2M5 5l1.5 1.5M17.5 17.5 19 19M5 19l1.5-1.5M17.5 6.5 19 5" /></>,
+    moon: <path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10z" />,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></>,
+    clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+    layers: <path d="m12 3 9 5-9 5-9-5zM3 13l9 5 9-5M3 18l9 5 9-5" />,
+    grid: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    users: <><circle cx="9" cy="8" r="4" /><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a6 6 0 0 0-4-5.7" /></>,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>,
+    lock: <><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+    google: <><path d="M21.6 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.4c-.2 1.3-1 2.4-2.1 3.2v2.6h3.4c2-1.8 3-4.5 3-7.6z" fill="#4285F4" stroke="none" /><path d="M12 22c2.7 0 5-.9 6.7-2.4l-3.4-2.6c-.9.6-2 1-3.3 1-2.6 0-4.7-1.7-5.5-4H3v2.5A10 10 0 0 0 12 22z" fill="#34A853" stroke="none" /><path d="M6.5 14c-.2-.6-.3-1.3-.3-2s.1-1.4.3-2V7.5H3a10 10 0 0 0 0 9z" fill="#FBBC04" stroke="none" /><path d="M12 6c1.5 0 2.8.5 3.8 1.5L18.8 4A10 10 0 0 0 3 7.5L6.5 10c.8-2.3 2.9-4 5.5-4z" fill="#EA4335" stroke="none" /></>,
+    github: <path d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-2c-2.8.6-3.4-1.2-3.4-1.2-.5-1.2-1.1-1.5-1.1-1.5-.9-.6.1-.6.1-.6 1 0 1.6 1 1.6 1 .9 1.5 2.3 1.1 2.9.8.1-.6.4-1.1.6-1.3-2.2-.3-4.6-1.1-4.6-5 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.7 1a9.4 9.4 0 0 1 5 0c1.9-1.3 2.7-1 2.7-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.9-2.3 4.7-4.6 5 .4.3.7.9.7 1.8v2.6c0 .3.2.6.7.5A10 10 0 0 0 12 2z" fill="currentColor" />,
+    apple: <path d="M16.4 12.7c0-2.4 2-3.6 2.1-3.6-1.1-1.7-2.9-1.9-3.5-2-1.5-.1-2.9.9-3.7.9s-1.9-.9-3.2-.9c-1.6 0-3.2 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.2-.8s1.9.8 3.2.8c1.3 0 2.2-1.2 3-2.4.6-.8 1-1.6 1.3-2.4-2.2-.9-2.6-3.9-.4-4.2zM14 5.9c.7-.8 1.1-2 1-3.2-1 0-2.2.7-2.9 1.5-.7.7-1.2 1.9-1.1 3.1 1.1.1 2.3-.6 3-1.4z" fill="currentColor" />,
+    logo: <><circle cx="12" cy="12" r="2" /><circle cx="12" cy="12" r="6" opacity=".5" /><circle cx="12" cy="12" r="10" opacity=".2" /></>,
+    play: <polygon points="6 4 20 12 6 20" />,
+    folder: <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
+    headphones: <path d="M3 18v-6a9 9 0 0 1 18 0v6m0 0a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zm-18 0a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z" />,
+    rocket: <path d="M4.5 16.5c-1.5 1.3-2 5-2 5s3.7-.5 5-2c.8-.8.8-2.2 0-3s-2.2-.8-3 0zM12 15 9 12a11 11 0 0 1 3-7c5-5 11-5 11-5s0 6-5 11a11 11 0 0 1-7 3zM15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />,
+    globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z" /></>,
+    menu: <path d="M3 6h18M3 12h18M3 18h18" />,
+    quote: <path d="M3 11c0-4 2-7 6-8v3c-2 .5-3 2-3 4h3v6H3zm10 0c0-4 2-7 6-8v3c-2 .5-3 2-3 4h3v6h-6z" />,
+  };
+  return <svg {...props} className={className}>{paths[name]}</svg>;
+};
+
+Object.assign(window, { PlatformIcons, Icon });
+
+</script>
+<script type="text/babel">
+// Pulse Data — mock profile + posts + signals + cycles
+const D = {
+  user: { name: 'Alex Rivera', initials: 'AR', handle: 'alexrivera', location: 'Brooklyn, NY', plan: 'Creator' },
+  workspace: 'Alex / Studio',
+  lastSync: 'Today, 06:04',
+  nextSync: 'Tomorrow, 06:00',
+  intelScore: 87,
+  weeklyTrend: 8.2,
+  accounts: {
+    ig: { handle: '@alexrivera', followers: 48200, posts: 312, totalViews4W: 1240000, engRate4W: 8.4, avgViews: 39800 },
+    tt: { handle: '@alexrivera', followers: 102000, videos: 88, totalPlays: 2810000 },
+    yt: { name: 'Alex Rivera', subs: 12400, videos: 42, totalViews: 484000 },
+    li: { name: 'Alex Rivera', connections: 3200, posts: 21 },
+    fb: { name: 'Alex Rivera', followers: 6100, posts: 14 }
+  },
+  posts: [
+    { id: 1, platform: 'ig', type: 'reel', title: 'The Future of Work Reel', daysAgo: 2, views: 842000, likes: 124502, comments: 1842, saves: 6210, shares: 4120, engRate: 14.8, signal: 'viral', emoji: '⚡' },
+    { id: 2, platform: 'tt', type: 'video', title: 'Eco-Tech Deep Dive', daysAgo: 1, views: 1240000, likes: 320400, comments: 4210, saves: 18200, engRate: 25.8, signal: 'viral', emoji: '🌱' },
+    { id: 3, platform: 'yt', type: 'video', title: 'Omni-Channel API tutorial', daysAgo: 1, views: 125400, likes: 18290, comments: 942, engRate: 12.2, signal: 'stable', emoji: '🎬' },
+    { id: 4, platform: 'li', type: 'post', title: 'Building remote-first teams', daysAgo: 0, views: 31400, likes: 4120, comments: 312, engRate: 13.1, signal: 'rising', emoji: '💼' },
+    { id: 5, platform: 'ig', type: 'reel', title: 'AI Strategy in 60s', daysAgo: 4, views: 312000, likes: 42100, comments: 612, saves: 2840, engRate: 9.2, signal: 'rising', emoji: '🤖' },
+    { id: 6, platform: 'tt', type: 'video', title: 'Slow Tech movement', daysAgo: 5, views: 84000, likes: 12400, engRate: 6.8, signal: 'steady', emoji: '🌀' },
+    { id: 7, platform: 'ig', type: 'post', title: 'Behind the scenes', daysAgo: 7, views: 18400, likes: 2100, engRate: 4.2, signal: 'steady', emoji: '🎥' }
+  ],
+  signals: [
+    { id: 's1', kind: 'viral', label: 'Viral formula', platform: 'tt', title: 'Eco-Tech Deep Dive is 340% over baseline', body: 'Your TikTok crossed the algorithmic velocity threshold 14 minutes ago. Reposting today extends the recommendation window.', impact: 'High Impact', action: 'Cross-post to Reels' },
+    { id: 's2', kind: 'gap', label: 'Platform gap', platform: 'yt', title: '29 vertical Reels never repurposed as YT Shorts', body: 'Your IG library has 29 sub-60s vertical posts. Each represents zero-edit Shorts upload pipeline.', impact: 'Strategic', action: 'Open Shorts queue' },
+    { id: 's3', kind: 'collab', label: 'Collab signal', platform: 'ig', title: '3 creators in your niche are open to collab', body: 'Cross-engagement analysis surfaces @maya.studio, @theyfound, @ledr.eats as highest-leverage DMs this week.', impact: 'Strategic', action: 'Draft DMs' },
+    { id: 's4', kind: 'engagement', label: 'Engagement quality', platform: 'ig', title: 'Save rate is 4.2× your category benchmark', body: 'Saves correlate with returning viewers. The "tutorial" carousel format drives 6× saves vs your reels.', impact: 'High Impact', action: 'Replicate format' },
+    { id: 's5', kind: 'warning', label: 'Market risk', platform: 'all', title: 'Ad-spend inflation on SaaS keywords +12% WoW', body: 'North America CPC trending upward. Consider organic-first messaging this cycle.', impact: 'Strategic Warning', action: 'See analysis' },
+    { id: 's6', kind: 'audience', label: 'Audience identity', platform: 'li', title: 'LinkedIn audience is 68% senior IC, not management', body: 'Your post hooks aimed at managers are converting at 0.8× the rate of IC-coded hooks. Rewrite the opener.', impact: 'Core Identity', action: 'Rewrite hooks' },
+    { id: 's7', kind: 'timing', label: 'Timing window', platform: 'ig', title: 'Peak window is Tue/Wed 18:00–21:00 ET', body: 'Posts in this window earn 2.4× engagement. Last 4 reels missed the window.', impact: 'High Impact', action: 'Schedule next' },
+    { id: 's8', kind: 'trend', label: 'Emerging trend', platform: 'tt', title: '"Slow tech" up 180% in your niche', body: 'Keyword cluster around intentionality + focus is climbing. Early entry recommended.', impact: 'Strategic', action: 'Generate brief' }
+  ],
+  todayActions: [
+    { id: 'a1', when: 'Now', urgency: 'urgent', icon: 'flame', title: 'Reply to 124K Reel', body: 'Engagement is peaking. Replying now extends reach by 1.8×.', cta: 'Open comments →' },
+    { id: 'a2', when: '4:00 PM ET', urgency: 'schedule', icon: 'clock', title: 'Post to TikTok', body: 'Your peak window is 4–6 PM. Eco-Tech b-roll is queued and ready.', cta: 'Review draft →' },
+    { id: 'a3', when: 'This week', urgency: 'optional', icon: 'sparkle', title: 'Review trends', body: '"Slow Tech" is +180%. 2 of your old reels fit perfectly.', cta: 'Read analysis →' }
+  ],
+  cycles: [
+    { id: 'c1', label: 'Cycle 01', range: 'Apr 9 → May 9', status: 'completed',
+      targets: [
+        { metric: 'IG Followers', platform: 'ig', start: 41200, target: 46000, actual: 48200, status: 'exceeded', verdict: '+2,200 over target. The Future-of-Work reel drove an unexpectedly strong month.' },
+        { metric: 'Avg Views / Post', platform: 'ig', start: 18000, target: 28000, actual: 39800, status: 'exceeded', verdict: 'Two outlier viral posts pulled the average up. Non-tutorial posts still avg ~12K.' }
+      ]},
+    { id: 'c2', label: 'Cycle 02', range: 'May 9 → Jun 8', status: 'active',
+      targets: [
+        { metric: 'IG Followers → 60K', platform: 'ig', start: 48200, target: 60000, actual: 49100, status: 'active', verdict: 'At your current pace (+29/day) you\'ll reach ~52K. The @maya.studio collab is your highest-leverage action.' },
+        { metric: 'TikTok Posts → 12', platform: 'tt', start: 1, target: 12, actual: 3, status: 'needs_push', verdict: '9 more in 28 days. Your Reels library has 29 untapped vertical posts.' },
+        { metric: 'Collab DMs sent', platform: 'ig', start: 0, target: 5, actual: 1, status: 'pending', verdict: 'Cross-niche collabs proved the model. Send 4 more this week.' },
+        { metric: 'YouTube Shorts → 8', platform: 'yt', start: 0, target: 8, actual: 0, status: 'active', verdict: 'Zero-edit pipeline from IG. Minimum effort, maximum leverage.' }
+      ]},
+    { id: 'c3', label: 'Cycle 03', range: 'Jun 8 → Jul 8', status: 'upcoming', targets: [] },
+    { id: 'c4', label: 'Cycle 04', range: 'Jul 8 → Aug 7', status: 'upcoming', targets: [] }
+  ],
+  competitors: [
+    { handle: '@maya.studio', platform: 'ig', followers: 142000, delta: 12.4 },
+    { handle: '@theyfound', platform: 'tt', followers: 88000, delta: 8.2 },
+    { handle: '@ledr.eats', platform: 'ig', followers: 220000, delta: -2.1 },
+    { handle: '@nomadnotebook', platform: 'yt', followers: 64000, delta: 4.6 },
+    { handle: '@quietworks', platform: 'li', followers: 28000, delta: 1.2 }
+  ],
+  heatmap: [
+    // Mon Tue Wed Thu Fri Sat Sun  ← cols
+    [0,0,1,0,0,1,1], // 06–09
+    [0,1,2,1,1,0,2], // 09–12
+    [1,2,3,2,1,1,2], // 12–15
+    [1,2,4,3,1,1,2], // 15–18
+    [2,3,4,4,2,1,3], // 18–21  ← peak window
+    [1,1,3,2,1,0,1]  // 21–00
+  ],
+  heatmapHours: ['06–09','09–12','12–15','15–18','18–21','21–00'],
+};
+
+const formatNum = (n) => {
+  if (n >= 1e6) return (n/1e6).toFixed(n>=10e6?0:1).replace(/\.0$/,'') + 'M';
+  if (n >= 1e3) return (n/1e3).toFixed(n>=10e3?0:1).replace(/\.0$/,'') + 'K';
+  return String(n);
+};
+
+const platformLabel = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', all: 'All platforms' };
+const platformBrand = { ig: '#D62976', tt: '#010101', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2' };
+
+Object.assign(window, { D, formatNum, platformLabel, platformBrand });
+
+</script>
+<script type="text/babel">
+// Pulse UI primitives
+
+const cls = (...a) => a.filter(Boolean).join(' ');
+
+// Card wrapper — bordered, paper
+const Card = ({ children, className = '', as: As = 'div', ...rest }) => (
+  <As className={cls('card bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark rounded-2xl p-5', className)} {...rest}>
+    {children}
+  </As>
+);
+
+// Primary button
+const Btn = ({ children, variant = 'ink', size = 'md', className = '', as: As = 'button', ...rest }) => {
+  const sizes = { sm: 'h-9 px-3.5 text-[13px]', md: 'h-11 px-5 text-sm', lg: 'h-12 px-6 text-[15px]' };
+  const variants = {
+    ink: 'bg-ink text-paper hover:bg-coal dark:bg-paper dark:text-ink dark:hover:bg-chalk',
+    lime: 'bg-lime text-ink hover:bg-limeDeep',
+    ghost: 'bg-transparent text-ink dark:text-paper hover:bg-ink/5 dark:hover:bg-paper/5',
+    outline: 'bg-transparent border border-ink/15 dark:border-paper/15 text-ink dark:text-paper hover:border-ink/40 dark:hover:border-paper/40',
+    magenta: 'bg-magenta text-white hover:brightness-110'
+  };
+  return (
+    <As className={cls('inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all', sizes[size], variants[variant], className)} {...rest}>
+      {children}
+    </As>
+  );
+};
+
+// Eyebrow label — bold caps, mono
+const Eyebrow = ({ children, color = 'text-ultra', className = '' }) => (
+  <span className={cls('font-mono text-[10px] uppercase tracking-[0.18em] font-medium', color, className)}>{children}</span>
+);
+
+// Platform icon ref
+const Plat = ({ p, className = 'w-5 h-5' }) => (
+  <svg className={className}><use href={`#ic-${p}`} /></svg>
+);
+
+// Sparkline
+const Sparkline = ({ data, color = 'currentColor', width = 90, height = 32 }) => {
+  if (!data?.length) return null;
+  const max = Math.max(...data), min = Math.min(...data);
+  const range = max - min || 1;
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * width},${height - ((v - min) / range) * height}`).join(' ');
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+      <polyline className="spark-line" points={pts} stroke={color} />
+    </svg>
+  );
+};
+
+// Bar sparkline (stat card variant)
+const BarSpark = ({ data, color = '#6B5BFF', highlightIdx = -1, height = 28 }) => {
+  const max = Math.max(...data) || 1;
+  return (
+    <div className="flex items-end gap-0.5" style={{ height }}>
+      {data.map((v, i) => (
+        <div key={i}
+          className="flex-1 rounded-sm transition-all"
+          style={{ height: `${(v / max) * 100}%`, background: i === highlightIdx ? color : `${color}33`, minHeight: 2 }} />
+      ))}
+    </div>
+  );
+};
+
+// Pill badge
+const Pill = ({ children, color = 'ink', className = '' }) => {
+  const colors = {
+    ink: 'bg-ink/8 text-ink dark:bg-paper/10 dark:text-paper',
+    lime: 'bg-lime text-ink',
+    magenta: 'bg-magenta text-white',
+    magentaSoft: 'bg-magentaSoft text-magenta dark:bg-magenta/20 dark:text-magenta',
+    ultra: 'bg-ultra text-white',
+    ultraSoft: 'bg-ultraSoft text-ultra dark:bg-ultra/20 dark:text-ultra',
+    paper: 'bg-paper text-ink dark:bg-paper/10 dark:text-paper',
+    amber: 'bg-amber/20 text-amber'
+  };
+  return <span className={cls('inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[11px] font-medium tracking-tight whitespace-nowrap', colors[color], className)}>{children}</span>;
+};
+
+// Pulse live dot
+const PulseDot = ({ color = 'bg-magenta', size = 'w-2 h-2' }) => (
+  <span className={cls('relative inline-block rounded-full pulse-dot', size, color)} style={{ color: undefined }} />
+);
+
+// Progress bar
+const Progress = ({ value, max = 100, color = 'bg-ultra', height = 'h-1.5', animate = true }) => {
+  const [w, setW] = React.useState(0);
+  React.useEffect(() => { const t = setTimeout(() => setW((value / max) * 100), 100); return () => clearTimeout(t); }, [value, max]);
+  return (
+    <div className={cls('w-full rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden', height)}>
+      <div className={cls('h-full rounded-full transition-all duration-[1200ms] ease-out', color)} style={{ width: `${animate ? w : (value / max) * 100}%` }} />
+    </div>
+  );
+};
+
+// Stat card — label, value, delta, sparkline
+const StatCard = ({ label, value, delta, deltaPositive = true, sparkData, color = '#6B5BFF', icon }) => (
+  <div className="stat-card card bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark rounded-2xl p-5 hover:border-ink/20 dark:hover:border-paper/20 transition-all">
+    <div className="flex items-start justify-between mb-3">
+      <div className="flex items-center gap-2">
+        {icon && <div className="w-7 h-7 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center"><Icon name={icon} className="w-3.5 h-3.5" /></div>}
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute dark:text-muteDark">{label}</span>
+      </div>
+      {delta !== undefined && (
+        <span className={cls('font-mono text-[11px] flex items-center gap-0.5', deltaPositive ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+          {deltaPositive ? '↑' : '↓'} {Math.abs(delta)}%
+        </span>
+      )}
+    </div>
+    <div className="font-display text-[34px] leading-none font-semibold tracking-tighter mb-3">{value}</div>
+    {sparkData && <BarSpark data={sparkData} color={color} highlightIdx={sparkData.length - 2} />}
+  </div>
+);
+
+// Section header
+const SectionHead = ({ eyebrow, title, sub, right, className = '' }) => (
+  <div className={cls('flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-5', className)}>
+    <div>
+      {eyebrow && <div className="mb-2"><Eyebrow>{eyebrow}</Eyebrow></div>}
+      <h2 className="font-display text-[22px] sm:text-[26px] leading-none font-semibold tracking-tighter">{title}</h2>
+      {sub && <p className="text-[13px] text-mute dark:text-muteDark mt-1.5 max-w-md">{sub}</p>}
+    </div>
+    {right}
+  </div>
+);
+
+// Logo
+const PulseLogo = ({ className = 'h-7' }) => (
+  <div className={cls('inline-flex items-center gap-2', className)}>
+    <svg viewBox="0 0 32 32" className="h-full w-auto" fill="none">
+      <circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="1.5" opacity="0.2" />
+      <path d="M4 16h6l2-6 4 14 2-8 2 4h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+    <span className="font-display text-[20px] font-bold tracking-tightest">Pulse</span>
+  </div>
+);
+
+Object.assign(window, { cls, Card, Btn, Eyebrow, Plat, Sparkline, BarSpark, Pill, PulseDot, Progress, StatCard, SectionHead, PulseLogo });
+
+</script>
+<script type="text/babel">
+
+// tweaks-panel.jsx
+// Reusable Tweaks shell + form-control helpers.
+//
+// Owns the host protocol (listens for __activate_edit_mode / __deactivate_edit_mode,
+// posts __edit_mode_available / __edit_mode_set_keys / __edit_mode_dismissed) so
+// individual prototypes don't re-roll it. Ships a consistent set of controls so you
+// don't hand-draw <input type="range">, segmented radios, steppers, etc.
+//
+// Usage (in an HTML file that loads React + Babel):
+//
+//   const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+//     "primaryColor": "#D97757",
+//     "palette": ["#D97757", "#29261b", "#f6f4ef"],
+//     "fontSize": 16,
+//     "density": "regular",
+//     "dark": false
+//   }/*EDITMODE-END*/;
+//
+//   function App() {
+//     const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+//     return (
+//       <div style={{ fontSize: t.fontSize, color: t.primaryColor }}>
+//         Hello
+//         <TweaksPanel>
+//           <TweakSection label="Typography" />
+//           <TweakSlider label="Font size" value={t.fontSize} min={10} max={32} unit="px"
+//                        onChange={(v) => setTweak('fontSize', v)} />
+//           <TweakRadio  label="Density" value={t.density}
+//                        options={['compact', 'regular', 'comfy']}
+//                        onChange={(v) => setTweak('density', v)} />
+//           <TweakSection label="Theme" />
+//           <TweakColor  label="Primary" value={t.primaryColor}
+//                        options={['#D97757', '#2A6FDB', '#1F8A5B', '#7A5AE0']}
+//                        onChange={(v) => setTweak('primaryColor', v)} />
+//           <TweakColor  label="Palette" value={t.palette}
+//                        options={[['#D97757', '#29261b', '#f6f4ef'],
+//                                  ['#475569', '#0f172a', '#f1f5f9']]}
+//                        onChange={(v) => setTweak('palette', v)} />
+//           <TweakToggle label="Dark mode" value={t.dark}
+//                        onChange={(v) => setTweak('dark', v)} />
+//         </TweaksPanel>
+//       </div>
+//     );
+//   }
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    transform:scale(var(--dc-inv-zoom,1));transform-origin:bottom right;
+    background:rgba(250,249,247,.78);color:#29261b;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(255,255,255,.6);border-radius:14px;
+    box-shadow:0 1px 0 rgba(255,255,255,.5) inset,0 12px 40px rgba(0,0,0,.18);
+    font:11.5px/1.4 ui-sans-serif,system-ui,-apple-system,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.01em}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(41,38,27,.55);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(0,0,0,.06);color:#29261b}
+  .twk-body{padding:2px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(0,0,0,.15) transparent}
+  .twk-body::-webkit-scrollbar{width:8px}
+  .twk-body::-webkit-scrollbar-track{background:transparent;margin:2px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(0,0,0,.15);border-radius:4px;
+    border:2px solid transparent;background-clip:content-box}
+  .twk-body::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.25);
+    border:2px solid transparent;background-clip:content-box}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(41,38,27,.72)}
+  .twk-lbl>span:first-child{font-weight:500}
+  .twk-val{color:rgba(41,38,27,.5);font-variant-numeric:tabular-nums}
+
+  .twk-sect{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(41,38,27,.45);padding:10px 0 0}
+  .twk-sect:first-child{padding-top:0}
+
+  .twk-field{appearance:none;width:100%;height:26px;padding:0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;
+    background:rgba(255,255,255,.6);color:inherit;font:inherit;outline:none}
+  .twk-field:focus{border-color:rgba(0,0,0,.25);background:rgba(255,255,255,.85)}
+  select.twk-field{padding-right:22px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(0,0,0,.5)' d='M0 0h10L5 6z'/></svg>");
+    background-repeat:no-repeat;background-position:right 8px center}
+
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:4px;margin:6px 0;
+    border-radius:999px;background:rgba(0,0,0,.12);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#fff;
+    border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#fff;border:.5px solid rgba(0,0,0,.12);box-shadow:0 1px 3px rgba(0,0,0,.2);cursor:default}
+
+  .twk-seg{position:relative;display:flex;padding:2px;border-radius:8px;
+    background:rgba(0,0,0,.06);user-select:none}
+  .twk-seg-thumb{position:absolute;top:2px;bottom:2px;border-radius:6px;
+    background:rgba(255,255,255,.9);box-shadow:0 1px 2px rgba(0,0,0,.12);
+    transition:left .15s cubic-bezier(.3,.7,.4,1),width .15s}
+  .twk-seg.dragging .twk-seg-thumb{transition:none}
+  .twk-seg button{appearance:none;position:relative;z-index:1;flex:1;border:0;
+    background:transparent;color:inherit;font:inherit;font-weight:500;min-height:22px;
+    border-radius:6px;cursor:default;padding:4px 6px;line-height:1.2;
+    overflow-wrap:anywhere}
+
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(0,0,0,.15);transition:background .15s;cursor:default;padding:0}
+  .twk-toggle[data-on="1"]{background:#34c759}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+
+  .twk-num{display:flex;align-items:center;height:26px;padding:0 0 0 8px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:7px;background:rgba(255,255,255,.6)}
+  .twk-num-lbl{font-weight:500;color:rgba(41,38,27,.6);cursor:ew-resize;
+    user-select:none;padding-right:8px}
+  .twk-num input{flex:1;min-width:0;height:100%;border:0;background:transparent;
+    font:inherit;font-variant-numeric:tabular-nums;text-align:right;padding:0 8px 0 0;
+    outline:none;color:inherit;-moz-appearance:textfield}
+  .twk-num input::-webkit-inner-spin-button,.twk-num input::-webkit-outer-spin-button{
+    -webkit-appearance:none;margin:0}
+  .twk-num-unit{padding-right:8px;color:rgba(41,38,27,.45)}
+
+  .twk-btn{appearance:none;height:26px;padding:0 12px;border:0;border-radius:7px;
+    background:rgba(0,0,0,.78);color:#fff;font:inherit;font-weight:500;cursor:default}
+  .twk-btn:hover{background:rgba(0,0,0,.88)}
+  .twk-btn.secondary{background:rgba(0,0,0,.06);color:inherit}
+  .twk-btn.secondary:hover{background:rgba(0,0,0,.1)}
+
+  .twk-swatch{appearance:none;-webkit-appearance:none;width:56px;height:22px;
+    border:.5px solid rgba(0,0,0,.1);border-radius:6px;padding:0;cursor:default;
+    background:transparent;flex-shrink:0}
+  .twk-swatch::-webkit-color-swatch-wrapper{padding:0}
+  .twk-swatch::-webkit-color-swatch{border:0;border-radius:5.5px}
+  .twk-swatch::-moz-color-swatch{border:0;border-radius:5.5px}
+
+  .twk-chips{display:flex;gap:6px}
+  .twk-chip{position:relative;appearance:none;flex:1;min-width:0;height:46px;
+    padding:0;border:0;border-radius:6px;overflow:hidden;cursor:default;
+    box-shadow:0 0 0 .5px rgba(0,0,0,.12),0 1px 2px rgba(0,0,0,.06);
+    transition:transform .12s cubic-bezier(.3,.7,.4,1),box-shadow .12s}
+  .twk-chip:hover{transform:translateY(-1px);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 4px 10px rgba(0,0,0,.12)}
+  .twk-chip[data-on="1"]{box-shadow:0 0 0 1.5px rgba(0,0,0,.85),
+    0 2px 6px rgba(0,0,0,.15)}
+  .twk-chip>span{position:absolute;top:0;bottom:0;right:0;width:34%;
+    display:flex;flex-direction:column;box-shadow:-1px 0 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i{flex:1;box-shadow:0 -1px 0 rgba(0,0,0,.1)}
+  .twk-chip>span>i:first-child{box-shadow:none}
+  .twk-chip svg{position:absolute;top:6px;left:6px;width:13px;height:13px;
+    filter:drop-shadow(0 1px 1px rgba(0,0,0,.3))}
+`;
+
+// ── useTweaks ───────────────────────────────────────────────────────────────
+// Single source of truth for tweak values. setTweak persists via the host
+// (__edit_mode_set_keys → host rewrites the EDITMODE block on disk).
+function useTweaks(defaults) {
+  const [values, setValues] = React.useState(defaults);
+  // Accepts either setTweak('key', value) or setTweak({ key: value, ... }) so a
+  // useState-style call doesn't write a "[object Object]" key into the persisted
+  // JSON block.
+  const setTweak = React.useCallback((keyOrEdits, val) => {
+    const edits = typeof keyOrEdits === 'object' && keyOrEdits !== null
+      ? keyOrEdits : { [keyOrEdits]: val };
+    setValues((prev) => ({ ...prev, ...edits }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits }, '*');
+    // Same-window signal so in-page listeners (deck-stage rail thumbnails)
+    // can react — the parent message only reaches the host, not peers.
+    window.dispatchEvent(new CustomEvent('tweakchange', { detail: edits }));
+  }, []);
+  return [values, setTweak];
+}
+
+// ── TweaksPanel ─────────────────────────────────────────────────────────────
+// Floating shell. Registers the protocol listener BEFORE announcing
+// availability — if the announce ran first, the host's activate could land
+// before our handler exists and the toolbar toggle would silently no-op.
+// The close button posts __edit_mode_dismissed so the host's toolbar toggle
+// flips off in lockstep; the host echoes __deactivate_edit_mode back which
+// is what actually hides the panel.
+function TweaksPanel({ title = 'Tweaks', noDeckControls = false, children }) {
+  const [open, setOpen] = React.useState(false);
+  const dragRef = React.useRef(null);
+  // Auto-inject a rail toggle when a <deck-stage> is on the page. The
+  // toggle drives the deck's per-viewer _railVisible via window message;
+  // state is mirrored from the same localStorage key the deck reads so
+  // the control reflects reality across reloads. The mechanism is the
+  // message — authors who want custom placement can post it directly
+  // and pass noDeckControls to suppress this one.
+  const hasDeckStage = React.useMemo(
+    () => typeof document !== 'undefined' && !!document.querySelector('deck-stage'),
+    [],
+  );
+  // Hide the toggle until the host has actually enabled the rail (the
+  // __omelette_rail_enabled window message, posted only when the
+  // omelette_deck_rail_enabled flag is on for this user). The initial read
+  // covers TweaksPanel mounting after the message already arrived; the
+  // listener covers the common case of mounting first.
+  const [railEnabled, setRailEnabled] = React.useState(
+    () => hasDeckStage && !!document.querySelector('deck-stage')?._railEnabled,
+  );
+  React.useEffect(() => {
+    if (!hasDeckStage || railEnabled) return undefined;
+    const onMsg = (e) => {
+      if (e.data && e.data.type === '__omelette_rail_enabled') setRailEnabled(true);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, [hasDeckStage, railEnabled]);
+  const [railVisible, setRailVisible] = React.useState(() => {
+    try { return localStorage.getItem('deck-stage.railVisible') !== '0'; } catch (e) { return true; }
+  });
+  const toggleRail = (on) => {
+    setRailVisible(on);
+    window.postMessage({ type: '__deck_rail_visible', on }, '*');
+  };
+  const offsetRef = React.useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = React.useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  React.useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', clampToViewport);
+      return () => window.removeEventListener('resize', clampToViewport);
+    }
+    const ro = new ResizeObserver(clampToViewport);
+    ro.observe(document.documentElement);
+    return () => ro.disconnect();
+  }, [open, clampToViewport]);
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = (e) => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = (ev) => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+  return (
+    <>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" data-noncommentable=""
+           style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close tweaks"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">
+          {children}
+          {hasDeckStage && railEnabled && !noDeckControls && (
+            <TweakSection label="Deck">
+              <TweakToggle label="Thumbnail rail" value={railVisible} onChange={toggleRail} />
+            </TweakSection>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Layout helpers ──────────────────────────────────────────────────────────
+
+function TweakSection({ label, children }) {
+  return (
+    <>
+      <div className="twk-sect">{label}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakRow({ label, value, children, inline = false }) {
+  return (
+    <div className={inline ? 'twk-row twk-row-h' : 'twk-row'}>
+      <div className="twk-lbl">
+        <span>{label}</span>
+        {value != null && <span className="twk-val">{value}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// ── Controls ────────────────────────────────────────────────────────────────
+
+function TweakSlider({ label, value, min = 0, max = 100, step = 1, unit = '', onChange }) {
+  return (
+    <TweakRow label={label} value={`${value}${unit}`}>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={(e) => onChange(Number(e.target.value))} />
+    </TweakRow>
+  );
+}
+
+function TweakToggle({ label, value, onChange }) {
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+function TweakRadio({ label, value, options, onChange }) {
+  const trackRef = React.useRef(null);
+  const [dragging, setDragging] = React.useState(false);
+  // The active value is read by pointer-move handlers attached for the lifetime
+  // of a drag — ref it so a stale closure doesn't fire onChange for every move.
+  const valueRef = React.useRef(value);
+  valueRef.current = value;
+
+  // Segments wrap mid-word once per-segment width runs out. The track is
+  // ~248px (280 panel − 28 body pad − 4 seg pad), each button loses 12px
+  // to its own padding, and 11.5px system-ui averages ~6.3px/char — so 2
+  // options fit ~16 chars each, 3 fit ~10. Past that (or >3 options), fall
+  // back to a dropdown rather than wrap.
+  const labelLen = (o) => String(typeof o === 'object' ? o.label : o).length;
+  const maxLen = options.reduce((m, o) => Math.max(m, labelLen(o)), 0);
+  const fitsAsSegments = maxLen <= ({ 2: 16, 3: 10 }[options.length] ?? 0);
+  if (!fitsAsSegments) {
+    // <select> emits strings — map back to the original option value so the
+    // fallback stays type-preserving (numbers, booleans) like the segment path.
+    const resolve = (s) => {
+      const m = options.find((o) => String(typeof o === 'object' ? o.value : o) === s);
+      return m === undefined ? s : typeof m === 'object' ? m.value : m;
+    };
+    return <TweakSelect label={label} value={value} options={options}
+                        onChange={(s) => onChange(resolve(s))} />;
+  }
+  const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+  const idx = Math.max(0, opts.findIndex((o) => o.value === value));
+  const n = opts.length;
+
+  const segAt = (clientX) => {
+    const r = trackRef.current.getBoundingClientRect();
+    const inner = r.width - 4;
+    const i = Math.floor(((clientX - r.left - 2) / inner) * n);
+    return opts[Math.max(0, Math.min(n - 1, i))].value;
+  };
+
+  const onPointerDown = (e) => {
+    setDragging(true);
+    const v0 = segAt(e.clientX);
+    if (v0 !== valueRef.current) onChange(v0);
+    const move = (ev) => {
+      if (!trackRef.current) return;
+      const v = segAt(ev.clientX);
+      if (v !== valueRef.current) onChange(v);
+    };
+    const up = () => {
+      setDragging(false);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  return (
+    <TweakRow label={label}>
+      <div ref={trackRef} role="radiogroup" onPointerDown={onPointerDown}
+           className={dragging ? 'twk-seg dragging' : 'twk-seg'}>
+        <div className="twk-seg-thumb"
+             style={{ left: `calc(2px + ${idx} * (100% - 4px) / ${n})`,
+                      width: `calc((100% - 4px) / ${n})` }} />
+        {opts.map((o) => (
+          <button key={o.value} type="button" role="radio" aria-checked={o.value === value}>
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakSelect({ label, value, options, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <select className="twk-field" value={value} onChange={(e) => onChange(e.target.value)}>
+        {options.map((o) => {
+          const v = typeof o === 'object' ? o.value : o;
+          const l = typeof o === 'object' ? o.label : o;
+          return <option key={v} value={v}>{l}</option>;
+        })}
+      </select>
+    </TweakRow>
+  );
+}
+
+function TweakText({ label, value, placeholder, onChange }) {
+  return (
+    <TweakRow label={label}>
+      <input className="twk-field" type="text" value={value} placeholder={placeholder}
+             onChange={(e) => onChange(e.target.value)} />
+    </TweakRow>
+  );
+}
+
+function TweakNumber({ label, value, min, max, step = 1, unit = '', onChange }) {
+  const clamp = (n) => {
+    if (min != null && n < min) return min;
+    if (max != null && n > max) return max;
+    return n;
+  };
+  const startRef = React.useRef({ x: 0, val: 0 });
+  const onScrubStart = (e) => {
+    e.preventDefault();
+    startRef.current = { x: e.clientX, val: value };
+    const decimals = (String(step).split('.')[1] || '').length;
+    const move = (ev) => {
+      const dx = ev.clientX - startRef.current.x;
+      const raw = startRef.current.val + dx * step;
+      const snapped = Math.round(raw / step) * step;
+      onChange(clamp(Number(snapped.toFixed(decimals))));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return (
+    <div className="twk-num">
+      <span className="twk-num-lbl" onPointerDown={onScrubStart}>{label}</span>
+      <input type="number" value={value} min={min} max={max} step={step}
+             onChange={(e) => onChange(clamp(Number(e.target.value)))} />
+      {unit && <span className="twk-num-unit">{unit}</span>}
+    </div>
+  );
+}
+
+// Relative-luminance contrast pick — checkmarks drawn over a swatch need to
+// read on both #111 and #fafafa without per-option configuration. Hex input
+// only (#rgb / #rrggbb); named or rgb()/hsl() colors fall through to "light".
+function __twkIsLight(hex) {
+  const h = String(hex).replace('#', '');
+  const x = h.length === 3 ? h.replace(/./g, (c) => c + c) : h.padEnd(6, '0');
+  const n = parseInt(x.slice(0, 6), 16);
+  if (Number.isNaN(n)) return true;
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return r * 299 + g * 587 + b * 114 > 148000;
+}
+
+const __TwkCheck = ({ light }) => (
+  <svg viewBox="0 0 14 14" aria-hidden="true">
+    <path d="M3 7.2 5.8 10 11 4.2" fill="none" strokeWidth="2.2"
+          strokeLinecap="round" strokeLinejoin="round"
+          stroke={light ? 'rgba(0,0,0,.78)' : '#fff'} />
+  </svg>
+);
+
+// TweakColor — curated color/palette picker. Each option is either a single
+// hex string or an array of 1-5 hex strings; the card adapts — a lone color
+// renders solid, a palette renders colors[0] as the hero (left ~2/3) with the
+// rest stacked in a sharp column on the right. onChange emits the
+// option in the shape it was passed (string stays string, array stays array).
+// Without options it falls back to the native color input for back-compat.
+function TweakColor({ label, value, options, onChange }) {
+  if (!options || !options.length) {
+    return (
+      <div className="twk-row twk-row-h">
+        <div className="twk-lbl"><span>{label}</span></div>
+        <input type="color" className="twk-swatch" value={value}
+               onChange={(e) => onChange(e.target.value)} />
+      </div>
+    );
+  }
+  // Native <input type=color> emits lowercase hex per the HTML spec, so
+  // compare case-insensitively. String() guards JSON.stringify(undefined),
+  // which returns the primitive undefined (no .toLowerCase).
+  const key = (o) => String(JSON.stringify(o)).toLowerCase();
+  const cur = key(value);
+  return (
+    <TweakRow label={label}>
+      <div className="twk-chips" role="radiogroup">
+        {options.map((o, i) => {
+          const colors = Array.isArray(o) ? o : [o];
+          const [hero, ...rest] = colors;
+          const sup = rest.slice(0, 4);
+          const on = key(o) === cur;
+          return (
+            <button key={i} type="button" className="twk-chip" role="radio"
+                    aria-checked={on} data-on={on ? '1' : '0'}
+                    aria-label={colors.join(', ')} title={colors.join(' · ')}
+                    style={{ background: hero }}
+                    onClick={() => onChange(o)}>
+              {sup.length > 0 && (
+                <span>
+                  {sup.map((c, j) => <i key={j} style={{ background: c }} />)}
+                </span>
+              )}
+              {on && <__TwkCheck light={__twkIsLight(hero)} />}
+            </button>
+          );
+        })}
+      </div>
+    </TweakRow>
+  );
+}
+
+function TweakButton({ label, onClick, secondary = false }) {
+  return (
+    <button type="button" className={secondary ? 'twk-btn secondary' : 'twk-btn'}
+            onClick={onClick}>{label}</button>
+  );
+}
+
+Object.assign(window, {
+  useTweaks, TweaksPanel, TweakSection, TweakRow,
+  TweakSlider, TweakToggle, TweakRadio, TweakSelect,
+  TweakText, TweakNumber, TweakColor, TweakButton,
+});
+
+</script>
+<script type="text/babel">
+// Pulse Landing page
+
+const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'brand' }) => {
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper">
+      <LandingNav onSignIn={onSignIn} onSignUp={onSignUp} />
+      <Hero variant={heroVariant} onSignUp={onSignUp} />
+      <SocialProofMarquee />
+      <DashboardPreview />
+      <HowItWorks />
+      <Features />
+      <Integrations />
+      <Testimonials />
+      <Pricing activePlan={activePlan} onSignUp={onSignUp} />
+      <FAQ />
+      <CTA onSignUp={onSignUp} />
+      <Footer />
+    </div>
+  );
+};
+
+const LandingNav = ({ onSignIn, onSignUp }) => (
+  <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
+    <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+      <PulseLogo />
+      <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
+        <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
+        <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
+        <a href="#pricing" className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
+        <a href="#faq" className="hover:text-ink dark:hover:text-paper transition">FAQ</a>
+      </nav>
+      <div className="flex items-center gap-2">
+        <Btn variant="ghost" size="sm" onClick={onSignIn}>Sign in</Btn>
+        <Btn variant="ink" size="sm" onClick={onSignUp}>Start free trial</Btn>
+      </div>
+    </div>
+  </header>
+);
+
+const Hero = ({ variant, onSignUp }) => {
+  if (variant === 'editorial') return <HeroEditorial onSignUp={onSignUp} />;
+  if (variant === 'split') return <HeroSplit onSignUp={onSignUp} />;
+  return <HeroGradient onSignUp={onSignUp} />;
+};
+
+const HeroGradient = ({ onSignUp }) => (
+  <section className="relative overflow-hidden">
+    <div className="blob bg-ultra" style={{ width: 600, height: 600, top: -200, left: -100 }} />
+    <div className="blob bg-magenta" style={{ width: 500, height: 500, top: -150, right: -100, opacity: 0.4 }} />
+    <div className="blob bg-lime" style={{ width: 400, height: 400, bottom: -150, left: '40%', opacity: 0.5 }} />
+
+    <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-16 sm:pb-24">
+      <div className="max-w-4xl">
+        <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full border border-line dark:border-lineDark bg-chalk/70 dark:bg-coalsoft/70 backdrop-blur mb-7">
+          <PulseDot color="bg-magenta" />
+          <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Now in private beta · 2,400+ creators</span>
+        </div>
+
+        <h1 className="font-display text-[44px] sm:text-[72px] lg:text-[88px] leading-[0.92] font-semibold tracking-tightest mb-7">
+          Your social presence,
+          <br />
+          <span className="italic font-serif font-normal tracking-tight">finally</span> <span className="text-ultra">in focus.</span>
+        </h1>
+
+        <p className="text-[17px] sm:text-[20px] leading-snug text-mute dark:text-muteDark max-w-2xl mb-9">
+          Pulse aggregates Instagram, TikTok, YouTube, LinkedIn, and Facebook into one daily intelligence brief. Know what's working, what's not, and exactly what to do next — every morning at 6 AM.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 mb-12">
+          <Btn variant="ink" size="lg" onClick={onSignUp}>
+            Start your 14-day free trial
+            <Icon name="arrowRight" className="w-4 h-4" />
+          </Btn>
+          <Btn variant="outline" size="lg">
+            <Icon name="play" className="w-3.5 h-3.5" /> Watch 2-min tour
+          </Btn>
+          <span className="text-[12px] text-mute dark:text-muteDark ml-2">No credit card · Cancel anytime</span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-5 sm:gap-8 pt-7 border-t border-line dark:border-lineDark">
+          {[
+            { v: '12.4M', l: 'data points analyzed daily' },
+            { v: '6:04 AM', l: 'fresh brief in your inbox' },
+            { v: '5 platforms', l: 'unified intelligence' },
+            { v: '94/100', l: 'avg user signal accuracy' }
+          ].map((s,i) => (
+            <div key={i}>
+              <div className="font-display text-[22px] font-semibold tracking-tighter">{s.v}</div>
+              <div className="text-[11px] text-mute dark:text-muteDark uppercase font-mono tracking-[0.1em]">{s.l}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const HeroEditorial = ({ onSignUp }) => (
+  <section className="max-w-7xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-16">
+    <div className="grid lg:grid-cols-12 gap-10 items-end">
+      <div className="lg:col-span-8">
+        <Eyebrow color="text-magenta">Daily Social Intelligence</Eyebrow>
+        <h1 className="font-display text-[44px] sm:text-[80px] leading-[0.9] font-semibold tracking-tightest mt-5 mb-8">
+          Stop scrolling dashboards. <span className="italic font-serif font-normal">Start reading</span> them.
+        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <Btn variant="ink" size="lg" onClick={onSignUp}>Start free trial <Icon name="arrowRight" className="w-4 h-4" /></Btn>
+          <Btn variant="outline" size="lg">See sample brief</Btn>
+        </div>
+      </div>
+      <div className="lg:col-span-4">
+        <p className="text-[17px] leading-relaxed text-mute dark:text-muteDark">
+          Pulse is a morning briefing for serious creators. Five platforms. One signal. Every day at 6 AM — in language you'd actually say out loud.
+        </p>
+      </div>
+    </div>
+  </section>
+);
+
+const HeroSplit = ({ onSignUp }) => (
+  <section className="grid lg:grid-cols-2 min-h-[600px]">
+    <div className="p-8 sm:p-12 lg:p-16 flex flex-col justify-center">
+      <Eyebrow color="text-ultra">Pulse for creators</Eyebrow>
+      <h1 className="font-display text-[40px] sm:text-[64px] leading-[0.94] font-semibold tracking-tightest mt-5 mb-6">
+        One brief. Five platforms. Every morning.
+      </h1>
+      <p className="text-[17px] text-mute dark:text-muteDark mb-8 max-w-md">
+        Stop checking five apps. Pulse reads your numbers, finds the signal, and tells you exactly what to do — before you've finished your coffee.
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <Btn variant="ink" size="lg" onClick={onSignUp}>Start free trial</Btn>
+        <Btn variant="outline" size="lg">Watch demo</Btn>
+      </div>
+    </div>
+    <div className="bg-ink text-paper p-8 sm:p-12 flex items-center justify-center">
+      <MiniBriefPreview />
+    </div>
+  </section>
+);
+
+const MiniBriefPreview = () => (
+  <div className="w-full max-w-md bg-coalsoft border border-lineDark rounded-2xl p-6 fade-up">
+    <div className="flex items-center justify-between mb-4">
+      <Eyebrow color="text-lime">Today · 06:04 AM</Eyebrow>
+      <PulseDot color="bg-lime" />
+    </div>
+    <h3 className="font-display text-[26px] leading-tight font-semibold tracking-tighter mb-3">Good morning, Alex.</h3>
+    <p className="text-[14px] text-muteDark mb-5">Your Future-of-Work Reel hit 842K overnight. 3 high-priority signals detected.</p>
+    <div className="space-y-2.5">
+      {[
+        { i: 'flame', t: 'Reply to 124K Reel', s: 'Engagement is peaking now' },
+        { i: 'clock', t: 'Post TikTok at 4 PM', s: 'Peak window detected' },
+        { i: 'sparkle', t: 'Slow Tech is +180%', s: 'Trend match' }
+      ].map((a,i) => (
+        <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-ink/30">
+          <div className="w-8 h-8 rounded-lg bg-lime/15 text-lime flex items-center justify-center"><Icon name={a.i} className="w-4 h-4" /></div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-medium">{a.t}</div>
+            <div className="text-[11px] text-muteDark">{a.s}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const SocialProofMarquee = () => (
+  <section className="py-7 border-y border-line dark:border-lineDark bg-chalk/50 dark:bg-coal/50 overflow-hidden">
+    <div className="text-center mb-5"><span className="text-[11px] uppercase tracking-[0.18em] font-mono text-mute dark:text-muteDark">Trusted by creators, brands & agencies worldwide</span></div>
+    <div className="flex marquee whitespace-nowrap gap-12 font-display text-[22px] font-semibold tracking-tighter opacity-50">
+      {[...Array(2)].map((_,k) => (
+        <div key={k} className="flex gap-12 px-6">
+          {['LUNA STUDIO', 'Northwind &', 'kanaa.', 'EVERYDAY/CO', 'maya.studio', 'thequiet.', 'LEDR Agency', 'NomadNote', 'CIRCA', 'paperboy'].map((b,i) => (
+            <span key={i}>{b}</span>
+          ))}
+        </div>
+      ))}
+    </div>
+  </section>
+);
+
+const DashboardPreview = () => (
+  <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+    <div className="text-center max-w-2xl mx-auto mb-12">
+      <Eyebrow>The dashboard</Eyebrow>
+      <h2 className="font-display text-[32px] sm:text-[48px] leading-[1] font-semibold tracking-tightest mt-3 mb-4">Looks like a feed.<br/><span className="italic font-serif font-normal">Reads like a strategist.</span></h2>
+      <p className="text-[15px] text-mute dark:text-muteDark">No menus to learn. No charts to decode. Pulse writes you a daily memo and shows the work.</p>
+    </div>
+    <div className="relative rounded-3xl overflow-hidden border border-line dark:border-lineDark shadow-pop bg-chalk dark:bg-coalsoft">
+      <div className="absolute inset-x-0 top-0 h-10 bg-ink/[0.03] dark:bg-paper/[0.04] border-b border-line dark:border-lineDark flex items-center px-4 gap-1.5">
+        <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
+        <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
+        <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
+        <span className="ml-3 text-[11px] font-mono text-mute">pulse.app/brief</span>
+      </div>
+      <div className="pt-12 p-6 sm:p-10">
+        <MockBrief />
+      </div>
+    </div>
+  </section>
+);
+
+const MockBrief = () => (
+  <div className="grid lg:grid-cols-12 gap-5">
+    <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden">
+      <div className="absolute -right-12 -top-12 w-48 h-48 rounded-full bg-ultra/30 blur-2xl" />
+      <Eyebrow color="text-lime">AI Verdict · Live</Eyebrow>
+      <h3 className="font-display text-[32px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-lg">Your Future-of-Work reel is still receiving shares at 48 hrs.</h3>
+      <p className="text-[14px] text-paper/70 max-w-md mb-6">Replying to top comments now extends the algorithm window by ~14 hours. Your tutorial-format posts earn 6× more saves than reels.</p>
+      <div className="flex flex-wrap gap-2">
+        <Btn variant="lime" size="sm">Open comments →</Btn>
+        <Btn variant="outline" size="sm" className="border-paper/20 text-paper">Schedule TikTok</Btn>
+      </div>
+    </div>
+    <div className="lg:col-span-4 grid grid-cols-2 gap-3">
+      <Card className="!p-4"><Eyebrow>Total reach</Eyebrow><div className="font-display text-[26px] font-semibold tracking-tighter mt-2">1.24M</div><span className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ 24.8%</span></Card>
+      <Card className="!p-4"><Eyebrow>Eng. rate</Eyebrow><div className="font-display text-[26px] font-semibold tracking-tighter mt-2">8.4%</div><span className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ 1.2%</span></Card>
+      <Card className="!p-4 col-span-2"><Eyebrow color="text-magenta">New signals</Eyebrow><div className="font-display text-[26px] font-semibold tracking-tighter mt-2">14 fresh insights</div></Card>
+    </div>
+  </div>
+);
+
+const HowItWorks = () => (
+  <section id="how" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+    <SectionHead eyebrow="How it works" title="From scrolling to strategic in three mornings." sub="Pulse runs on autopilot. Here's what happens behind the scenes." />
+    <div className="grid md:grid-cols-3 gap-5">
+      {[
+        { n: '01', t: 'Connect your accounts', d: 'Authorize Instagram, TikTok, YouTube, LinkedIn, and Facebook in under 90 seconds. No password sharing, no scrapers to install.' },
+        { n: '02', t: 'Pulse syncs every morning', d: 'At 6 AM your local time, Pulse pulls fresh data, runs cross-platform analysis, and writes a personalized brief in plain English.' },
+        { n: '03', t: 'Read. Act. Repeat.', d: 'Open Pulse with your coffee. You\'ll know the one thing to do today, the two trends to watch this week, and where you stand against your goals.' }
+      ].map((s,i) => (
+        <div key={i} className="relative rounded-2xl border border-line dark:border-lineDark p-6 bg-chalk dark:bg-coalsoft">
+          <div className="font-mono text-[11px] text-mute dark:text-muteDark mb-5">{s.n}</div>
+          <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mb-3">{s.t}</h3>
+          <p className="text-[14px] text-mute dark:text-muteDark leading-relaxed">{s.d}</p>
+        </div>
+      ))}
+    </div>
+  </section>
+);
+
+const Features = () => (
+  <section id="features" className="bg-ink text-paper">
+    <div className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+      <div className="grid lg:grid-cols-12 gap-10 mb-12">
+        <div className="lg:col-span-7">
+          <Eyebrow color="text-lime">Features</Eyebrow>
+          <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mt-3">Every metric you'd check. <span className="italic font-serif font-normal text-muteDark">Already read for you.</span></h2>
+        </div>
+      </div>
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-paper/[0.08]">
+        {[
+          { i: 'sparkle', t: 'Morning Brief', d: 'A 2-minute read every day. AI verdict, top signals, 3 prioritized actions.' },
+          { i: 'brain', t: 'AI Signal Engine', d: 'Cross-platform pattern detection finds viral formulas, content gaps, and emerging trends.' },
+          { i: 'target', t: 'Targets & Cycles', d: 'Set 30-day cycles. Pulse tracks pace, predicts outcomes, and recommends pivots.' },
+          { i: 'flame', t: 'Live Viral Alerts', d: 'Get notified the moment a post crosses algorithmic threshold — before the spike ends.' },
+          { i: 'users', t: 'Competitor Tracking', d: 'Track up to 50 competitor accounts. See their wins, gaps, and posting cadence.' },
+          { i: 'rocket', t: 'Content Deep-Dive', d: 'Anatomize any post: format, hook, niche, timing — and a "replicate this" playbook.' },
+          { i: 'globe', t: 'Five Platforms, One View', d: 'Instagram, TikTok, YouTube, LinkedIn, Facebook. Switch context with one click.' },
+          { i: 'download', t: 'Daily Email + Export', d: 'Brief in your inbox by 6 AM. Export anything to CSV, PDF, or your team\'s Slack.' },
+          { i: 'layers', t: 'White-Label Workspaces', d: 'Agencies: 20 client workspaces, branded reports, bulk export. Built for scale.' }
+        ].map((f,i) => (
+          <div key={i} className="bg-ink p-7 hover:bg-coalsoft transition">
+            <div className="w-10 h-10 rounded-xl bg-lime/15 text-lime flex items-center justify-center mb-4"><Icon name={f.i} className="w-5 h-5" /></div>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-2">{f.t}</h3>
+            <p className="text-[13.5px] text-muteDark leading-relaxed">{f.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const Integrations = () => (
+  <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+    <div className="grid lg:grid-cols-12 gap-12 items-center">
+      <div className="lg:col-span-5">
+        <Eyebrow>Integrations</Eyebrow>
+        <h2 className="font-display text-[32px] sm:text-[44px] leading-[0.98] font-semibold tracking-tightest mt-3 mb-4">Five platforms.<br/>One source of truth.</h2>
+        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Pulse reads from official APIs only. No scraping. No risk to your accounts. Disconnect anytime.</p>
+        <Btn variant="outline" size="md">See all integrations <Icon name="arrowRight" className="w-4 h-4" /></Btn>
+      </div>
+      <div className="lg:col-span-7 grid grid-cols-5 gap-3">
+        {['ig','tt','yt','li','fb'].map((p,i) => (
+          <div key={p} className="aspect-square rounded-2xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft flex flex-col items-center justify-center gap-3 hover:scale-105 transition" style={{ animationDelay: `${i * 60}ms` }}>
+            <Plat p={p} className="w-10 h-10 sm:w-12 sm:h-12" />
+            <span className="text-[11px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark">{platformLabel[p]}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const Testimonials = () => (
+  <section className="bg-chalk dark:bg-coal py-16 sm:py-24">
+    <div className="max-w-7xl mx-auto px-5 sm:px-8">
+      <SectionHead eyebrow="From the field" title="Creators who stopped guessing." />
+      <div className="grid md:grid-cols-3 gap-5">
+        {[
+          { q: 'I used to spend 90 minutes every Monday building dashboards. Pulse does it before I wake up. The signals are uncannily specific.', n: 'Maya Chen', r: 'Creator · 240K IG', avatar: 'MC' },
+          { q: 'We run 14 client accounts. The white-label briefs replaced our weekly reports. Clients literally forward them to their leadership.', n: 'Daniel Ortiz', r: 'Founder, LEDR Agency', avatar: 'DO' },
+          { q: 'The cross-platform gap analysis surfaced 29 reels I\'d never uploaded as Shorts. Two of them have outperformed the original.', n: 'Sana Patel', r: 'Brand, kanaa.', avatar: 'SP' }
+        ].map((t,i) => (
+          <Card key={i} className="!p-7">
+            <Icon name="quote" className="w-6 h-6 text-ultra mb-4" stroke={1.2} />
+            <p className="text-[15px] leading-relaxed mb-6">"{t.q}"</p>
+            <div className="flex items-center gap-3 pt-5 border-t border-line dark:border-lineDark">
+              <div className="w-9 h-9 rounded-full bg-ink text-paper dark:bg-paper dark:text-ink font-mono text-[11px] font-medium flex items-center justify-center">{t.avatar}</div>
+              <div>
+                <div className="text-[13px] font-medium">{t.n}</div>
+                <div className="text-[11px] text-mute dark:text-muteDark">{t.r}</div>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
+  </section>
+);
+
+const Pricing = ({ activePlan, onSignUp }) => {
+  const plans = [
+    { id: 'creator', name: 'Creator', price: 29, blurb: 'For solo creators going pro.',
+      bullets: ['5 platforms (IG, TT, YT, FB, LI)', '1 account per platform', 'Up to 5 competitors tracked', 'Daily morning brief', '7 total account slots'],
+      cta: 'Start free trial', color: 'bg-chalk dark:bg-coalsoft' },
+    { id: 'brand', name: 'Brand', price: 149, blurb: 'For brands with regional handles & teams.',
+      bullets: ['5 platforms', 'Up to 3 accounts per platform', 'Up to 15 competitors tracked', 'Daily brief + weekly competitive report', '20 total account slots'],
+      cta: 'Start free trial', color: 'bg-ink text-paper', featured: true },
+    { id: 'agency', name: 'Agency', price: 599, blurb: 'For agencies running many clients.',
+      bullets: ['5 platforms', 'Unlimited accounts per platform', 'Up to 50 competitors tracked', '20 client workspaces · White-label', 'Priority refresh · Bulk export'],
+      cta: 'Talk to sales', color: 'bg-chalk dark:bg-coalsoft' }
+  ];
+  return (
+    <section id="pricing" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+      <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="14-day free trial on every plan. No credit card required to start." />
+      <div className="grid md:grid-cols-3 gap-5">
+        {plans.map(p => {
+          const featured = p.id === activePlan;
+          return (
+            <div key={p.id} className={cls('relative rounded-3xl p-7 border transition-all', featured ? 'bg-ink text-paper border-ink scale-[1.02] shadow-pop' : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark')}>
+              {featured && (
+                <span className="absolute -top-3 left-7 inline-flex items-center gap-1.5 px-3 h-6 rounded-full bg-lime text-ink text-[11px] font-mono uppercase tracking-[0.12em] font-medium">Most popular</span>
+              )}
+              <h3 className="font-display text-[22px] font-semibold tracking-tighter">{p.name}</h3>
+              <p className={cls('text-[13px] mt-1 mb-5', featured ? 'text-paper/70' : 'text-mute dark:text-muteDark')}>{p.blurb}</p>
+              <div className="flex items-baseline gap-1 mb-6">
+                <span className="font-display text-[48px] font-semibold tracking-tightest leading-none">${p.price}</span>
+                <span className={cls('text-[13px]', featured ? 'text-paper/60' : 'text-mute dark:text-muteDark')}>/month</span>
+              </div>
+              <ul className="space-y-2.5 mb-7">
+                {p.bullets.map((b,i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-snug">
+                    <Icon name="check" className={cls('w-4 h-4 mt-0.5 flex-shrink-0', featured ? 'text-lime' : 'text-ultra')} stroke={2} />
+                    <span className={featured ? 'text-paper/90' : ''}>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              <Btn variant={featured ? 'lime' : 'ink'} size="md" className="w-full" onClick={onSignUp}>{p.cta}</Btn>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
+
+const FAQ = () => {
+  const [open, setOpen] = React.useState(0);
+  const qs = [
+    { q: 'How does Pulse get my data?', a: 'Pulse connects through each platform\'s official API. You authorize once, we never see your password, and you can disconnect any account from Settings at any time.' },
+    { q: 'When does the brief arrive?', a: 'Every morning at 6 AM in your local time zone. You can also enable a same-time email summary. The dashboard updates automatically when the sync completes.' },
+    { q: 'Can I track competitors?', a: 'Yes. Creator tracks up to 5, Brand up to 15, Agency up to 50. You add a public handle and Pulse runs the same analysis as it does for your own accounts.' },
+    { q: 'What about TikTok / Instagram API limits?', a: 'We use the official Business / Creator APIs. Pulse handles rate-limiting and retry logic so you never see "data delayed" messages.' },
+    { q: 'Is there a free trial?', a: '14 days on every plan, no credit card required. You\'ll get the full feature set — including the daily brief — for the full trial.' },
+    { q: 'Can I cancel anytime?', a: 'Yes, from the Billing page in Settings. No phone calls, no retention specialists, no friction. Your data is exported automatically.' }
+  ];
+  return (
+    <section id="faq" className="max-w-3xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+      <SectionHead eyebrow="FAQ" title="Questions, answered." />
+      <div className="divide-y divide-line dark:divide-lineDark border-y border-line dark:border-lineDark">
+        {qs.map((q,i) => (
+          <div key={i}>
+            <button onClick={() => setOpen(open === i ? -1 : i)} className="w-full flex items-center justify-between py-5 text-left">
+              <span className="font-display text-[18px] font-semibold tracking-tight pr-6">{q.q}</span>
+              <Icon name={open === i ? 'minus' : 'plus'} className="w-4 h-4 flex-shrink-0" />
+            </button>
+            {open === i && <p className="pb-5 text-[14.5px] text-mute dark:text-muteDark leading-relaxed -mt-1">{q.a}</p>}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
+
+const CTA = ({ onSignUp }) => (
+  <section className="max-w-7xl mx-auto px-5 sm:px-8 pb-16 sm:pb-24">
+    <div className="relative rounded-3xl bg-ink text-paper p-10 sm:p-16 overflow-hidden">
+      <div className="blob bg-ultra" style={{ width: 400, height: 400, top: -100, right: -100 }} />
+      <div className="blob bg-lime" style={{ width: 300, height: 300, bottom: -100, left: -50, opacity: 0.3 }} />
+      <div className="relative z-10 max-w-2xl">
+        <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mb-5">Tomorrow morning, you'll already know.</h2>
+        <p className="text-[16px] text-paper/70 mb-7">Get your first Pulse brief in less than 24 hours.</p>
+        <div className="flex flex-wrap gap-3">
+          <Btn variant="lime" size="lg" onClick={onSignUp}>Start free 14-day trial <Icon name="arrowRight" className="w-4 h-4" /></Btn>
+          <Btn variant="outline" size="lg" className="border-paper/20 text-paper">Book a 15-min demo</Btn>
+        </div>
+      </div>
+    </div>
+  </section>
+);
+
+const Footer = () => (
+  <footer className="border-t border-line dark:border-lineDark">
+    <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
+        <div className="lg:col-span-2">
+          <PulseLogo />
+          <p className="text-[13.5px] text-mute dark:text-muteDark mt-4 max-w-xs">Daily social intelligence for serious creators, brands and agencies.</p>
+        </div>
+        {[
+          { h: 'Product', l: ['Features', 'Pricing', 'Integrations', 'Changelog', 'Roadmap'] },
+          { h: 'Company', l: ['About', 'Customers', 'Careers', 'Press', 'Contact'] },
+          { h: 'Resources', l: ['Documentation', 'API', 'Status', 'Privacy', 'Terms'] }
+        ].map((g,i) => (
+          <div key={i}>
+            <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-3">{g.h}</div>
+            <ul className="space-y-2">
+              {g.l.map((l,j) => <li key={j}><a href="#" className="text-[13.5px] hover:text-ultra transition">{l}</a></li>)}
+            </ul>
+          </div>
+        ))}
+      </div>
+      <div className="mt-12 pt-6 border-t border-line dark:border-lineDark flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[12px] text-mute dark:text-muteDark">
+        <span>© 2026 Pulse Analytics, Inc. All rights reserved.</span>
+        <div className="flex items-center gap-5">
+          <a href="#" className="hover:text-ink dark:hover:text-paper">Privacy</a>
+          <a href="#" className="hover:text-ink dark:hover:text-paper">Terms</a>
+          <a href="#" className="hover:text-ink dark:hover:text-paper">Cookies</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+);
+
+Object.assign(window, { Landing });
+
+</script>
+<script type="text/babel">
+// Pulse Auth + Onboarding — wired to Supabase
+// Magic link + email/password. JWT stored in window.__pulseToken on success.
+
+const SUPABASE_URL  = 'https://gyiiccstlrgzfbwgtuww.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aWljY3N0bHJnemZid2d0dXd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTcyOTEsImV4cCI6MjA5NDA5MzI5MX0.mC7iQ73NhSsER1c22zT63ntRXwsVLwq6Pv-oRv15kDA';
+
+// ── Lightweight Supabase auth client (no SDK needed) ─────────────────────────
+const sbAuth = {
+  headers: () => ({
+    'Content-Type':  'application/json',
+    'apikey':        SUPABASE_ANON,
+    'Authorization': `Bearer ${SUPABASE_ANON}`
+  }),
+
+  // Magic link (OTP)
+  signInWithOtp: async (email) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ email, create_user: true, options: { emailRedirectTo: window.location.origin } })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Could not send link');
+    return data;
+  },
+
+  // Email + password sign up
+  signUp: async (email, password) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign up failed');
+    return data;
+  },
+
+  // Email + password sign in
+  signIn: async (email, password) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign in failed');
+    return data; // { access_token, refresh_token, user }
+  },
+
+  // Verify OTP token from magic link hash
+  verifyOtp: async (token, email) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/verify`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ type: 'magiclink', token, email })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || 'Verification failed');
+    return data;
+  },
+
+  // Get session from localStorage
+  getSession: () => {
+    try {
+      const raw = localStorage.getItem('pulse_session');
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  },
+
+  // Save session
+  saveSession: (session) => {
+    localStorage.setItem('pulse_session', JSON.stringify(session));
+    window.__pulseToken = session.access_token;
+  },
+
+  // Clear session
+  clearSession: () => {
+    localStorage.removeItem('pulse_session');
+    window.__pulseToken = null;
+  }
+};
+
+// ── Check for magic link token in URL hash on load ────────────────────────────
+const checkMagicLinkHash = async (onAuthed) => {
+  const hash = window.location.hash;
+  if (!hash.includes('access_token')) return false;
+
+  try {
+    const params = new URLSearchParams(hash.replace('#', ''));
+    const accessToken  = params.get('access_token');
+    const refreshToken = params.get('refresh_token');
+    if (!accessToken) return false;
+
+    // Get user from token
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'apikey':        SUPABASE_ANON,
+        'Authorization': `Bearer ${accessToken}`
+      }
+    });
+    const user = await res.json();
+
+    const session = { access_token: accessToken, refresh_token: refreshToken, user };
+    sbAuth.saveSession(session);
+
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+    onAuthed(session);
+    return true;
+  } catch (e) {
+    console.error('Magic link verification failed:', e);
+    return false;
+  }
+};
+
+// ── Session restore on app load ───────────────────────────────────────────────
+const restoreSession = (onAuthed) => {
+  const session = sbAuth.getSession();
+  if (session?.access_token) {
+    window.__pulseToken = session.access_token;
+    // Verify token is still valid
+    fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      headers: {
+        'apikey':        SUPABASE_ANON,
+        'Authorization': `Bearer ${session.access_token}`
+      }
+    }).then(r => {
+      if (r.ok) {
+        onAuthed(session);
+      } else {
+        sbAuth.clearSession();
+      }
+    }).catch(() => sbAuth.clearSession());
+    return true;
+  }
+  return false;
+};
+
+// Export for use in app.jsx
+Object.assign(window, { sbAuth, checkMagicLinkHash, restoreSession });
+
+// ── Auth Screen ───────────────────────────────────────────────────────────────
+const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
+  const [step, setStep]       = React.useState(mode);
+  const [email, setEmail]     = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [sent, setSent]       = React.useState(false);
+  const [error, setError]     = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [usePassword, setUsePassword] = React.useState(false);
+
+  const handleMagicLink = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+    setError('');
+    setLoading(true);
+    try {
+      await sbAuth.signInWithOtp(email);
+      setSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePassword = async (e) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setError('');
+    setLoading(true);
+    try {
+      let data;
+      if (step === 'signup') {
+        data = await sbAuth.signUp(email, password);
+        // After signup Supabase may require email confirmation
+        // If user object is returned directly we can log them in
+        if (data.access_token) {
+          sbAuth.saveSession(data);
+          onAuthed(data);
+          return;
+        }
+        // Otherwise show confirmation message
+        setSent(true);
+        return;
+      } else {
+        data = await sbAuth.signIn(email, password);
+        sbAuth.saveSession(data);
+        onAuthed(data);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+      <header className="max-w-7xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <button onClick={onBack}><PulseLogo /></button>
+        <span className="text-[13px] text-mute dark:text-muteDark">
+          {step === 'signin' ? 'New here? ' : 'Have an account? '}
+          <button
+            onClick={() => { setStep(step === 'signin' ? 'signup' : 'signin'); setSent(false); setError(''); }}
+            className="text-ink dark:text-paper underline underline-offset-4"
+          >
+            {step === 'signin' ? 'Create account' : 'Sign in'}
+          </button>
+        </span>
+      </header>
+
+      <div className="flex-1 grid lg:grid-cols-2">
+        {/* Left — form */}
+        <div className="flex items-center justify-center p-5 sm:p-12">
+          <div className="w-full max-w-sm fade-up">
+            <Eyebrow color="text-ultra">{step === 'signin' ? 'Welcome back' : 'Start your trial'}</Eyebrow>
+            <h1 className="font-display text-[36px] sm:text-[44px] leading-[1] font-semibold tracking-tightest mt-3 mb-2">
+              {step === 'signin' ? 'Sign in to Pulse.' : 'Create your account.'}
+            </h1>
+            <p className="text-[14px] text-mute dark:text-muteDark mb-8">
+              {step === 'signin' ? 'Pick up where you left off.' : '14-day free trial. No credit card required.'}
+            </p>
+
+            {sent ? (
+              /* ── Sent state ── */
+              <div className="text-center py-8">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-5">
+                  <Icon name="mail" className="w-6 h-6" />
+                </div>
+                <h3 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Check your inbox.</h3>
+                <p className="text-[14px] text-mute dark:text-muteDark mb-6">
+                  We sent a {usePassword ? 'confirmation' : 'magic'} link to{' '}
+                  <strong className="text-ink dark:text-paper">{email}</strong>.
+                  {usePassword ? ' Confirm your email then sign in.' : ' Click it to sign in — no password needed.'}
+                </p>
+                <div className="text-[12px] text-mute dark:text-muteDark">
+                  Didn't get it?{' '}
+                  <button onClick={() => setSent(false)} className="underline">Try again</button>
+                </div>
+              </div>
+            ) : (
+              /* ── Form state ── */
+              <>
+                {/* Error */}
+                {error && (
+                  <div className="mb-4 px-4 py-3 rounded-xl bg-magenta/10 border border-magenta/20 text-[13px] text-magenta flex items-center gap-2">
+                    <Icon name="x" className="w-3.5 h-3.5 flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {usePassword ? (
+                  /* ── Password form ── */
+                  <form onSubmit={handlePassword} className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Email</label>
+                      <input
+                        type="email" required value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@studio.com"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Password</label>
+                      <input
+                        type="password" required value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="8+ characters"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                      {loading
+                        ? <><Icon name="clock" className="w-4 h-4" /> {step === 'signup' ? 'Creating...' : 'Signing in...'}</>
+                        : step === 'signup' ? 'Create account' : 'Sign in'
+                      }
+                    </Btn>
+                    <button
+                      type="button"
+                      onClick={() => { setUsePassword(false); setError(''); }}
+                      className="w-full text-[12.5px] text-mute dark:text-muteDark hover:text-ultra transition text-center"
+                    >
+                      Use magic link instead →
+                    </button>
+                  </form>
+                ) : (
+                  /* ── Magic link form ── */
+                  <form onSubmit={handleMagicLink} className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Email address</label>
+                      <input
+                        type="email" required value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@studio.com"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                      {loading
+                        ? <><Icon name="clock" className="w-4 h-4" /> Sending link...</>
+                        : step === 'signin' ? 'Send sign-in link' : 'Send sign-up link'
+                      }
+                    </Btn>
+                    <div className="flex items-center gap-3 my-1">
+                      <div className="flex-1 h-px bg-line dark:bg-lineDark" />
+                      <span className="text-[11px] font-mono text-mute dark:text-muteDark">or</span>
+                      <div className="flex-1 h-px bg-line dark:bg-lineDark" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUsePassword(true); setError(''); }}
+                      className="w-full h-11 rounded-xl border border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30 bg-chalk dark:bg-coalsoft flex items-center justify-center text-[14px] font-medium transition"
+                    >
+                      Use email + password
+                    </button>
+                  </form>
+                )}
+
+                <p className="text-[11px] text-mute dark:text-muteDark mt-5 leading-relaxed text-center">
+                  By continuing you agree to our{' '}
+                  <a href="#" className="underline">Terms</a> and{' '}
+                  <a href="#" className="underline">Privacy Policy</a>.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right — visual panel */}
+        <div className="hidden lg:flex bg-ink text-paper relative overflow-hidden items-center justify-center p-12">
+          <div className="blob bg-ultra" style={{ width: 400, height: 400, top: -100, left: -100, opacity: 0.4 }} />
+          <div className="blob bg-magenta" style={{ width: 300, height: 300, bottom: -100, right: -50, opacity: 0.3 }} />
+          <div className="relative z-10 max-w-md">
+            <MiniBriefPreview />
+            <p className="mt-8 text-[14px] text-paper/70 leading-relaxed">
+              "Pulse replaced our Monday morning dashboard meeting. The brief is more useful than anything I'd build myself."
+              <br />
+              <span className="text-paper/50 mt-2 inline-block">— Maya Chen, 240K IG</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+const Onboarding = ({ onDone }) => {
+  const [step, setStep]           = React.useState(0);
+  const [userType, setUserType]   = React.useState('creator');
+  const [category, setCategory]   = React.useState('');
+  const [market, setMarket]       = React.useState('canada');
+  const [accountAge, setAccountAge] = React.useState('6-12mo');
+  const [workspaceName, setWorkspaceName] = React.useState('');
+  const [saving, setSaving]       = React.useState(false);
+
+  const steps = ['About you', 'Your market', 'You\'re in'];
+
+  const saveWorkspace = async () => {
+    if (!window.__pulseToken) return;
+    try {
+      await fetch('/api/workspace/me', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${window.__pulseToken}`
+        },
+        body: JSON.stringify({
+          name:        workspaceName || 'My Workspace',
+          user_type:   userType,
+          category:    category || 'other',
+          market:      market,
+          account_age: accountAge
+        })
+      });
+    } catch (e) {
+      console.error('Failed to save workspace:', e);
+    }
+  };
+
+  const handleContinue = async () => {
+    if (step === 1) {
+      setSaving(true);
+      await saveWorkspace();
+      setSaving(false);
+    }
+    setStep(s => s + 1);
+  };
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+      <header className="max-w-3xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <PulseLogo />
+        <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
+          Step {step + 1} of {steps.length}
+        </span>
+      </header>
+
+      {/* Progress bar */}
+      <div className="max-w-3xl w-full mx-auto px-5 sm:px-8 mt-2 mb-8">
+        <div className="flex gap-1.5">
+          {steps.map((_, i) => (
+            <div key={i} className={cls(
+              'flex-1 h-1 rounded-full transition-colors',
+              i <= step ? 'bg-ink dark:bg-lime' : 'bg-ink/10 dark:bg-paper/10'
+            )} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 max-w-2xl w-full mx-auto px-5 sm:px-8 pb-16">
+
+        {/* Step 0 — About you */}
+        {step === 0 && (
+          <div className="fade-up">
+            <Eyebrow color="text-ultra">Workspace</Eyebrow>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
+              Tell us about yourself.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-8">
+              We'll tune your intelligence brief to your situation.
+            </p>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Workspace name</label>
+                <input
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  placeholder="Your name or brand name"
+                  value={workspaceName}
+                  onChange={e => setWorkspaceName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">I am a...</label>
+                <div className="flex gap-2">
+                  {[
+                    { id: 'creator', label: 'Creator', sub: 'Personal brand' },
+                    { id: 'brand',   label: 'Brand',   sub: 'Business account' },
+                    { id: 'agency',  label: 'Agency',  sub: 'Multiple clients' },
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setUserType(t.id)}
+                      className={cls(
+                        'flex-1 p-4 rounded-2xl border text-left transition',
+                        userType === t.id
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
+                      )}
+                    >
+                      <div className="text-[14px] font-semibold">{t.label}</div>
+                      <div className={cls('text-[12px] mt-0.5', userType === t.id ? 'text-paper/60 dark:text-ink/60' : 'text-mute dark:text-muteDark')}>{t.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">Content category</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    'Music / Culture', 'Ecommerce', 'Food & Beverage',
+                    'Fashion & Beauty', 'Tech / SaaS', 'Real Estate',
+                    'Education', 'Health & Wellness', 'Finance', 'Entertainment'
+                  ].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setCategory(n)}
+                      className={cls(
+                        'h-9 px-3.5 rounded-full text-[13px] font-medium border transition',
+                        category === n
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">How long have you been active on social?</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'under-6mo', label: 'Under 6 mo' },
+                    { id: '6-12mo',    label: '6 – 12 mo' },
+                    { id: '1-3yr',     label: '1 – 3 yrs' },
+                    { id: '3yr+',      label: '3+ years' },
+                  ].map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => setAccountAge(a.id)}
+                      className={cls(
+                        'h-10 rounded-xl border text-[13px] font-medium transition',
+                        accountAge === a.id
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1 — Market */}
+        {step === 1 && (
+          <div className="fade-up">
+            <Eyebrow color="text-ultra">Market</Eyebrow>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
+              Where is your audience?
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-8">
+              This shapes which platforms we prioritise and how we read competitor signals.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              {[
+                { id: 'ksa',      label: 'Saudi Arabia',  sub: 'Snapchat + TikTok dominant' },
+                { id: 'uae',      label: 'UAE',           sub: 'Instagram + Snapchat' },
+                { id: 'gcc',      label: 'GCC (All)',     sub: 'Full Gulf region' },
+                { id: 'pakistan', label: 'Pakistan',      sub: 'TikTok + YouTube dominant' },
+                { id: 'canada',   label: 'Canada',        sub: 'Instagram + YouTube' },
+                { id: 'global',   label: 'Global',        sub: 'Multi-region coverage' },
+              ].map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setMarket(m.id)}
+                  className={cls(
+                    'p-4 rounded-2xl border text-left transition',
+                    market === m.id
+                      ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                      : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30 bg-chalk dark:bg-coalsoft'
+                  )}
+                >
+                  <div className="text-[14px] font-semibold">{m.label}</div>
+                  <div className={cls('text-[12px] mt-0.5', market === m.id ? 'text-paper/60 dark:text-ink/60' : 'text-mute dark:text-muteDark')}>{m.sub}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — Done */}
+        {step === 2 && (
+          <div className="fade-up text-center py-8">
+            <div className="w-20 h-20 mx-auto rounded-full bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-7">
+              <Icon name="check" className="w-10 h-10" stroke={2.5} />
+            </div>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mb-3">
+              You're in.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-2 max-w-md mx-auto">
+              Your workspace is set up. Head to Settings to connect your social accounts — that's where the intelligence starts.
+            </p>
+            <p className="text-[14px] text-ultra dark:text-lime mb-8">
+              Your first brief will generate once accounts are connected.
+            </p>
+            <Btn variant="ink" size="lg" onClick={onDone}>
+              Open dashboard <Icon name="arrowRight" className="w-4 h-4" />
+            </Btn>
+          </div>
+        )}
+      </div>
+
+      {/* Footer nav */}
+      {step < 2 && (
+        <div className="border-t border-line dark:border-lineDark bg-chalk/50 dark:bg-coal/50 backdrop-blur">
+          <div className="max-w-2xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+            <button
+              onClick={() => step > 0 && setStep(s => s - 1)}
+              className={cls('text-[14px] font-medium', step === 0 ? 'opacity-30 pointer-events-none' : 'hover:underline')}
+            >
+              ← Back
+            </button>
+            <Btn variant="ink" size="md" onClick={handleContinue} disabled={saving}>
+              {saving ? 'Saving...' : 'Continue'} <Icon name="arrowRight" className="w-4 h-4" />
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { Auth, Onboarding, sbAuth, checkMagicLinkHash, restoreSession });
+
+</script>
+<script type="text/babel">
+// Pulse Shell — TopBar, AccountBar, MobileNav
+
+const TopBar = ({ active, setActive, range, setRange, onSignOut, onProfile, theme, toggleTheme }) => {
+  const tabs = ['Brief','Stats','Growth','Content','Intel','Targets','Settings'];
+  return (
+    <header className="sticky top-0 z-30 backdrop-blur-md bg-paper/85 dark:bg-ink/85 border-b border-line dark:border-lineDark">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <PulseLogo className="h-6" />
+          <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark text-[11px] font-mono">
+            <PulseDot color="bg-lime" size="w-1.5 h-1.5" /> {D.workspace}
+          </span>
+        </div>
+        <nav className="hidden md:flex items-center gap-0.5">
+          {tabs.map(t => (
+            <button key={t} onClick={() => setActive(t)} className={cls('h-9 px-3 rounded-lg text-[13px] font-medium transition', active === t ? 'bg-ink text-paper dark:bg-paper dark:text-ink' : 'hover:bg-ink/5 dark:hover:bg-paper/5')}>{t}</button>
+          ))}
+        </nav>
+        <div className="flex items-center gap-1.5">
+          <div className="hidden md:flex items-center gap-0.5 p-0.5 rounded-full bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark">
+            {['1W','4W','3M','6M'].map(r => (
+              <button key={r} onClick={() => setRange(r)} className={cls('h-7 px-2.5 rounded-full text-[11.5px] font-mono font-medium transition', range === r ? 'bg-ink text-paper dark:bg-paper dark:text-ink' : 'text-mute dark:text-muteDark')}>{r}</button>
+            ))}
+          </div>
+          <button onClick={toggleTheme} className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center justify-center" title="Toggle theme">
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+          </button>
+          <button className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center justify-center relative">
+            <Icon name="bell" className="w-4 h-4" />
+            <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-magenta" />
+          </button>
+          <button onClick={onProfile} className="w-9 h-9 rounded-full bg-ink text-paper dark:bg-paper dark:text-ink font-mono text-[11px] font-medium flex items-center justify-center">{D.user.initials}</button>
+        </div>
+      </div>
+    </header>
+  );
+};
+
+const AccountBar = ({ activePlatform, setActivePlatform }) => {
+  const accs = [
+    { id: 'all', label: 'All accounts', sub: '5 connected' },
+    { id: 'ig', label: D.accounts.ig.handle, sub: 'Instagram' },
+    { id: 'tt', label: D.accounts.tt.handle, sub: 'TikTok' },
+    { id: 'yt', label: D.accounts.yt.name, sub: 'YouTube' },
+    { id: 'li', label: D.accounts.li.name, sub: 'LinkedIn' },
+    { id: 'fb', label: D.accounts.fb.name, sub: 'Facebook' }
+  ];
+  return (
+    <div className="hidden md:block border-b border-line dark:border-lineDark bg-paper dark:bg-ink">
+      <div className="max-w-[1440px] mx-auto px-6 flex items-center gap-1 overflow-x-auto no-scrollbar h-12">
+        {accs.map(a => (
+          <button key={a.id} onClick={() => setActivePlatform(a.id)} className={cls('flex items-center gap-2 h-9 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap transition border', activePlatform === a.id ? 'bg-chalk dark:bg-coalsoft border-ink/15 dark:border-paper/15' : 'border-transparent hover:bg-ink/5 dark:hover:bg-paper/5')}>
+            {a.id !== 'all' && <Plat p={a.id} className="w-4 h-4" />}
+            {a.id === 'all' && <div className="w-4 h-4 rounded-sm bg-gradient-to-br from-ultra via-magenta to-lime" />}
+            <span>{a.label}</span>
+            <span className="text-mute dark:text-muteDark text-[11px]">{a.sub}</span>
+          </button>
+        ))}
+        <button className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium text-ultra dark:text-lime ml-auto whitespace-nowrap">
+          <Icon name="plus" className="w-3.5 h-3.5" /> Connect account
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const MobileNav = ({ active, setActive }) => {
+  const tabs = [
+    { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
+    { id: 'Growth', icon: 'trending' }, { id: 'Content', icon: 'play' },
+    { id: 'Intel', icon: 'sparkle' }, { id: 'Targets', icon: 'target' }
+  ];
+  return (
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
+      <div className="grid grid-cols-6 px-1 py-1.5">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActive(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
+            <Icon name={t.icon} className="w-4 h-4" />
+            <span className="text-[10px] font-medium">{t.id}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+};
+
+const ScreenHeader = ({ eyebrow, title, sub, right }) => (
+  <div className="mb-6 sm:mb-8 fade-up">
+    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div>
+        {eyebrow && <div className="mb-2"><Eyebrow color="text-magenta">{eyebrow}</Eyebrow></div>}
+        <h1 className="font-display text-[32px] sm:text-[44px] leading-[1] font-semibold tracking-tightest">{title}</h1>
+        {sub && <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-2 max-w-xl">{sub}</p>}
+      </div>
+      {right}
+    </div>
+  </div>
+);
+
+Object.assign(window, { TopBar, AccountBar, MobileNav, ScreenHeader });
+
+</script>
+<script type="text/babel">
+// Screen 1 — Morning Brief
+const BriefScreen = ({ activePlatform }) => {
+  const greeting = `Good morning, ${D.user.name.split(' ')[0]}.`;
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow={`Today · ${D.lastSync}`} title={greeting} sub="Your command center is ready. 3 high-priority signals detected this morning." right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Synced 2 min ago</Pill>} />
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5 sm:mb-6">
+        <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">
+          <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-ultra/25 blur-2xl" />
+          <div className="absolute -right-10 bottom-0 w-40 h-40 rounded-full bg-magenta/20 blur-2xl" />
+          <div className="relative">
+            <Pill color="lime" className="!h-5"><Icon name="sparkle" className="w-3 h-3" /> AI Verdict · Live</Pill>
+            <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">Your Future-of-Work reel is still receiving shares at 48 hrs.</h2>
+            <p className="text-[14px] text-paper/70 max-w-xl mb-6">Replying to top comments today extends the algorithm window by ~14 hours. Your tutorial-format posts earn 6× saves vs reels — consider doubling down this week.</p>
+            <div className="grid sm:grid-cols-3 gap-2.5">
+              {D.todayActions.map(a => (
+                <div key={a.id} className="rounded-xl bg-paper/10 backdrop-blur p-4 border border-paper/10">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="w-7 h-7 rounded-lg bg-lime/15 text-lime flex items-center justify-center"><Icon name={a.icon} className="w-3.5 h-3.5" /></div>
+                    <span className="text-[10px] font-mono uppercase tracking-[0.1em] text-paper/50">{a.when}</span>
+                  </div>
+                  <div className="text-[13px] font-medium mb-1">{a.title}</div>
+                  <div className="text-[11.5px] text-paper/60 leading-snug mb-2.5">{a.body}</div>
+                  <button className="text-[11px] font-medium text-lime hover:underline">{a.cta}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-3">
+          <Card className="!p-4"><Eyebrow>IG Total reach</Eyebrow><div className="font-display text-[28px] font-semibold tracking-tighter mt-2">1.24M</div><div className="flex items-center justify-between mt-2"><span className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ 24.8%</span><BarSpark data={[2,3,1,4,3,5,4]} color="#6B5BFF" highlightIdx={5} height={20} /></div></Card>
+          <Card className="!p-4"><Eyebrow>Eng. rate</Eyebrow><div className="font-display text-[28px] font-semibold tracking-tighter mt-2">8.4%</div><div className="flex items-center justify-between mt-2"><span className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ 1.2%</span><BarSpark data={[3,2,3,4,3,4,5]} color="#FF2D6A" highlightIdx={6} height={20} /></div></Card>
+          <Card className="!p-4 col-span-2 lg:col-span-1 bg-magenta text-white border-transparent"><Eyebrow color="text-white/70">New signals</Eyebrow><div className="font-display text-[28px] font-semibold tracking-tighter mt-2">14 fresh</div><div className="text-[11px] text-white/70 mt-1">Tap to review →</div></Card>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+        <StatCard label="IG followers" value={formatNum(D.accounts.ig.followers)} delta={4.2} sparkData={[2,3,3,4,3,5,4]} icon="users" />
+        <StatCard label="TikTok plays" value={formatNum(D.accounts.tt.totalPlays)} delta={18.9} sparkData={[1,2,3,2,4,3,5]} color="#FF2D6A" icon="play" />
+        <StatCard label="YT views" value={formatNum(D.accounts.yt.totalViews)} delta={2.4} sparkData={[2,3,2,3,4,4,3]} color="#FF0000" icon="eye" />
+        <StatCard label="LI eng. rate" value="6.1%" delta={1.8} sparkData={[3,3,4,3,4,5,4]} color="#0A66C2" icon="message" />
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-8">
+          <SectionHead eyebrow="Emerging signals" title="What's moving today" right={<button className="text-[12.5px] text-ultra dark:text-lime hover:underline">View all →</button>} />
+          <div className="space-y-2.5">
+            {D.signals.slice(0,4).map(s => <SignalRow key={s.id} signal={s} />)}
+          </div>
+        </div>
+        <div className="lg:col-span-4 space-y-4">
+          <Card>
+            <h3 className="font-display text-[16px] font-semibold tracking-tight mb-3">Pipeline status</h3>
+            <div className="space-y-2.5">
+              {[
+                { l: 'Instagram sync', v: 'Stable', c: 'text-emerald-600 dark:text-lime' },
+                { l: 'TikTok sync', v: 'Active', c: 'text-ultra' },
+                { l: 'YouTube sync', v: 'Stable', c: 'text-emerald-600 dark:text-lime' },
+                { l: 'LinkedIn sync', v: 'Stable', c: 'text-emerald-600 dark:text-lime' },
+                { l: 'Next auto-brief', v: '06:00 AM', c: 'text-mute dark:text-muteDark' }
+              ].map((r,i) => (
+                <div key={i} className="flex justify-between items-center text-[12.5px]"><span>{r.l}</span><span className={cls('font-mono', r.c)}>{r.v}</span></div>
+              ))}
+            </div>
+          </Card>
+          <Card className="bg-ink text-paper border-transparent">
+            <div className="flex items-center gap-2 mb-3"><Icon name="brain" className="w-4 h-4 text-lime" /><span className="text-[12px] font-medium">Pulse AI Coach</span></div>
+            <p className="text-[13px] text-paper/80 leading-relaxed italic mb-4">"{D.user.name.split(' ')[0]}, your YouTube engagement typically spikes when you respond within the first hour. I recommend clearing 15 mins post-upload today."</p>
+            <button className="text-[12px] font-medium text-lime hover:underline">Ask Pulse →</button>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SignalRow = ({ signal: s }) => {
+  const kindColor = { viral: 'magenta', gap: 'ultra', collab: 'amber', engagement: 'lime', warning: 'magenta', audience: 'ultra', timing: 'lime', trend: 'magenta' };
+  const iconMap = { viral: 'flame', gap: 'layers', collab: 'users', engagement: 'heart', warning: 'bolt', audience: 'user', timing: 'clock', trend: 'trending' };
+  const c = kindColor[s.kind];
+  return (
+    <div className="row-pad rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 hover:border-ink/20 dark:hover:border-paper/20 transition-all flex items-start gap-4 group">
+      <div className={cls('w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center', c === 'magenta' ? 'bg-magenta/15 text-magenta' : c === 'ultra' ? 'bg-ultra/15 text-ultra' : c === 'lime' ? 'bg-lime/25 text-limeDeep dark:text-lime' : 'bg-amber/15 text-amber')}>
+        <Icon name={iconMap[s.kind]} className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">{s.label}</span>
+          <span className="text-mute/40">·</span>
+          {s.platform !== 'all' && <Plat p={s.platform} className="w-3 h-3" />}
+          <span className="text-[11px] text-mute dark:text-muteDark">{platformLabel[s.platform]}</span>
+        </div>
+        <h4 className="font-display text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug mb-1">{s.title}</h4>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed line-clamp-2">{s.body}</p>
+        <button className="text-[11.5px] font-medium text-ultra dark:text-lime mt-2 hover:underline">{s.action} →</button>
+      </div>
+      <div className="hidden sm:flex flex-col items-end gap-2">
+        <Pill color={s.impact.includes('High') ? 'magentaSoft' : s.impact.includes('Warning') ? 'amber' : 'ultraSoft'}>{s.impact}</Pill>
+        <button className="text-mute hover:text-ink dark:hover:text-paper"><Icon name="bookmark" className="w-3.5 h-3.5" /></button>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { BriefScreen, SignalRow });
+
+</script>
+<script type="text/babel">
+// Screen 2 — Overview / Stats
+const OverviewScreen = ({ activePlatform }) => {
+  const filtered = activePlatform === 'all' ? D.posts : D.posts.filter(p => p.platform === activePlatform);
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow="Omni-channel" title="Overview" sub="Real-time intelligence aggregated across your ecosystem." right={<Btn variant="outline" size="sm"><Icon name="download" className="w-3.5 h-3.5" /> Export</Btn>} />
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-4 space-y-4">
+          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+            <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-ultra/30 blur-2xl" />
+            <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+            <div className="font-display text-[64px] font-semibold leading-none tracking-tightest mt-3">{D.intelScore}<span className="text-[24px] text-paper/40">/100</span></div>
+            <div className="text-[12px] text-paper/60 mt-2 mb-4">98th percentile · Creator plan</div>
+            <div className="flex items-center justify-between text-[11px] font-mono pt-3 border-t border-paper/10"><span className="text-paper/50">Weekly trend</span><span className="text-lime">↗ +{D.weeklyTrend}%</span></div>
+          </Card>
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Platform mix</h3>
+            <div className="space-y-3">
+              {[
+                { p: 'tt', label: 'TikTok', pct: 42, color: '#FF2D6A' },
+                { p: 'ig', label: 'Instagram', pct: 28, color: '#D62976' },
+                { p: 'yt', label: 'YouTube', pct: 18, color: '#FF0000' },
+                { p: 'li', label: 'LinkedIn', pct: 12, color: '#0A66C2' }
+              ].map(r => (
+                <div key={r.p}>
+                  <div className="flex justify-between items-center text-[12px] mb-1.5"><span className="flex items-center gap-1.5"><Plat p={r.p} className="w-3 h-3" /> {r.label}</span><span className="font-mono">{r.pct}%</span></div>
+                  <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.color }} /></div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement mix (IG)</h3>
+            {[
+              { l: 'Likes', pct: 85, c: '#FF2D6A' }, { l: 'Comments', pct: 8, c: '#6B5BFF' },
+              { l: 'Saves', pct: 5, c: '#D6FF3E' }, { l: 'Shares', pct: 2, c: '#FFB23E' }
+            ].map(r => (
+              <div key={r.l} className="mb-2.5">
+                <div className="flex justify-between text-[12px] mb-1"><span>{r.l}</span><span className="font-mono">{r.pct}%</span></div>
+                <div className="h-1 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.c }} /></div>
+              </div>
+            ))}
+          </Card>
+        </div>
+
+        <div className="lg:col-span-8 space-y-4 sm:space-y-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+            <StatCard label="Total reach 4W" value={formatNum(D.accounts.ig.totalViews4W)} delta={12.4} sparkData={[2,3,2,4,3,5,4]} icon="eye" />
+            <StatCard label="Avg eng. rate" value={`${D.accounts.ig.engRate4W}%`} delta={1.4} sparkData={[3,3,4,3,4,4,5]} color="#FF2D6A" icon="heart" />
+          </div>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Performance · 30 days</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark">14 active campaigns aggregated</p>
+              </div>
+              <Pill color="ultraSoft">30D</Pill>
+            </div>
+            <PerfChart />
+            <div className="grid grid-cols-4 gap-3 pt-4 mt-4 border-t border-line dark:border-lineDark">
+              {[
+                { l: 'Total views', v: '12.4M' }, { l: 'Avg duration', v: '0:42s' },
+                { l: 'Shares', v: '142K' }, { l: 'Save rate', v: '4.2%' }
+              ].map((s,i) => <div key={i}><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">{s.l}</div><div className="font-display text-[20px] font-semibold tracking-tighter">{s.v}</div></div>)}
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-[18px] font-semibold tracking-tight">Top performing content</h3>
+              <button className="text-[12px] text-ultra dark:text-lime hover:underline">Full audit →</button>
+            </div>
+            <div className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
+              <span>Asset</span><span className="text-right">Views</span><span className="text-right">Likes</span><span className="text-right">ER%</span><span className="text-right">Signal</span>
+            </div>
+            {filtered.slice(0,7).map(p => (
+              <div key={p.id} className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-md bg-gradient-to-br from-ink/80 to-coal flex items-center justify-center text-[14px] flex-shrink-0">{p.emoji}</div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium truncate">{p.title}</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark flex items-center gap-1"><Plat p={p.platform} className="w-2.5 h-2.5" /> {p.daysAgo}d ago</div>
+                  </div>
+                </div>
+                <span className="text-right font-mono text-[12.5px]">{formatNum(p.views)}</span>
+                <span className="text-right font-mono text-[12.5px]">{formatNum(p.likes)}</span>
+                <span className="text-right font-mono text-[12.5px] text-ultra dark:text-lime">{p.engRate}%</span>
+                <span className="flex justify-end"><Pill color={p.signal === 'viral' ? 'magenta' : p.signal === 'rising' ? 'ultraSoft' : 'ink'}>{p.signal}</Pill></span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PerfChart = () => {
+  const data = [40,50,38,62,75,90,82,108,140];
+  const max = Math.max(...data);
+  return (
+    <div className="h-44 flex items-end gap-1.5">
+      {data.map((v, i) => {
+        const peak = i === data.length - 1;
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1.5">
+            <div className="w-full rounded-md transition-all" style={{ height: `${(v / max) * 100}%`, background: peak ? '#6B5BFF' : 'linear-gradient(180deg, rgba(107,91,255,0.5) 0%, rgba(107,91,255,0.15) 100%)' }} />
+            {i % 2 === 0 && <span className="text-[9px] font-mono text-mute dark:text-muteDark">{`D${i+1}`}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+Object.assign(window, { OverviewScreen });
+
+</script>
+<script type="text/babel">
+// Screen 3 — Growth
+const GrowthScreen = () => {
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow="Trajectory" title="Growth strategy" sub="Engineer your ascent from creator to market authority." />
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
+        <div className="lg:col-span-4"><StatCard label="IG followers" value={formatNum(D.accounts.ig.followers)} delta={4.2} sparkData={[2,3,3,4,3,5,4]} icon="users" /></div>
+        <div className="lg:col-span-4"><StatCard label="TikTok followers" value={formatNum(D.accounts.tt.followers)} delta={22.9} sparkData={[1,2,3,2,4,5,5]} color="#FF2D6A" icon="users" /></div>
+        <div className="lg:col-span-4"><StatCard label="YouTube subs" value={formatNum(D.accounts.yt.subs)} delta={4.1} sparkData={[2,3,3,4,3,4,5]} color="#FF0000" icon="play" /></div>
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-7 space-y-4 sm:space-y-5">
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-[18px] font-semibold tracking-tight">Milestone tracker</h3>
+              <Pill color="ultraSoft">Q3 active</Pill>
+            </div>
+            <div className="space-y-5">
+              {[
+                { p: 'ig', l: '60K IG Followers', cur: 48200, tgt: 60000, c: '#FF2D6A', days: '14 days' },
+                { p: 'yt', l: '20K YT Subscribers', cur: 12400, tgt: 20000, c: '#6B5BFF', days: '42 days' },
+                { p: 'tt', l: '150K TikTok Followers', cur: 102000, tgt: 150000, c: '#010101', days: '28 days' }
+              ].map(m => {
+                const pct = (m.cur / m.tgt) * 100;
+                return (
+                  <div key={m.l}>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-2"><Plat p={m.p} className="w-3.5 h-3.5" /><span className="text-[13px] font-medium">{m.l}</span></div>
+                      <span className="font-mono text-[12.5px]">{formatNum(m.cur)} <span className="text-mute dark:text-muteDark">/ {formatNum(m.tgt)}</span></span>
+                    </div>
+                    <Progress value={pct} color={pct > 60 ? 'bg-ultra' : 'bg-magenta'} />
+                    <div className="flex justify-between mt-1.5 text-[11px] text-mute dark:text-muteDark"><span>Phase: {pct > 60 ? 'Scale' : 'Build'}</span><span>Est. {m.days}</span></div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-1">Posting rhythm</h3>
+            <p className="text-[12px] text-mute dark:text-muteDark mb-4">Engagement heatmap by weekday × time window <span className="font-mono text-[10.5px]">· ET</span></p>
+            <div className="grid grid-cols-[44px_1fr] gap-x-2">
+              <div /> {/* spacer above day columns */}
+              <div className="grid grid-cols-7 gap-1 mb-1.5">
+                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                  <span key={d} className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark text-center">{d}</span>
+                ))}
+              </div>
+              {D.heatmap.map((row, ri) => (
+                <React.Fragment key={ri}>
+                  <span className="text-[10px] font-mono text-mute dark:text-muteDark flex items-center justify-end pr-0.5">{D.heatmapHours[ri]}</span>
+                  <div className="grid grid-cols-7 gap-1 mb-1">
+                    {row.map((v, ci) => (
+                      <div key={ci} className="aspect-square rounded-md transition-transform hover:scale-110" style={{ background: ['rgba(107,91,255,0.08)','rgba(107,91,255,0.28)','rgba(107,91,255,0.55)','rgba(255,45,106,0.75)','#FF2D6A'][v] }} title={`${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][ci]} ${D.heatmapHours[ri]} · ${['Quiet','Low','Steady','Strong','Peak'][v]}`} />
+                    ))}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-3 text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
+              <span>Low engagement</span>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.08)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.28)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.55)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(255,45,106,0.75)' }} />
+                <div className="w-3 h-3 rounded-sm bg-magenta" />
+              </div>
+              <span>Peak</span>
+            </div>
+            <p className="text-[12px] text-mute dark:text-muteDark mt-4">⚡ Optimal: <strong className="text-ink dark:text-paper">Tue / Wed / Thu · 18:00–21:00 ET</strong> · High resonance for long-form insight posts.</p>
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Competitor comparison</h3>
+            <div className="space-y-2">
+              {D.competitors.map(c => (
+                <div key={c.handle} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
+                  <Plat p={c.platform} className="w-5 h-5" />
+                  <span className="flex-1 text-[13px] font-medium">{c.handle}</span>
+                  <span className="font-mono text-[12px] text-mute dark:text-muteDark">{formatNum(c.followers)}</span>
+                  <span className={cls('font-mono text-[12px] w-14 text-right', c.delta > 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>{c.delta > 0 ? '↑' : '↓'} {Math.abs(c.delta)}%</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-5 space-y-4 sm:space-y-5">
+          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+            <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-ultra/30 blur-2xl" />
+            <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Authority verdict</Pill>
+            <h3 className="font-display text-[26px] font-semibold tracking-tighter leading-tight mt-4 mb-3">Focus on platform cross-pollination.</h3>
+            <p className="text-[13.5px] text-paper/70 mb-5 leading-relaxed">IG momentum surging at 12% w-o-w. Divert 20% of production to YouTube Shorts to bridge the early-adoption gap. Current trajectory leads to "industry authority" status by Q3.</p>
+            <Btn variant="lime" size="sm">Recalibrate path</Btn>
+          </Card>
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Growth velocity</h3>
+            <div className="space-y-2.5">
+              {[
+                { p: 'ig', label: 'Instagram', state: 'Surging', delta: 12.4, c: 'text-magenta' },
+                { p: 'tt', label: 'TikTok', state: 'Surging', delta: 22.9, c: 'text-magenta' },
+                { p: 'yt', label: 'YouTube', state: 'Early', delta: 4.1, c: 'text-ultra' },
+                { p: 'li', label: 'LinkedIn', state: 'Steady', delta: 0.8, c: 'text-mute' }
+              ].map(r => (
+                <div key={r.label} className="flex items-center gap-3 py-2">
+                  <Plat p={r.p} className="w-7 h-7" />
+                  <div className="flex-1">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{r.label}</div>
+                    <div className={cls('font-display text-[16px] font-semibold tracking-tight', r.c)}>{r.state}</div>
+                  </div>
+                  <span className="font-mono text-[12.5px]">+{r.delta}%</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">YouTube videos</h3>
+            <div className="space-y-2">
+              {[
+                { t: 'Omni-Channel API tutorial', v: 125400, l: 18290 },
+                { t: 'Future of Work explained', v: 84200, l: 9810 },
+                { t: 'Slow Tech movement', v: 31400, l: 2100 },
+                { t: 'AI Strategy in 60s', v: 4820, l: 420 }
+              ].map((v,i) => (
+                <div key={i} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
+                  <div className="w-10 h-7 rounded bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white"><Icon name="play" className="w-3 h-3" /></div>
+                  <span className="flex-1 text-[12.5px] truncate">{v.t}</span>
+                  <span className="font-mono text-[11px] text-mute dark:text-muteDark">{formatNum(v.v)}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { GrowthScreen });
+
+</script>
+<script type="text/babel">
+// Screen 4 — Content Deep-Dive
+const ContentScreen = () => {
+  const [idx, setIdx] = React.useState(0);
+  const p = D.posts[idx];
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow="Anatomy" title="Content deep-dive" sub="Break down what worked — and how to replicate it." />
+
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-5 pb-1">
+        {D.posts.slice(0,5).map((post, i) => (
+          <button key={post.id} onClick={() => setIdx(i)} className={cls('flex items-center gap-2 h-9 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap border transition', idx === i ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper' : 'border-line dark:border-lineDark hover:border-ink/30')}>
+            <Plat p={post.platform} className="w-3 h-3" />
+            {post.title.length > 28 ? post.title.slice(0,28) + '…' : post.title}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-8 space-y-4 sm:space-y-5">
+          <Card>
+            <div className="grid sm:grid-cols-[180px_1fr] gap-5">
+              <div className="aspect-[9/16] rounded-2xl bg-gradient-to-br from-ink via-ultra/40 to-magenta/40 flex flex-col justify-between p-3 text-white relative overflow-hidden">
+                <Pill color="magenta">{p.signal === 'viral' ? 'Viral peak' : p.signal}</Pill>
+                <div>
+                  <div className="text-[36px]">{p.emoji}</div>
+                  <div className="text-[11px] font-mono">{p.daysAgo}d ago</div>
+                </div>
+              </div>
+              <div>
+                <Eyebrow>{platformLabel[p.platform]} · {p.type}</Eyebrow>
+                <h2 className="font-display text-[24px] sm:text-[32px] leading-[1.05] font-semibold tracking-tighter mt-2 mb-3">"{p.title}"</h2>
+                <p className="text-[13.5px] text-mute dark:text-muteDark mb-5">Analyzing the engagement loop, retention pattern, and algorithmic signals across the first 48 hours.</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Reach</div><div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(p.views)}</div><div className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ avg</div></div>
+                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Eng. rate</div><div className="font-display text-[22px] font-semibold tracking-tighter">{p.engRate}%</div><div className="text-[11px] text-emerald-600 dark:text-lime font-mono">Elite</div></div>
+                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Share→view</div><div className="font-display text-[22px] font-semibold tracking-tighter">1:18</div><div className="text-[11px] text-mute font-mono">{formatNum(p.shares || 0)} shares</div></div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Retention curve</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark">Viewership % over duration (45s total)</p>
+              </div>
+              <div className="flex gap-3 text-[10px] font-mono text-mute dark:text-muteDark">
+                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-ultra" /> This post</span>
+                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-ink/20" /> Benchmark</span>
+              </div>
+            </div>
+            <div className="h-44 flex items-end gap-1">
+              {[100,99,98,96,95,94,99,92,88,85,80,76,73,70,68,65,63,60,58].map((v,i) => (
+                <div key={i} className="flex-1 rounded-t-sm transition-all" style={{ height: `${v}%`, background: i === 6 ? '#FF2D6A' : '#6B5BFF', opacity: i === 6 ? 1 : 0.85 }} />
+              ))}
+            </div>
+            <div className="flex justify-between mt-2 text-[10px] font-mono text-mute dark:text-muteDark"><span>0s</span><span>15s</span><span>30s</span><span>45s</span></div>
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Performance timeline</h3>
+            <div className="flex items-center justify-between">
+              {[
+                { l: 'Posted', s: 'T+0h', dot: 'bg-ink dark:bg-paper' },
+                { l: 'Indexed', s: 'T+2h', dot: 'bg-ultra' },
+                { l: 'Explosion', s: 'T+12h', dot: 'bg-magenta' },
+                { l: 'Viral peak', s: 'T+36h', dot: 'bg-magenta animate-pulse' },
+                { l: 'Stabilized', s: 'Now', dot: 'bg-ink/30 dark:bg-paper/30' }
+              ].map((s,i) => (
+                <div key={i} className="flex flex-col items-center text-center flex-1 relative">
+                  <div className={cls('w-3.5 h-3.5 rounded-full mb-2 z-10', s.dot)} />
+                  <div className="text-[12px] font-medium">{s.l}</div>
+                  <div className="text-[10px] font-mono text-mute dark:text-muteDark">{s.s}</div>
+                  {i < 4 && <div className="absolute top-1.5 left-1/2 right-0 h-px bg-line dark:bg-lineDark" style={{ width: '100%', transform: 'translateX(50%)' }} />}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Replicate this</h3>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {[
+                { n: '01', t: 'The visual hook', d: 'Start with a 1.5s macro shot of a sleek product. High-key lighting emphasizes premium features.' },
+                { n: '02', t: 'Audio pacing', d: 'Sync key transitions to percussive audio. DM Mono font for technical overlays.' },
+                { n: '03', t: 'Information gap', d: 'Explain a concept in 3s. Use high-contrast "Pulse Pink" chips to highlight critical data.' },
+                { n: '04', t: 'Final call', d: 'End with a clear benefit statement. Direct viewers to "signals" in the link-in-bio.' }
+              ].map(s => (
+                <div key={s.n} className="rounded-xl border border-line dark:border-lineDark p-4 bg-paper dark:bg-ink">
+                  <div className="w-7 h-7 rounded-full bg-ink text-paper dark:bg-lime dark:text-ink font-mono text-[11px] flex items-center justify-center mb-3">{s.n}</div>
+                  <div className="text-[13px] font-semibold mb-1">{s.t}</div>
+                  <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed">{s.d}</p>
+                </div>
+              ))}
+            </div>
+            <Btn variant="ink" size="md" className="w-full mt-4">Duplicate strategy</Btn>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-4 space-y-4">
+          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+            <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-magenta/30 blur-2xl" />
+            <Pill color="lime"><Icon name="brain" className="w-3 h-3" /> AI Verdict</Pill>
+            <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3">Niche resonance spike.</h3>
+            <p className="text-[12.5px] text-paper/70 leading-relaxed mb-4">Significant cluster of "Bookmark" actions at the 12-second mark. Your technical breakdown of AI infrastructure matched high-intent user profiles in the "SaaS Development" segment.</p>
+            <div className="pt-4 border-t border-paper/10">
+              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-paper/50 mb-1">Virality score</div>
+              <div className="font-display text-[48px] font-semibold tracking-tightest leading-none text-magenta">94<span className="text-[20px] text-paper/40">/100</span></div>
+            </div>
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">What worked</h3>
+            <div className="space-y-2.5">
+              {[
+                { i: 'layers', l: 'Format', d: 'Split-screen narrative · 120bpm sync', tag: 'Optimized' },
+                { i: 'flame', l: 'Hook', d: '0.5s visual dissonance, stop-scroll reflex', tag: 'Critical' },
+                { i: 'users', l: 'Niche', d: 'Creator Tech sub-niche · low saturation', tag: 'Accurate' },
+                { i: 'clock', l: 'Timing', d: 'Tuesday 8:00 AM EST · US/EU crossover', tag: 'Standard' }
+              ].map((w,i) => (
+                <div key={i} className="flex gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0"><Icon name={w.i} className="w-3.5 h-3.5" /></div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{w.l}</div>
+                    <div className="text-[12.5px] font-medium leading-tight">{w.d}</div>
+                    <div className="text-[10px] font-mono text-magenta mt-0.5">✓ {w.tag}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { ContentScreen });
+
+</script>
+<script type="text/babel">
+// Screen 5 — Intelligence
+const IntelScreen = () => {
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>} title="Strategic signals" sub="High-fidelity analysis derived from platform-wide pattern recognition." right={<div className="flex gap-2"><Btn variant="outline" size="sm"><Icon name="filter" className="w-3.5 h-3.5" /> Filter</Btn><Btn variant="ink" size="sm"><Icon name="download" className="w-3.5 h-3.5" /> Export</Btn></div>} />
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
+        <div className="lg:col-span-8 rounded-2xl bg-gradient-to-br from-ultra via-ultra to-magenta text-white p-6 sm:p-8 relative overflow-hidden fade-up">
+          <div className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute right-6 top-6 opacity-20"><Icon name="sparkle" className="w-20 h-20" /></div>
+          <Pill color="ink"><span className="text-white">Priority signal · 14m ago</span></Pill>
+          <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-xl">Viral formula detected: cross-platform narrative shift.</h2>
+          <div className="grid sm:grid-cols-2 gap-5 mt-6">
+            <div>
+              <div className="flex items-center gap-1.5 mb-2"><Icon name="bolt" className="w-3.5 h-3.5" /><span className="text-[10px] font-mono uppercase tracking-[0.12em]">The why</span></div>
+              <p className="text-[13px] text-white/80 leading-relaxed">Engagement data across IG + TikTok shows a 42% spike in "contrarian leadership" framing. Audience is fatigued by standard AI optimism and pivoting toward "Human-First" scaling narratives.</p>
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5 mb-2"><Icon name="target" className="w-3.5 h-3.5" /><span className="text-[10px] font-mono uppercase tracking-[0.12em]">The action</span></div>
+              <p className="text-[13px] text-white/80 leading-relaxed">Reposition upcoming visuals around artisanal craft over automation. Pivot headline hooks to "The Hidden Cost of Efficiency."</p>
+            </div>
+          </div>
+          <Btn variant="lime" size="md" className="mt-6">Deploy intelligence <Icon name="arrowRight" className="w-3.5 h-3.5" /></Btn>
+        </div>
+        <div className="lg:col-span-4 space-y-4">
+          <Card>
+            <Pill color="magentaSoft">Emerging gap</Pill>
+            <h3 className="font-display text-[19px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">Platform gap: vertical video saturation</h3>
+            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed mb-3">Video retention dropping. Users returning to long-form editorial for deep-dives.</p>
+            <Pill color="ultraSoft">Opportunity: 8.4× engagement ROI</Pill>
+          </Card>
+          <Card>
+            <Pill color="ultraSoft"><Icon name="trending" className="w-3 h-3" /> Viral velocity</Pill>
+            <h3 className="font-display text-[19px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">"Slow tech" movement</h3>
+            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed mb-3">Macro-trend in tech hubs. "Intentionality" + "focus" keywords up 180%.</p>
+            <div className="flex items-center justify-between text-[11px] font-mono"><span className="text-mute">Confidence</span><span className="text-ultra">94%</span></div>
+          </Card>
+        </div>
+      </div>
+
+      <Card className="mb-5 bg-chalk dark:bg-coalsoft">
+        <div className="flex items-center gap-2 mb-4"><Icon name="bolt" className="w-4 h-4 text-magenta" /><h3 className="font-display text-[16px] font-semibold tracking-tight">Action plan · this week</h3></div>
+        <div className="grid sm:grid-cols-3 gap-3">
+          {[
+            { i: 'message', t: 'Reply to comments', d: 'Engage with 25+ top comments on viral reel using AI-suggested prompts.', p: 'High' },
+            { i: 'play', t: 'Make 2 TikToks', d: 'Deploy "Abstract Narrative" formula using trending audio from Signal 04.', p: 'Critical' },
+            { i: 'mail', t: 'DM for collab', d: 'Reach 3 high-affinity creators for the "Silent Stream" initiative.', p: 'Strategic' }
+          ].map((a,i) => (
+            <div key={i} className="rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink p-4">
+              <div className="w-9 h-9 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center mb-3"><Icon name={a.i} className="w-4 h-4" /></div>
+              <div className="text-[13.5px] font-semibold mb-1">{a.t}</div>
+              <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed mb-2">{a.d}</p>
+              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra dark:text-lime">Priority: {a.p}</span>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <SectionHead eyebrow="Stream" title="Intelligence stream" right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> {D.signals.length} signals today</span>} />
+      <div className="space-y-2.5">
+        {D.signals.slice(1).map(s => <SignalRow key={s.id} signal={s} />)}
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { IntelScreen });
+
+</script>
+<script type="text/babel">
+// Screen 6 — Targets & Actuals
+const TargetsScreen = () => {
+  const [active, setActive] = React.useState('c2');
+  const cycle = D.cycles.find(c => c.id === active);
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow="Cycles" title="Targets & actuals" sub="Set 30-day cycles. Pulse tracks pace, predicts outcomes, and recommends pivots." right={<div className="flex gap-2"><Pill color="ultra">4 active</Pill><Pill color="lime">2 on track</Pill><Pill color="ink">1 done</Pill></div>} />
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        {D.cycles.map(c => (
+          <button key={c.id} onClick={() => setActive(c.id)} className={cls('rounded-2xl p-4 text-left transition-all border', active === c.id ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper' : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark hover:border-ink/30')}>
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] opacity-60 mb-1">{c.range}</div>
+            <div className="font-display text-[20px] font-semibold tracking-tighter">{c.label}</div>
+            <div className="text-[11px] mt-1 capitalize opacity-70">{c.status.replace('_', ' ')}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-8 space-y-4">
+          {cycle.status === 'upcoming' && (
+            <Card className="text-center py-12">
+              <Icon name="calendar" className="w-10 h-10 mx-auto mb-3 text-mute" />
+              <h3 className="font-display text-[20px] font-semibold tracking-tighter">Cycle starts {cycle.range.split(' → ')[0]}</h3>
+              <p className="text-[13px] text-mute dark:text-muteDark mt-2">Pulse will recommend targets based on this cycle's results.</p>
+            </Card>
+          )}
+          {cycle.targets?.map((t, i) => <TargetCard key={i} target={t} cycleStatus={cycle.status} />)}
+        </div>
+        <div className="lg:col-span-4 space-y-4">
+          <Card className="bg-ink text-paper border-transparent">
+            <h3 className="font-display text-[16px] font-semibold tracking-tight mb-3">How Pulse sets targets</h3>
+            <div className="space-y-3">
+              {[
+                { n: '01', t: 'Analyze last cycle', d: 'We extract growth rates, viral hits, and bottlenecks.' },
+                { n: '02', t: 'Set realistic targets', d: '70th-percentile of your trajectory — stretch but reachable.' },
+                { n: '03', t: 'Daily pace tracking', d: 'Every morning we tell you if you\'re ahead or behind.' },
+                { n: '04', t: 'Recommend pivots', d: 'If pace slips, Pulse suggests the highest-leverage action.' }
+              ].map(s => (
+                <div key={s.n} className="flex gap-3">
+                  <div className="font-mono text-[11px] text-lime flex-shrink-0">{s.n}</div>
+                  <div>
+                    <div className="text-[12.5px] font-medium">{s.t}</div>
+                    <div className="text-[11px] text-paper/60 leading-snug">{s.d}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">{cycle.label} timeline</h3>
+            <div className="space-y-3">
+              {[
+                { i: 'play', l: 'Cycle start', d: cycle.range.split(' → ')[0], state: 'done' },
+                { i: 'sparkle', l: 'Mid-cycle review', d: 'May 24', state: 'now' },
+                { i: 'target', l: 'Targets review', d: 'Jun 1', state: 'soon' },
+                { i: 'check', l: 'Cycle close', d: cycle.range.split(' → ')[1], state: 'pending' }
+              ].map((m,i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className={cls('w-7 h-7 rounded-full flex items-center justify-center', m.state === 'now' ? 'bg-magenta text-white' : m.state === 'done' ? 'bg-lime/30 text-limeDeep dark:text-lime' : 'bg-ink/5 dark:bg-paper/5 text-mute')}>
+                    <Icon name={m.i} className="w-3 h-3" />
+                  </div>
+                  <div className="flex-1"><div className="text-[12.5px] font-medium">{m.l}</div></div>
+                  <span className="font-mono text-[11px] text-mute dark:text-muteDark">{m.d}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const TargetCard = ({ target: t, cycleStatus }) => {
+  const isCompleted = cycleStatus === 'completed';
+  const pct = typeof t.actual === 'number' && typeof t.target === 'number' ? Math.min((t.actual / t.target) * 100, 105) : 0;
+  const statusColor = t.status === 'exceeded' ? 'lime' : t.status === 'active' ? 'ultraSoft' : t.status === 'needs_push' ? 'magentaSoft' : 'amber';
+  return (
+    <Card>
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3">
+          <Plat p={t.platform} className="w-7 h-7" />
+          <div>
+            <div className="font-display text-[18px] font-semibold tracking-tighter">{t.metric}</div>
+            <div className="text-[11.5px] text-mute dark:text-muteDark">{platformLabel[t.platform]}</div>
+          </div>
+        </div>
+        <Pill color={statusColor}>{t.status.replace('_', ' ')}</Pill>
+      </div>
+      <div className="grid grid-cols-3 gap-3 mb-4">
+        {[
+          { l: isCompleted ? 'Start' : 'Now', v: typeof t.start === 'number' ? formatNum(t.start) : (t.actual === 'Not sent' ? '0' : '—') },
+          { l: 'Target', v: typeof t.target === 'number' ? formatNum(t.target) : t.target },
+          { l: 'Actual', v: typeof t.actual === 'number' ? formatNum(t.actual) : t.actual }
+        ].map((c,i) => (
+          <div key={i} className="rounded-xl bg-paper dark:bg-ink border border-line dark:border-lineDark p-3">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{c.l}</div>
+            <div className="font-display text-[20px] font-semibold tracking-tighter mt-1">{c.v}</div>
+          </div>
+        ))}
+      </div>
+      {typeof t.actual === 'number' && <Progress value={pct} color={t.status === 'exceeded' ? 'bg-lime' : t.status === 'needs_push' ? 'bg-magenta' : 'bg-ultra'} />}
+      <div className="mt-4 p-3 rounded-xl bg-ink/[0.03] dark:bg-paper/[0.04] border-l-2 border-ultra">
+        <p className="text-[12.5px] leading-relaxed">{t.verdict}</p>
+      </div>
+    </Card>
+  );
+};
+
+Object.assign(window, { TargetsScreen });
+
+</script>
+<script type="text/babel">
+// Pulse Settings — clean OAuth connect flow, no API keys shown to users
+// All keys held server-side. Users only connect their social accounts.
+
+const API_BASE = window.PULSE_API_URL || '';
+
+// ── API client (calls our backend, which holds keys) ─────────────────────────
+const api = async (path, opts = {}) => {
+  const token = window.__pulseToken; // set by auth layer
+  const res = await fetch(`${API_BASE}/api${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(opts.headers || {})
+    }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+};
+
+// ── Platform config ───────────────────────────────────────────────────────────
+const PLATFORMS = [
+  { id: 'instagram', label: 'Instagram',  icon: 'ig', color: '#D62976', note: 'Business or Creator account required' },
+  { id: 'tiktok',    label: 'TikTok',     icon: 'tt', color: '#010101', note: 'Personal or Business account' },
+  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Direct Google API integration' },
+  { id: 'facebook',  label: 'Facebook',   icon: 'fb', color: '#1877F2', note: 'Page required (not personal profile)' },
+  { id: 'linkedin',  label: 'LinkedIn',   icon: 'li', color: '#0A66C2', note: 'Personal profile or Company page' },
+  { id: 'x',         label: 'X / Twitter', icon: 'x', color: '#000',   note: 'Basic or higher API access needed' },
+  { id: 'snapchat',  label: 'Snapchat',   icon: 'sc', color: '#FFFC00', note: 'Business account recommended for GCC' },
+];
+
+// ── Platform connect card ─────────────────────────────────────────────────────
+const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) => {
+  const connected = !!account;
+  return (
+    <div className={cls(
+      'flex items-center justify-between p-4 rounded-2xl border transition',
+      connected
+        ? 'border-lime/40 bg-chalk dark:bg-coalsoft'
+        : 'border-line dark:border-lineDark bg-chalk dark:bg-coalsoft hover:border-ink/20 dark:hover:border-paper/20'
+    )}>
+      <div className="flex items-center gap-3.5">
+        {/* Platform icon */}
+        <div className="w-11 h-11 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink flex items-center justify-center flex-shrink-0">
+          <Plat p={platform.icon} className="w-5 h-5" />
+        </div>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-[14px] font-semibold">{platform.label}</span>
+            {connected && (
+              <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full bg-lime/20 text-limeDeep dark:text-lime text-[10px] font-medium">
+                <span className="w-1 h-1 rounded-full bg-limeDeep dark:bg-lime" />
+                Connected
+              </span>
+            )}
+          </div>
+          <div className="text-[12px] text-mute dark:text-muteDark font-mono mt-0.5">
+            {connected
+              ? (account.platform_username || account.platform_name || 'Account linked')
+              : platform.note}
+          </div>
+        </div>
+      </div>
+
+      {connected ? (
+        <button
+          onClick={() => onDisconnect(platform.id)}
+          className="h-8 px-3 rounded-lg text-[12px] font-medium border border-line dark:border-lineDark hover:border-magenta hover:text-magenta transition"
+        >
+          Disconnect
+        </button>
+      ) : (
+        <button
+          onClick={() => onConnect(platform.id)}
+          disabled={loading}
+          className={cls(
+            'h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5',
+            loading
+              ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5'
+              : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:bg-coal dark:hover:bg-chalk'
+          )}
+        >
+          {loading
+            ? <><Icon name="clock" className="w-3.5 h-3.5" /> Opening...</>
+            : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>
+          }
+        </button>
+      )}
+    </div>
+  );
+};
+
+// ── Usage meter ───────────────────────────────────────────────────────────────
+const UsageMeter = ({ used, limit, tier }) => {
+  const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const color = pct > 85 ? 'bg-magenta' : pct > 60 ? 'bg-amber' : 'bg-ultra';
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[12px] font-medium">Monthly data refreshes</span>
+        <span className="text-[12px] font-mono text-mute dark:text-muteDark">
+          {limit === -1 ? `${used} used · Unlimited` : `${used} / ${limit}`}
+        </span>
+      </div>
+      {limit !== -1 && (
+        <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden">
+          <div
+            className={cls('h-full rounded-full transition-all', color)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {pct > 85 && limit !== -1 && (
+        <p className="text-[11px] text-magenta mt-1.5">
+          Approaching limit. Consider upgrading your plan.
+        </p>
+      )}
+    </div>
+  );
+};
+
+// ── Main Settings Screen ──────────────────────────────────────────────────────
+const SettingsScreen = () => {
+  const [accounts, setAccounts]     = React.useState([]);
+  const [workspace, setWorkspace]   = React.useState(null);
+  const [usage, setUsage]           = React.useState(null);
+  const [loading, setLoading]       = React.useState(true);
+  const [connecting, setConnecting] = React.useState(null);
+  const [toast, setToast]           = React.useState(null);
+  const [saving, setSaving]         = React.useState(false);
+
+  // Workspace form state
+  const [form, setForm] = React.useState({
+    name: '', user_type: 'creator', category: 'music', market: 'canada', account_age: '6-12mo'
+  });
+
+  const showToast = (msg, type = 'ok') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Load workspace + accounts on mount ──────────────────────────────────
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const [wsData, acctData] = await Promise.all([
+          api('/workspace/me'),
+          api('/accounts/list')
+        ]);
+        setWorkspace(wsData.workspace);
+        setUsage(wsData.usage);
+        setAccounts(acctData.accounts || []);
+        setForm({
+          name:        wsData.workspace.name || '',
+          user_type:   wsData.workspace.user_type || 'creator',
+          category:    wsData.workspace.category || 'music',
+          market:      wsData.workspace.market || 'canada',
+          account_age: wsData.workspace.account_age || '6-12mo'
+        });
+      } catch (e) {
+        // Not yet authenticated — show form with defaults
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', market: 'canada', account_age: '6-12mo' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  // ── Connect a platform ───────────────────────────────────────────────────
+  const connectPlatform = async (platformId) => {
+    setConnecting(platformId);
+    try {
+      const data = await api(`/connect/${platformId}`);
+      if (!data.authUrl) throw new Error('No auth URL returned');
+
+      const popup = window.open(
+        data.authUrl,
+        `connect-${platformId}`,
+        'width=620,height=720,left=200,top=80'
+      );
+
+      // Poll for successful connection every 2 seconds
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        if (attempts > 60 || popup?.closed) {
+          clearInterval(poll);
+          // Sync accounts from Zernio to confirm
+          try {
+            const synced = await api('/accounts/sync', { method: 'POST' });
+            setAccounts(synced.accounts || []);
+            const connected = synced.accounts?.find(a => a.platform === platformId);
+            if (connected) showToast(`${platformId} connected ✓`);
+            else if (popup?.closed) showToast('Window closed — try connecting again', 'warn');
+          } catch {}
+          setConnecting(null);
+          return;
+        }
+
+        // Check if account appeared
+        try {
+          const synced = await api('/accounts/sync', { method: 'POST' });
+          const connected = (synced.accounts || []).find(a => a.platform === platformId);
+          if (connected) {
+            clearInterval(poll);
+            popup?.close();
+            setAccounts(synced.accounts || []);
+            setConnecting(null);
+            showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label} connected ✓`);
+          }
+        } catch {}
+      }, 2000);
+
+    } catch (e) {
+      showToast(e.message, 'err');
+      setConnecting(null);
+    }
+  };
+
+  // ── Disconnect a platform ────────────────────────────────────────────────
+  const disconnectPlatform = async (platformId) => {
+    setAccounts(prev => prev.filter(a => a.platform !== platformId));
+    showToast(`${platformId} disconnected`);
+  };
+
+  // ── Save workspace settings ───────────────────────────────────────────────
+  const saveWorkspace = async () => {
+    setSaving(true);
+    try {
+      await api('/workspace/me', {
+        method: 'PATCH',
+        body: JSON.stringify(form)
+      });
+      showToast('Workspace settings saved ✓');
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const connectedMap = React.useMemo(() => {
+    const m = {};
+    for (const a of accounts) m[a.platform] = a;
+    return m;
+  }, [accounts]);
+
+  const connectedCount = accounts.length;
+  const tier = workspace?.tier || 'creator';
+  const tierLabel = { creator: 'Creator', brand: 'Brand', agency: 'Agency' }[tier];
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow="Configuration"
+        title="Settings"
+        sub="Connect your social accounts and configure your workspace. All credentials are managed securely on our servers."
+      />
+
+      {/* Toast */}
+      {toast && (
+        <div className={cls(
+          'fixed top-5 right-5 z-50 px-4 py-3 rounded-xl text-[13px] font-medium shadow-pop fade-up flex items-center gap-2',
+          toast.type === 'err' ? 'bg-magenta text-white' :
+          toast.type === 'warn' ? 'bg-amber/90 text-ink' :
+          'bg-ink text-paper dark:bg-lime dark:text-ink'
+        )}>
+          <Icon name={toast.type === 'err' ? 'x' : 'check'} className="w-3.5 h-3.5" />
+          {toast.msg}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-[1fr_320px] gap-6 sm:gap-8">
+
+        {/* ── LEFT — Platform connections + workspace ── */}
+        <div className="space-y-8">
+
+          {/* Platform connections */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[17px] font-semibold tracking-tight">Connected accounts</h3>
+                <p className="text-[13px] text-mute dark:text-muteDark mt-0.5">
+                  {connectedCount} of {tier === 'agency' ? '∞' : tier === 'brand' ? '21' : '7'} accounts connected
+                </p>
+              </div>
+              {connectedCount > 0 && (
+                <Btn
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const synced = await api('/accounts/sync', { method: 'POST' });
+                      setAccounts(synced.accounts || []);
+                      showToast(`Synced ${synced.synced} accounts ✓`);
+                    } catch (e) { showToast(e.message, 'err'); }
+                  }}
+                >
+                  <Icon name="refresh" className="w-3.5 h-3.5" /> Sync all
+                </Btn>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              {PLATFORMS.map(platform => (
+                <PlatformCard
+                  key={platform.id}
+                  platform={platform}
+                  account={connectedMap[platform.id]}
+                  loading={connecting === platform.id}
+                  onConnect={connectPlatform}
+                  onDisconnect={disconnectPlatform}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Workspace settings */}
+          <div>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-4">Workspace settings</h3>
+            <div className="grid sm:grid-cols-2 gap-4">
+
+              <div>
+                <label className="block text-[12.5px] font-medium mb-1.5">Workspace name</label>
+                <input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="My Workspace"
+                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12.5px] font-medium mb-1.5">Account type</label>
+                <select
+                  value={form.user_type}
+                  onChange={e => setForm(f => ({ ...f, user_type: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                >
+                  <option value="creator">Individual Creator</option>
+                  <option value="brand">Brand / Business</option>
+                  <option value="agency">Agency</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12.5px] font-medium mb-1.5">Content category</label>
+                <select
+                  value={form.category}
+                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                >
+                  {[
+                    ['music','Music / Culture'], ['ecommerce','Ecommerce / Retail'],
+                    ['food','Food & Beverage'], ['fashion','Fashion & Beauty'],
+                    ['tech','Tech / SaaS'], ['realestate','Real Estate'],
+                    ['education','Education'], ['health','Health & Wellness'],
+                    ['finance','Finance & Business'], ['entertainment','Entertainment'],
+                    ['other','Other']
+                  ].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12.5px] font-medium mb-1.5">Primary market</label>
+                <select
+                  value={form.market}
+                  onChange={e => setForm(f => ({ ...f, market: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                >
+                  {[
+                    ['canada','Canada'], ['ksa','Saudi Arabia'], ['uae','UAE'],
+                    ['gcc','GCC (All)'], ['pakistan','Pakistan'], ['global','Global']
+                  ].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12.5px] font-medium mb-1.5">How long active on social</label>
+                <select
+                  value={form.account_age}
+                  onChange={e => setForm(f => ({ ...f, account_age: e.target.value }))}
+                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                >
+                  <option value="under-6mo">Under 6 months</option>
+                  <option value="6-12mo">6 – 12 months</option>
+                  <option value="1-3yr">1 – 3 years</option>
+                  <option value="3yr+">3+ years</option>
+                </select>
+              </div>
+
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <Btn
+                onClick={saveWorkspace}
+                disabled={saving}
+                variant="ink"
+              >
+                {saving ? 'Saving...' : 'Save settings'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT — Plan + usage ── */}
+        <div className="space-y-4">
+
+          {/* Current plan */}
+          <div className="rounded-2xl bg-ink text-paper dark:bg-coalsoft p-5 border border-transparent">
+            <Eyebrow color="text-lime">Current plan</Eyebrow>
+            <div className="font-display text-[28px] font-semibold tracking-tightest mt-2 mb-1">
+              {tierLabel}
+            </div>
+            <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
+              {tier === 'creator' ? '$29/month · 7 platforms · 5 competitors · 2 hashtags'
+               : tier === 'brand' ? '$149/month · 21 accounts · 15 competitors · 10 hashtags'
+               : '$599/month · Unlimited · 50 competitors · 30 hashtags'}
+            </p>
+            {usage && (
+              <div className="pt-4 border-t border-paper/10">
+                <UsageMeter used={usage.used} limit={usage.limit} tier={tier} />
+              </div>
+            )}
+            {tier !== 'agency' && (
+              <button className="mt-4 w-full h-9 rounded-xl bg-lime text-ink text-[13px] font-medium hover:brightness-105 transition">
+                Upgrade plan →
+              </button>
+            )}
+          </div>
+
+          {/* What we track section */}
+          <Card>
+            <h4 className="font-display text-[14px] font-semibold tracking-tight mb-3">Data sources</h4>
+            <div className="space-y-2.5">
+              {[
+                { label: 'Own account data',   detail: 'Zernio API',     ok: true },
+                { label: 'YouTube analytics',  detail: 'Google API v3',  ok: true },
+                { label: 'Competitor data',    detail: 'Apify scraper',  ok: true },
+                { label: 'Hashtag trends',     detail: 'Apify scraper',  ok: true },
+                { label: 'Posting & scheduling', detail: 'Zernio API',   ok: connectedCount > 0 },
+              ].map(row => (
+                <div key={row.label} className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className={cls('w-1.5 h-1.5 rounded-full', row.ok ? 'bg-limeDeep dark:bg-lime' : 'bg-mute')} />
+                    <span className="text-[13px]">{row.label}</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-mute dark:text-muteDark">{row.detail}</span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Privacy note */}
+          <div className="p-3.5 rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/20 text-[12px] leading-relaxed text-ultra dark:text-ultra/80">
+            <Icon name="sparkle" className="w-3.5 h-3.5 inline mr-1" />
+            <strong>Your credentials are secure.</strong> API keys are stored on our servers only. You connect your accounts via official OAuth — PULSE never sees your passwords.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { SettingsScreen });
+
+</script>
+<script type="text/babel">
+// Pulse App — root routing + Supabase auth wired
+
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "density": "comfortable",
+  "heroVariant": "gradient",
+  "activePlan": "brand",
+  "persona": "creator"
+}/*EDITMODE-END*/;
+
+function App() {
+  const [route, setRoute]               = React.useState('loading');
+  const [tab, setTab]                   = React.useState('Brief');
+  const [activePlatform, setActivePlatform] = React.useState('all');
+  const [range, setRange]               = React.useState('4W');
+  const [t, setTweak]                   = useTweaks(DEFAULTS);
+  const [showTweaks, setShowTweaks]     = React.useState(false);
+  const [session, setSession]           = React.useState(null);
+
+  React.useEffect(() => {
+    document.documentElement.classList.toggle('dark', t.theme === 'dark');
+  }, [t.theme]);
+
+  React.useEffect(() => {
+    document.body.classList.toggle('density-compact', t.density === 'compact');
+  }, [t.density]);
+
+  React.useEffect(() => {
+    D.user.plan = t.persona === 'agency' ? 'Agency' : t.persona === 'brand' ? 'Brand' : 'Creator';
+  }, [t.persona]);
+
+  // Auth init — check magic link hash first, then localStorage
+  React.useEffect(() => {
+    const init = async () => {
+      if (window.location.hash.includes('access_token')) {
+        const handled = await checkMagicLinkHash((sess) => {
+          setSession(sess);
+          setRoute('onboarding');
+        });
+        if (handled) return;
+      }
+      const restored = restoreSession((sess) => {
+        setSession(sess);
+        setRoute('app');
+      });
+      if (!restored) setRoute('landing');
+    };
+    init();
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setShowTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setShowTweaks(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const handleAuthed = (sess) => {
+    setSession(sess);
+    const isNew = sess?.user?.created_at &&
+      (Date.now() - new Date(sess.user.created_at).getTime()) < 60000;
+    setRoute(isNew ? 'onboarding' : 'app');
+  };
+
+  const handleSignOut = () => {
+    sbAuth.clearSession();
+    setSession(null);
+    setRoute('landing');
+  };
+
+  const screens = {
+    Brief:    <BriefScreen activePlatform={activePlatform} />,
+    Stats:    <OverviewScreen activePlatform={activePlatform} />,
+    Growth:   <GrowthScreen />,
+    Content:  <ContentScreen />,
+    Intel:    <IntelScreen />,
+    Targets:  <TargetsScreen />,
+    Settings: <SettingsScreen />
+  };
+
+  if (route === 'loading') {
+    return (
+      <div className="min-h-screen bg-paper dark:bg-ink flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <PulseLogo className="h-8 opacity-60" />
+          <div className="w-5 h-5 border-2 border-ink/20 dark:border-paper/20 border-t-ink dark:border-t-paper rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PlatformIcons />
+
+      {route === 'landing' && (
+        <Landing
+          heroVariant={t.heroVariant}
+          activePlan={t.activePlan}
+          onSignIn={() => setRoute('signin')}
+          onSignUp={() => setRoute('signup')}
+        />
+      )}
+
+      {(route === 'signin' || route === 'signup') && (
+        <Auth
+          mode={route}
+          onAuthed={handleAuthed}
+          onBack={() => setRoute('landing')}
+        />
+      )}
+
+      {route === 'onboarding' && (
+        <Onboarding onDone={() => {
+          setTab('Settings');
+          setRoute('app');
+        }} />
+      )}
+
+      {route === 'app' && (
+        <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper">
+          <TopBar
+            active={tab}
+            setActive={setTab}
+            range={range}
+            setRange={setRange}
+            theme={t.theme}
+            toggleTheme={() => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark')}
+            onProfile={handleSignOut}
+          />
+          <AccountBar
+            activePlatform={activePlatform}
+            setActivePlatform={setActivePlatform}
+          />
+          <div key={tab} className="fade-up">{screens[tab]}</div>
+          <MobileNav active={tab} setActive={setTab} />
+        </div>
+      )}
+
+      {showTweaks && (
+        <TweaksPanel title="Tweaks" onClose={() => setShowTweaks(false)}>
+          <TweakSection title="Theme">
+            <TweakRadio label="Mode" value={t.theme} onChange={v => setTweak('theme', v)}
+              options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
+            <TweakRadio label="Density" value={t.density} onChange={v => setTweak('density', v)}
+              options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} />
+          </TweakSection>
+          <TweakSection title="Landing page">
+            <TweakSelect label="Hero variant" value={t.heroVariant} onChange={v => setTweak('heroVariant', v)} options={[
+              { value: 'gradient', label: 'Gradient — bold AI feel' },
+              { value: 'editorial', label: 'Editorial — restrained' },
+              { value: 'split', label: 'Split — product preview right' }
+            ]} />
+            <TweakSelect label="Featured plan" value={t.activePlan} onChange={v => setTweak('activePlan', v)} options={[
+              { value: 'creator', label: 'Creator — $29' },
+              { value: 'brand', label: 'Brand — $149' },
+              { value: 'agency', label: 'Agency — $599' }
+            ]} />
+          </TweakSection>
+          <TweakSection title="App persona">
+            <TweakRadio label="Plan view" value={t.persona} onChange={v => setTweak('persona', v)} options={[
+              { value: 'creator', label: 'Creator' },
+              { value: 'brand', label: 'Brand' },
+              { value: 'agency', label: 'Agency' }
+            ]} />
+          </TweakSection>
+          <TweakSection title="Navigation">
+            <TweakButton label="Go to Landing"    onClick={() => setRoute('landing')} />
+            <TweakButton label="Go to Sign in"    onClick={() => setRoute('signin')} />
+            <TweakButton label="Go to Onboarding" onClick={() => setRoute('onboarding')} />
+            <TweakButton label="Go to App"        onClick={() => setRoute('app')} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+</script>
+</body>
+</html>
