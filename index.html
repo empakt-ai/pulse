@@ -3122,6 +3122,8 @@ const SettingsScreen = () => {
   const [connecting, setConnecting] = React.useState(null);
   const [toast, setToast]           = React.useState(null);
   const [saving, setSaving]         = React.useState(false);
+  // Tracks the in-flight OAuth poll so the postMessage handler can cancel it.
+  const pollerRef = React.useRef(null);
 
   // Workspace form state
   const [form, setForm] = React.useState({
@@ -3136,6 +3138,47 @@ const SettingsScreen = () => {
         ? f.focus_regions.filter(x => x !== id)
         : [...(f.focus_regions || []), id],
     }));
+
+  // Listen for the OAuth success postMessage from /api/connect/callback so we
+  // can sync immediately instead of waiting for the next 2s poll. Robust to
+  // popup window.close() being blocked or the user closing it manually.
+  React.useEffect(() => {
+    const onMsg = async (e) => {
+      if (e?.data?.type !== 'pulse:connected') return;
+      const platform = e.data.platform;
+      // Stop any in-flight poll to avoid duplicate sync/toast.
+      if (pollerRef.current?.platform === platform) {
+        clearInterval(pollerRef.current.poll);
+        try { pollerRef.current.popup?.close(); } catch {}
+        pollerRef.current = null;
+      }
+      try {
+        const synced = await api('/accounts/sync', { method: 'POST' });
+        setAccounts(synced.accounts || []);
+        const justConnected = (synced.new_accounts || []).find(a => a.platform === platform);
+        const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
+        if (justConnected) {
+          const label = PLATFORMS.find(p => p.id === platform)?.label || platform;
+          showToast(`${label} connected ✓`);
+          api('/analytics/refresh', { method: 'POST' }).catch(() => {});
+        } else if (!anyConnected) {
+          // OAuth round-tripped but Zernio didn't surface the account. Most
+          // common cause for Instagram: a personal IG profile (Pulse needs a
+          // Business or Creator account). Same for Facebook personal profiles.
+          showToast(
+            'OAuth completed but no account was returned. ' +
+            (platform === 'instagram' || platform === 'facebook'
+              ? 'Pulse needs a Business or Creator account — check your account type.'
+              : 'Check your account permissions and try again.'),
+            'warn'
+          );
+        }
+      } catch (err) { showToast(err.message, 'err'); }
+      setConnecting(null);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type });
@@ -3186,7 +3229,9 @@ const SettingsScreen = () => {
         'width=620,height=720,left=200,top=80'
       );
 
-      // Poll for successful connection every 2 seconds
+      // Poll for successful connection every 2 seconds. The poll is a fallback
+      // for when the popup's postMessage didn't reach us (popup blocked,
+      // window.close() blocked, user closed manually, etc.).
       let attempts = 0;
       const poll = setInterval(async () => {
         attempts++;
@@ -3223,6 +3268,9 @@ const SettingsScreen = () => {
           }
         } catch {}
       }, 2000);
+
+      // Save the poll handle so the postMessage handler can cancel it on success.
+      pollerRef.current = { poll, popup, platform: platformId };
 
     } catch (e) {
       showToast(e.message, 'err');
