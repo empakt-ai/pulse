@@ -110,42 +110,11 @@ export const ACTORS = {
     },
   },
 
-  youtube: {
-    posts: {
-      id: 'streamers~youtube-scraper',
-      timeout: 55,  // close to Vercel's 60s ceiling
-      input: (handle) => ({
-        startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
-        // Actor visits each video's detail page individually — slow on large
-        // channels like @mkbhd. Cap at 3 videos for sustainable cron runs;
-        // for richer competitor analysis users should use the manual sync
-        // endpoint with a longer timeout.
-        maxResults: 3,
-        downloadSubtitles: false,
-      }),
-      normaliseProfile: (items) => {
-        const first = items?.[0];
-        return {
-          followers: num(first?.numberOfSubscribers || first?.subscriberCount),
-          verified: false,
-          display_name: first?.channelName || null,
-        };
-      },
-      normalisePosts: (items) => (items || [])
-        .filter(it => it.id || it.videoId || it.url)
-        .map(it => ({
-          platform_post_id: String(it.id || it.videoId || it.url?.split('v=')[1] || ''),
-          post_type: 'video',
-          caption: it.title || null,
-          posted_at: it.uploadedAt || it.publishedAt || null,
-          views: num(it.viewCount) || 0,
-          likes: num(it.likes || it.likeCount) || 0,
-          comments: num(it.commentsCount || it.commentCount) || 0,
-          saves: 0, shares: 0,
-          raw_data: it,
-        })),
-    },
-  },
+  // YouTube: handled via direct Google Data API v3 in api/lib/youtube.js (Phase 5).
+  // The streamers/youtube-scraper Apify actor reliably times out for any
+  // channel above tiny size — even at maxResults=3 with 55s timeout. The
+  // official API is faster, free up to quota, and gives richer data.
+  // youtube: { ... },
 
   linkedin: {
     // harvestapi's LinkedIn profile scraper is one of the most reliable for
