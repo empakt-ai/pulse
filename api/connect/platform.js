@@ -2,7 +2,11 @@ import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
 
-const SUPPORTED = ['instagram', 'tiktok', 'youtube', 'facebook', 'linkedin', 'x', 'snapchat'];
+// NOTE: YouTube intentionally goes through the direct Google Data API
+// (api/_lib/youtube.js for competitors; a future Google OAuth flow for own
+// accounts), NOT Zernio. Don't add 'youtube' here — Zernio would try to OAuth
+// it and create a duplicate path we don't want.
+const SUPPORTED = ['instagram', 'tiktok', 'facebook', 'linkedin', 'x', 'snapchat'];
 
 function pickProfileId(res) {
   // Zernio shapes seen in the wild:

@@ -1620,6 +1620,20 @@ const sbAuth = {
     return data;
   },
 
+  // Exchange a refresh_token for a fresh access_token. Supabase access tokens
+  // expire after 1 hour; without this, anyone who left the tab open and came
+  // back gets logged out.
+  refresh: async (refreshToken) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ refresh_token: refreshToken })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Token refresh failed');
+    return data; // { access_token, refresh_token (new), expires_in, user }
+  },
+
   // Get session from localStorage
   getSession: () => {
     try {
@@ -1675,26 +1689,48 @@ const checkMagicLinkHash = async (onAuthed) => {
 };
 
 // ── Session restore on app load ───────────────────────────────────────────────
+// Verifies the saved access_token still works. If it's expired (very likely
+// after >1 hour idle), exchanges the refresh_token for a fresh access_token
+// before giving up. Only clears the session if the refresh also fails.
 const restoreSession = (onAuthed) => {
   const session = sbAuth.getSession();
-  if (session?.access_token) {
-    window.__pulseToken = session.access_token;
-    // Verify token is still valid
-    fetch(`${SUPABASE_URL}/auth/v1/user`, {
-      headers: {
-        'apikey':        SUPABASE_ANON,
-        'Authorization': `Bearer ${session.access_token}`
+  if (!session?.access_token) return false;
+
+  window.__pulseToken = session.access_token;
+
+  fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      'apikey':        SUPABASE_ANON,
+      'Authorization': `Bearer ${session.access_token}`
+    }
+  }).then(async r => {
+    if (r.ok) {
+      // Refresh user object too so user.created_at and metadata are current
+      const user = await r.json().catch(() => session.user);
+      onAuthed({ ...session, user });
+      return;
+    }
+    // Token rejected — try to refresh before clearing.
+    if (session.refresh_token) {
+      try {
+        const refreshed = await sbAuth.refresh(session.refresh_token);
+        sbAuth.saveSession(refreshed);
+        onAuthed(refreshed);
+        return;
+      } catch (e) {
+        // Refresh failed too — session is genuinely dead.
       }
-    }).then(r => {
-      if (r.ok) {
-        onAuthed(session);
-      } else {
-        sbAuth.clearSession();
-      }
-    }).catch(() => sbAuth.clearSession());
-    return true;
-  }
-  return false;
+    }
+    sbAuth.clearSession();
+  }).catch(async () => {
+    // Network error reaching Supabase /user. Don't nuke the session for a
+    // transient failure — keep it and let the next call retry. We do still
+    // signal "authed" with the cached session so the UI shows the app, not the
+    // landing page, during a flaky connection.
+    onAuthed(session);
+  });
+
+  return true;
 };
 
 // Export for use in app.jsx
@@ -3016,7 +3052,9 @@ const api = async (path, opts = {}) => {
 const PLATFORMS = [
   { id: 'instagram', label: 'Instagram',  icon: 'ig', color: '#D62976', note: 'Business or Creator account required' },
   { id: 'tiktok',    label: 'TikTok',     icon: 'tt', color: '#010101', note: 'Personal or Business account' },
-  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Direct Google API integration' },
+  // YouTube uses direct Google OAuth (not Zernio) — wiring is in progress.
+  // Until then, public competitor data still works via YOUTUBE_API_KEY.
+  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Direct Google integration coming soon', comingSoon: true },
   { id: 'facebook',  label: 'Facebook',   icon: 'fb', color: '#1877F2', note: 'Page required (not personal profile)' },
   { id: 'linkedin',  label: 'LinkedIn',   icon: 'li', color: '#0A66C2', note: 'Personal profile or Company page' },
   { id: 'x',         label: 'X / Twitter', icon: 'x', color: '#000',   note: 'Basic or higher API access needed' },
@@ -3063,6 +3101,13 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) =
         >
           Disconnect
         </button>
+      ) : platform.comingSoon ? (
+        <span
+          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark cursor-not-allowed"
+          title="Direct Google integration is being built"
+        >
+          <Icon name="clock" className="w-3.5 h-3.5" /> Coming soon
+        </span>
       ) : (
         <button
           onClick={() => onConnect(platform.id)}
@@ -3751,19 +3796,27 @@ function App() {
     D.user.plan = t.persona === 'agency' ? 'Agency' : t.persona === 'brand' ? 'Brand' : 'Creator';
   }, [t.persona]);
 
-  // Auth init — check magic link hash first, then localStorage
+  // Auth init — check magic link hash first, then localStorage.
+  // Returning users hitting a magic link should land in the app, not onboarding.
+  // The "new user" check (created within last 60s) gates the onboarding route.
   React.useEffect(() => {
+    const routeFor = (sess) => {
+      const createdAt = sess?.user?.created_at;
+      const isNew = createdAt && (Date.now() - new Date(createdAt).getTime()) < 60_000;
+      return isNew ? 'onboarding' : 'app';
+    };
+
     const init = async () => {
       if (window.location.hash.includes('access_token')) {
         const handled = await checkMagicLinkHash((sess) => {
           setSession(sess);
-          setRoute('onboarding');
+          setRoute(routeFor(sess));
         });
         if (handled) return;
       }
       const restored = restoreSession((sess) => {
         setSession(sess);
-        setRoute('app');
+        setRoute(routeFor(sess));
       });
       if (!restored) setRoute('landing');
     };
