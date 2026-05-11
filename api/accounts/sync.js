@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   const rows = list.map(a => ({
     workspace_id: ws.id,
     platform: a.platform || a.provider,
-    zernio_account_id: a.id || a.accountId,
+    zernio_account_id: a._id || a.id || a.accountId,
     platform_username: a.username || a.handle || a.name || null,
     platform_user_id: a.platformUserId || a.platform_user_id || a.userId || null,
     followers: a.followers ?? a.followerCount ?? null,

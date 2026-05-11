@@ -39,6 +39,10 @@ export const zernio = {
     return call(`/profiles/${profileId}`);
   },
 
+  async listProfiles() {
+    return call('/profiles');
+  },
+
   // Returns { authUrl } for the chosen platform
   async getConnectUrl(platform, profileId, redirectUrl) {
     const params = new URLSearchParams({ profileId });

@@ -4,10 +4,34 @@ import { zernio } from '../lib/zernio.js';
 
 const SUPPORTED = ['instagram', 'tiktok', 'youtube', 'facebook', 'linkedin', 'x', 'snapchat'];
 
+function pickProfileId(res) {
+  // Zernio shapes seen in the wild:
+  //   POST /profiles -> { message, profile: { _id, name, ... } }
+  //   GET  /profiles -> { profiles: [{ _id, name, ... }] }
+  const p = res?.profile || res;
+  return p?._id || p?.id || p?.profileId || null;
+}
+
 async function ensureProfile(workspace) {
   if (workspace.zernio_profile_id) return workspace.zernio_profile_id;
-  const profile = await zernio.createProfile(`pulse-${workspace.id}`);
-  const profileId = profile?.id || profile?.profileId || profile?.profile?.id;
+
+  const name = `pulse-${workspace.id}`;
+  let profileId = null;
+
+  try {
+    const created = await zernio.createProfile(name);
+    profileId = pickProfileId(created);
+  } catch (e) {
+    if (!/already exists/i.test(e.message)) throw e;
+  }
+
+  if (!profileId) {
+    const list = await zernio.listProfiles();
+    const profiles = list?.profiles || (Array.isArray(list) ? list : []);
+    const match = profiles.find(p => p.name === name);
+    profileId = match ? (match._id || match.id) : null;
+  }
+
   if (!profileId) throw new Error('Zernio did not return a profile id');
   await supabase.update('workspaces', { zernio_profile_id: profileId }, { eq: { id: workspace.id } });
   return profileId;
