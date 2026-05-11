@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const accounts = await supabase.select('connected_accounts', {
     select: '*',
     eq: { workspace_id: auth.workspace.id },
-    order: 'created_at.asc',
+    order: 'connected_at.asc',
   }).catch(() => []);
 
   return json(res, 200, { accounts: accounts || [] });

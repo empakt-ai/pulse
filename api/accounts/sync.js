@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   const accounts = await supabase.select('connected_accounts', {
     select: '*',
     eq: { workspace_id: ws.id },
-    order: 'created_at.asc',
+    order: 'connected_at.asc',
   }).catch(() => saved);
 
   // Newly-inserted accounts (i.e. just connected on this sync call)
