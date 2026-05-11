@@ -113,12 +113,10 @@ export const ACTORS = {
   youtube: {
     posts: {
       id: 'streamers~youtube-scraper',
-      timeout: 45,
+      timeout: 50,  // bumped from 45 — actor crawls per-video pages, slow on large channels
       input: (handle) => ({
         startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
-        maxResults: 12,
-        // Don't request subtitles — keeps cost down and avoids subtitlesLanguage
-        // validation (actor only accepts 'any'/'en'/'de'/'es'/'fr'/'it').
+        maxResults: 6,  // dropped from 12 — each video's detail page adds ~5s; 6 fits comfortably in 50s
         downloadSubtitles: false,
       }),
       normaliseProfile: (items) => {
@@ -146,54 +144,33 @@ export const ACTORS = {
   },
 
   linkedin: {
-    // LinkedIn is heavily protected. apimaestro's actor handles auth + proxy.
-    // Handles personal profiles (linkedin.com/in/USERNAME) and company pages.
+    // harvestapi's LinkedIn profile scraper is one of the most reliable for
+    // public profiles. Handles linkedin.com/in/USERNAME URLs.
     profile: {
-      id: 'apimaestro~linkedin-profile-detail',
+      id: 'harvestapi~linkedin-profile-scraper',
       timeout: 45,
       input: (handle) => {
         const h = handle.replace(/^@/, '');
-        const url = h.startsWith('http')
-          ? h
-          : `https://www.linkedin.com/in/${h}/`;
-        return { username: h, profileUrls: [url] };
+        const url = h.startsWith('http') ? h : `https://www.linkedin.com/in/${h}/`;
+        return { profileUrls: [url] };
       },
       normalise: (items) => {
         const p = items?.[0];
         if (!p) return null;
         return {
-          followers: num(p.followers || p.followerCount || p.connections),
+          followers: num(p.followers || p.followersCount || p.connections || p.connectionsCount),
           verified: false,
-          display_name: p.fullName || p.name || p.firstName + ' ' + p.lastName || null,
-          bio: p.headline || p.about || null,
+          display_name: p.fullName || p.name || (p.firstName ? `${p.firstName} ${p.lastName || ''}`.trim() : null),
+          bio: p.headline || p.about || p.summary || null,
         };
       },
     },
-    // No reliable, cheap posts actor for LinkedIn public timeline — skip.
   },
 
-  snapchat: {
-    // Snapchat public profiles expose limited data (display name, score, story
-    // highlights). This actor scrapes snapchat.com/add/USERNAME public pages.
-    profile: {
-      id: 'epctex~snapchat-scraper',
-      timeout: 30,
-      input: (handle) => ({
-        startUrls: [{ url: `https://www.snapchat.com/add/${handle.replace(/^@/, '')}` }],
-        maxItems: 1,
-      }),
-      normalise: (items) => {
-        const p = items?.[0];
-        if (!p) return null;
-        return {
-          followers: num(p.subscriberCount || p.followers || p.subscribers),
-          verified: !!(p.verified || p.officialAccount),
-          display_name: p.displayName || p.title || null,
-          bio: p.bio || p.description || null,
-        };
-      },
-    },
-  },
+  // Snapchat: no reliable public Apify actor with the names we tried. Tell us
+  // the actor slug you've enabled and we'll wire it. Until then, snapchat
+  // competitors are added to the DB but not scraped.
+  // snapchat: { ... },
 
   facebook: {
     profile: {
