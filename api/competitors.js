@@ -1,6 +1,15 @@
-import { authenticate, json } from '../lib/auth.js';
-import { supabase } from '../lib/supabase.js';
-import { checkCompetitorCap } from '../lib/tiers.js';
+// Consolidated competitors endpoint (merged to stay under Vercel Hobby's
+// 12-function deployment limit).
+//
+//   GET  /api/competitors                      → list competitors
+//   POST /api/competitors  {platform, handle}  → add
+//   POST /api/competitors  {action: 'sync'}    → trigger Apify scrape
+//   DELETE /api/competitors?id=...             → soft-delete (is_active=false)
+
+import { authenticate, json } from './lib/auth.js';
+import { supabase } from './lib/supabase.js';
+import { checkCompetitorCap } from './lib/tiers.js';
+import { syncCompetitorsForWorkspace } from './lib/competitor-sync.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -12,7 +21,7 @@ export default async function handler(req, res) {
     const rows = await supabase.select('competitors', {
       select: '*',
       eq: { workspace_id: ws.id },
-      order: 'created_at.desc',
+      order: 'added_at.desc',
     }).catch(() => []);
     return json(res, 200, { competitors: rows || [] });
   }
@@ -20,6 +29,18 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
+
+    // Sync mode — Apify scrape all active competitors
+    if (body?.action === 'sync') {
+      try {
+        const result = await syncCompetitorsForWorkspace(ws, { force: !!body.force });
+        return json(res, 200, result);
+      } catch (e) {
+        return json(res, 500, { error: e.message });
+      }
+    }
+
+    // Add mode
     const { platform, handle, display_name } = body || {};
     if (!platform || !handle) return json(res, 400, { error: 'platform and handle are required' });
 
