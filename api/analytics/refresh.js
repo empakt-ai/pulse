@@ -2,6 +2,7 @@ import { authenticate, json } from '../lib/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { zernio } from '../lib/zernio.js';
 import { checkUsageCap } from '../lib/tiers.js';
+import { generateBrief } from '../lib/intelligence.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -138,11 +139,23 @@ export default async function handler(req, res) {
     }).catch(() => {});
   }
 
+  // Tail: regenerate the AI brief if we have fresh data. Best-effort —
+  // if Anthropic is down or out-of-budget we still return refresh success.
+  let brief = null;
+  if (totalPosts > 0) {
+    try {
+      brief = await generateBrief(ws);
+    } catch (e) {
+      brief = { error: e.message };
+    }
+  }
+
   return json(res, 200, {
     refreshed: accounts.length - failures.length,
     posts: totalPosts,
     failures,
     used: cap.used + accounts.length,
     limit: cap.limit,
+    brief,
   });
 }

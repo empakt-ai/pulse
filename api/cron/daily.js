@@ -7,6 +7,7 @@
 import { supabase } from '../lib/supabase.js';
 import { zernio } from '../lib/zernio.js';
 import { json } from '../lib/auth.js';
+import { generateBrief } from '../lib/intelligence.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -131,7 +132,17 @@ async function refreshWorkspace(ws) {
     }).catch(() => {});
   }
 
-  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts };
+  // Generate the AI brief at the tail. Best-effort.
+  let brief = null;
+  if (totalPosts > 0) {
+    try {
+      brief = await generateBrief(ws);
+    } catch (e) {
+      brief = { error: e.message };
+    }
+  }
+
+  return { workspace_id: ws.id, accounts: accounts.length, posts: totalPosts, brief };
 }
 
 export default async function handler(req, res) {

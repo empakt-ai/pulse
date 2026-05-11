@@ -128,23 +128,53 @@ export default async function handler(req, res) {
     })),
     posts: topPosts,
     snapshots: snapshots || [],
-    signals: (signals || []).map(s => ({
-      id: s.id,
-      kind: s.kind,
-      platform: s.platform === 'all' ? 'all' : platformKey(s.platform),
-      label: s.title,
-      title: s.title,
-      body: s.body,
-      impact: s.impact || 'Strategic',
-      action: s.action || 'Review',
-    })),
-    intelScore: ws.intel_score || null, // Phase 3 will compute & store this
+    // Segregate signals by kind. Verdict + actions live in signals table with
+    // custom kinds; everything else is the stream the Intel screen renders.
+    verdict: (() => {
+      const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
+      if (!v) return null;
+      return {
+        title: v.title, body: v.body,
+        generated_at: v.metadata?.generated_at || v.generated_at,
+        model: v.metadata?.model,
+        score_factors: v.metadata?.score_factors || [],
+      };
+    })(),
+    todayActions: (signals || [])
+      .filter(s => s.kind === 'action' && !s.is_read)
+      .sort((a, b) => (a.metadata?.order || 0) - (b.metadata?.order || 0))
+      .slice(0, 3)
+      .map((a, i) => ({
+        id: `a${i + 1}`,
+        when: a.metadata?.when || a.impact || 'Today',
+        urgency: i === 0 ? 'urgent' : i === 1 ? 'schedule' : 'optional',
+        icon: a.metadata?.icon || 'sparkle',
+        title: a.title,
+        body: a.body,
+        cta: a.action,
+      })),
+    signals: (signals || [])
+      .filter(s => s.kind !== 'verdict' && s.kind !== 'action' && !s.is_read)
+      .map(s => ({
+        id: s.id,
+        kind: s.kind,
+        platform: s.platform === 'all' ? 'all' : platformKey(s.platform),
+        label: s.title,
+        title: s.title,
+        body: s.body,
+        impact: s.impact || 'Strategic',
+        action: s.action || 'Review',
+      })),
+    intelScore: (() => {
+      const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
+      return v?.metadata?.intel_score || null;
+    })(),
     lastSync,
     heatmap: buildHeatmap(ownPosts),
     state: {
       hasAccounts: (accounts || []).length > 0,
       hasPosts: ownPosts.length > 0,
-      hasSignals: (signals || []).length > 0,
+      hasSignals: (signals || []).some(s => s.kind === 'verdict' && !s.is_read),
     },
   });
 }
