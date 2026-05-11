@@ -117,7 +117,9 @@ export const ACTORS = {
       input: (handle) => ({
         startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
         maxResults: 12,
-        subtitlesLanguage: 'none',
+        // Don't request subtitles — keeps cost down and avoids subtitlesLanguage
+        // validation (actor only accepts 'any'/'en'/'de'/'es'/'fr'/'it').
+        downloadSubtitles: false,
       }),
       normaliseProfile: (items) => {
         const first = items?.[0];
