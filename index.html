@@ -3373,6 +3373,115 @@ Object.assign(window, { SettingsScreen });
 
 </script>
 <script type="text/babel">
+// Pulse Live Data — hydrate the global D object from /api/brief
+// Strategy: keep the prototype's screens reading from D unchanged; instead,
+// fetch real data once and Object.assign it onto D, then bump a remount key.
+
+// Initials from a name/email
+const initialsOf = (s) => {
+  if (!s) return 'PU';
+  const parts = String(s).split(/[ @._-]+/).filter(Boolean);
+  return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || 'PU';
+};
+
+// Format a "last sync" timestamp into "Today, 06:04" / "2 hrs ago"
+const formatSync = (iso) => {
+  if (!iso) return '—';
+  const then = new Date(iso);
+  const now = new Date();
+  const mins = Math.floor((now - then) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  return then.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+
+// Map /api/brief response onto the prototype's D shape.
+const hydrateD = (brief) => {
+  if (!brief) return;
+  const u = brief.user || {};
+  const a = brief.accountSummary || {};
+
+  // User block
+  D.user = {
+    name: u.name || u.email?.split('@')[0] || 'You',
+    initials: initialsOf(u.name || u.email),
+    handle: u.email?.split('@')[0] || 'pulse',
+    location: '',
+    plan: brief.tier?.label || 'Creator',
+  };
+
+  // Workspace label
+  D.workspace = brief.workspace?.name || 'Workspace';
+
+  // Sync timings
+  D.lastSync = formatSync(brief.lastSync);
+  D.nextSync = 'Tomorrow, 06:00';
+
+  // Accounts — preserve any platforms not in the live data (so dark mode tests
+  // with partial connections don't crash on D.accounts.ig.followers etc.)
+  const empty = (label) => ({ handle: '—', name: label, followers: 0, posts: 0, totalViews4W: 0, engRate4W: 0, avgViews: 0, totalPlays: 0, subs: 0, videos: 0, totalViews: 0, connections: 0 });
+  D.accounts = {
+    ig: a.ig ? { handle: a.ig.handle, followers: a.ig.followers, posts: a.ig.posts, totalViews4W: a.ig.totalViews4W, engRate4W: a.ig.avgEngRate, avgViews: a.ig.avgViews } : empty('Instagram'),
+    tt: a.tt ? { handle: a.tt.handle, followers: a.tt.followers, videos: a.tt.posts, totalPlays: a.tt.totalViews4W } : empty('TikTok'),
+    yt: a.yt ? { name: a.yt.handle || a.yt.name, subs: a.yt.followers, videos: a.yt.posts, totalViews: a.yt.totalViews4W } : empty('YouTube'),
+    li: a.li ? { name: a.li.handle || a.li.name, connections: a.li.followers, posts: a.li.posts } : empty('LinkedIn'),
+    fb: a.fb ? { name: a.fb.handle || a.fb.name, followers: a.fb.followers, posts: a.fb.posts } : empty('Facebook'),
+  };
+
+  // Posts, signals, competitors — Phase 3 fills in signals beyond what's in DB
+  if (brief.posts?.length) D.posts = brief.posts;
+  if (brief.signals?.length) D.signals = brief.signals;
+  if (brief.competitors?.length) D.competitors = brief.competitors;
+  if (brief.heatmap?.length) D.heatmap = brief.heatmap;
+  if (typeof brief.intelScore === 'number') D.intelScore = brief.intelScore;
+};
+
+// Empty-state UI (no accounts connected yet)
+const EmptyDashboardCTA = ({ onGoToSettings }) => (
+  <div className="max-w-2xl mx-auto px-5 sm:px-8 py-16 sm:py-24 text-center">
+    <div className="w-16 h-16 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-6">
+      <Icon name="sparkle" className="w-7 h-7" />
+    </div>
+    <Eyebrow color="text-ultra">Let's start</Eyebrow>
+    <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+      Connect your first account.
+    </h1>
+    <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8">
+      PULSE generates your daily intelligence brief from your real social data.
+      Connect Instagram, TikTok, YouTube, or any other platform to get started.
+    </p>
+    <Btn variant="ink" size="lg" onClick={onGoToSettings}>
+      Go to Settings <Icon name="arrowRight" className="w-4 h-4" />
+    </Btn>
+  </div>
+);
+
+// Loading-state UI (account connected, first brief still generating)
+const BriefGenerating = ({ onGoToSettings }) => (
+  <div className="max-w-2xl mx-auto px-5 sm:px-8 py-16 sm:py-24 text-center">
+    <div className="w-16 h-16 mx-auto rounded-2xl bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-6">
+      <div className="w-7 h-7 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+    </div>
+    <Eyebrow color="text-lime">Working on it</Eyebrow>
+    <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+      Your first brief is generating.
+    </h1>
+    <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8">
+      We're pulling the last 30 days from your connected accounts. This usually
+      takes 30–60 seconds. Refresh this page in a moment.
+    </p>
+    <Btn variant="outline" size="md" onClick={onGoToSettings}>
+      Connect more accounts
+    </Btn>
+  </div>
+);
+
+Object.assign(window, { hydrateD, EmptyDashboardCTA, BriefGenerating });
+
+</script>
+<script type="text/babel">
 // Pulse App — root routing + Supabase auth wired
 
 const DEFAULTS = /*EDITMODE-BEGIN*/{
@@ -3391,6 +3500,32 @@ function App() {
   const [t, setTweak]                   = useTweaks(DEFAULTS);
   const [showTweaks, setShowTweaks]     = React.useState(false);
   const [session, setSession]           = React.useState(null);
+  const [briefData, setBriefData]       = React.useState(null);
+  const [dataKey, setDataKey]           = React.useState(0);  // remount trigger
+
+  // Fetch the live brief whenever the user is in the app tab.
+  const refreshBrief = React.useCallback(async () => {
+    if (!window.__pulseToken) return;
+    try {
+      const data = await fetch('/api/brief', {
+        headers: { 'Authorization': `Bearer ${window.__pulseToken}` }
+      }).then(r => r.json());
+      if (!data?.error) {
+        hydrateD(data);
+        setBriefData(data);
+        setDataKey(k => k + 1);
+      }
+    } catch (e) { /* silent — empty state will render */ }
+  }, []);
+
+  React.useEffect(() => {
+    if (route === 'app') refreshBrief();
+  }, [route, refreshBrief]);
+
+  // Refetch when switching to a dashboard tab (catches data that arrived during connect)
+  React.useEffect(() => {
+    if (route === 'app' && tab !== 'Settings') refreshBrief();
+  }, [tab, route, refreshBrief]);
 
   React.useEffect(() => {
     document.documentElement.classList.toggle('dark', t.theme === 'dark');
@@ -3510,7 +3645,27 @@ function App() {
             activePlatform={activePlatform}
             setActivePlatform={setActivePlatform}
           />
-          <div key={tab} className="fade-up">{screens[tab]}</div>
+          <div key={`${tab}-${dataKey}`} className="fade-up">
+            {(() => {
+              // Settings always renders (it's how you connect accounts in the first place)
+              if (tab === 'Settings') return screens.Settings;
+              // Brief still loading
+              if (!briefData) return (
+                <div className="max-w-2xl mx-auto px-5 py-24 text-center">
+                  <div className="w-8 h-8 mx-auto border-2 border-ink/20 dark:border-paper/20 border-t-ink dark:border-t-paper rounded-full animate-spin" />
+                </div>
+              );
+              // No accounts connected yet
+              if (!briefData.state?.hasAccounts) {
+                return <EmptyDashboardCTA onGoToSettings={() => setTab('Settings')} />;
+              }
+              // Accounts connected, first refresh still cooking
+              if (!briefData.state?.hasPosts) {
+                return <BriefGenerating onGoToSettings={() => setTab('Settings')} />;
+              }
+              return screens[tab];
+            })()}
+          </div>
           <MobileNav active={tab} setActive={setTab} />
         </div>
       )}
