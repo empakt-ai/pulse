@@ -1,146 +1,307 @@
-// Apify wrapper — uses the sync-get-dataset-items endpoint so we get results
-// in one request. maxItems is hard-capped per actor so a single competitor
-// scrape never exceeds ~$0.05 and ~40 seconds.
+// Apify wrapper — per-platform actor configs. Each platform can have a
+// "profile" actor (returns followers/bio/verification) and a "posts" actor
+// (returns recent posts). competitor-sync calls both when present and merges.
+//
+// All actors use the sync-get-dataset-items endpoint so results return in one
+// request. Hard-capped resultsLimit + actor timeout to bound cost/time.
 
 const BASE = 'https://api.apify.com/v2';
 const KEY = process.env.APIFY_API_KEY;
 
 if (!KEY) console.warn('[apify] APIFY_API_KEY missing — competitor scraping disabled');
 
-// Per-platform actor + input + output normaliser. Public, well-known actors.
-//   input(handle) builds the actor input
-//   normaliseProfile(items) extracts a profile-level summary (followers, etc.)
-//   normalisePosts(items) maps each item to our posts table shape
-//
-// Apify outputs vary considerably between actors — keep the normalisers
-// defensive (multiple fallback fields), and let the caller filter empty rows.
+// Helper: defensive number extraction (handles null/undefined/strings like "1.2M")
+const num = (v) => {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    const s = v.replace(/,/g, '');
+    if (/^\d+(\.\d+)?[KMB]$/i.test(s)) {
+      const mult = { K: 1e3, M: 1e6, B: 1e9 }[s.slice(-1).toUpperCase()];
+      return Math.round(parseFloat(s) * mult);
+    }
+    const n = parseFloat(s);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+};
+
 export const ACTORS = {
   instagram: {
-    id: 'apify~instagram-scraper',
-    timeout: 45,
-    input: (handle) => ({
-      directUrls: [`https://www.instagram.com/${handle.replace(/^@/, '')}/`],
-      resultsType: 'posts',
-      resultsLimit: 12,
-      addParentData: false,
-    }),
-    normaliseProfile: (items) => {
-      const first = items?.[0];
-      return {
-        followers: first?.ownerFollowersCount || first?.followersCount || null,
-        verified: !!(first?.ownerIsVerified || first?.isVerified),
-        display_name: first?.ownerFullName || first?.fullName || null,
-      };
+    profile: {
+      id: 'apify~instagram-profile-scraper',
+      timeout: 30,
+      input: (handle) => ({
+        usernames: [handle.replace(/^@/, '')],
+        resultsLimit: 1,
+      }),
+      normalise: (items) => {
+        const p = items?.[0];
+        if (!p) return null;
+        return {
+          followers: num(p.followersCount || p.followers),
+          following: num(p.followsCount || p.following),
+          verified: !!(p.verified || p.isVerified),
+          display_name: p.fullName || p.name || null,
+          bio: p.biography || p.bio || null,
+          posts_count: num(p.postsCount),
+        };
+      },
     },
-    normalisePosts: (items) => (items || []).map(it => ({
-      platform_post_id: String(it.id || it.shortCode || it.url || ''),
-      post_type: it.type || it.productType || 'post',
-      caption: it.caption || it.text || null,
-      posted_at: it.timestamp || it.takenAtTimestamp || null,
-      views: Number(it.videoViewCount || it.videoPlayCount || it.viewCount || 0),
-      likes: Number(it.likesCount || it.likeCount || 0),
-      comments: Number(it.commentsCount || it.commentCount || 0),
-      saves: 0, // Instagram public API doesn't expose saves
-      shares: 0,
-      raw_data: it,
-    })),
+    posts: {
+      id: 'apify~instagram-scraper',
+      timeout: 45,
+      input: (handle) => ({
+        directUrls: [`https://www.instagram.com/${handle.replace(/^@/, '')}/`],
+        resultsType: 'posts',
+        resultsLimit: 12,
+        addParentData: false,
+      }),
+      normalisePosts: (items) => (items || [])
+        .filter(it => !it.error && it.id)
+        .map(it => ({
+          platform_post_id: String(it.id || it.shortCode || it.url || ''),
+          post_type: it.type || it.productType || 'post',
+          caption: it.caption || it.text || null,
+          posted_at: it.timestamp || it.takenAtTimestamp || null,
+          views: num(it.videoViewCount || it.videoPlayCount || it.viewCount) || 0,
+          likes: num(it.likesCount || it.likeCount) || 0,
+          comments: num(it.commentsCount || it.commentCount) || 0,
+          saves: 0, shares: 0,
+          raw_data: it,
+        })),
+    },
   },
 
   tiktok: {
-    id: 'clockworks~tiktok-scraper',
-    timeout: 45,
-    input: (handle) => ({
-      profiles: [handle.replace(/^@/, '')],
-      resultsPerPage: 12,
-      shouldDownloadVideos: false,
-      shouldDownloadCovers: false,
-    }),
-    normaliseProfile: (items) => {
-      const first = items?.[0];
-      const author = first?.authorMeta || first?.author || {};
-      return {
-        followers: author.fans || author.followerCount || first?.fans || null,
-        verified: !!author.verified,
-        display_name: author.nickName || author.name || null,
-      };
+    // TikTok scraper returns profile + posts in one shot via the same actor.
+    posts: {
+      id: 'clockworks~tiktok-scraper',
+      timeout: 45,
+      input: (handle) => ({
+        profiles: [handle.replace(/^@/, '')],
+        resultsPerPage: 12,
+        shouldDownloadVideos: false,
+        shouldDownloadCovers: false,
+      }),
+      normaliseProfile: (items) => {
+        const first = items?.[0];
+        const author = first?.authorMeta || first?.author || {};
+        return {
+          followers: num(author.fans || author.followerCount),
+          verified: !!author.verified,
+          display_name: author.nickName || author.name || null,
+        };
+      },
+      normalisePosts: (items) => (items || [])
+        .filter(it => it.id || it.videoId)
+        .map(it => ({
+          platform_post_id: String(it.id || it.videoId || ''),
+          post_type: 'video',
+          caption: it.text || it.desc || null,
+          posted_at: it.createTime ? new Date(it.createTime * 1000).toISOString() : (it.createTimeISO || null),
+          views: num(it.playCount || it.viewCount) || 0,
+          likes: num(it.diggCount || it.likeCount) || 0,
+          comments: num(it.commentCount) || 0,
+          saves: num(it.collectCount) || 0,
+          shares: num(it.shareCount) || 0,
+          raw_data: it,
+        })),
     },
-    normalisePosts: (items) => (items || []).map(it => ({
-      platform_post_id: String(it.id || it.videoId || ''),
-      post_type: 'video',
-      caption: it.text || it.desc || null,
-      posted_at: it.createTime ? new Date(it.createTime * 1000).toISOString() : (it.createTimeISO || null),
-      views: Number(it.playCount || it.viewCount || 0),
-      likes: Number(it.diggCount || it.likeCount || 0),
-      comments: Number(it.commentCount || 0),
-      saves: Number(it.collectCount || 0),
-      shares: Number(it.shareCount || 0),
-      raw_data: it,
-    })),
   },
 
   youtube: {
-    id: 'streamers~youtube-scraper',
-    timeout: 45,
-    input: (handle) => ({
-      startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
-      maxResults: 12,
-      subtitlesLanguage: 'none',
-    }),
-    normaliseProfile: (items) => {
-      const first = items?.[0];
-      return {
-        followers: first?.numberOfSubscribers || first?.subscriberCount || null,
-        verified: false,
-        display_name: first?.channelName || null,
-      };
+    posts: {
+      id: 'streamers~youtube-scraper',
+      timeout: 45,
+      input: (handle) => ({
+        startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
+        maxResults: 12,
+        subtitlesLanguage: 'none',
+      }),
+      normaliseProfile: (items) => {
+        const first = items?.[0];
+        return {
+          followers: num(first?.numberOfSubscribers || first?.subscriberCount),
+          verified: false,
+          display_name: first?.channelName || null,
+        };
+      },
+      normalisePosts: (items) => (items || [])
+        .filter(it => it.id || it.videoId || it.url)
+        .map(it => ({
+          platform_post_id: String(it.id || it.videoId || it.url?.split('v=')[1] || ''),
+          post_type: 'video',
+          caption: it.title || null,
+          posted_at: it.uploadedAt || it.publishedAt || null,
+          views: num(it.viewCount) || 0,
+          likes: num(it.likes || it.likeCount) || 0,
+          comments: num(it.commentsCount || it.commentCount) || 0,
+          saves: 0, shares: 0,
+          raw_data: it,
+        })),
     },
-    normalisePosts: (items) => (items || []).map(it => ({
-      platform_post_id: String(it.id || it.videoId || it.url?.split('v=')[1] || ''),
-      post_type: 'video',
-      caption: it.title || null,
-      posted_at: it.uploadedAt || it.publishedAt || null,
-      views: Number(it.viewCount || 0),
-      likes: Number(it.likes || it.likeCount || 0),
-      comments: Number(it.commentsCount || it.commentCount || 0),
-      saves: 0,
-      shares: 0,
-      raw_data: it,
-    })),
+  },
+
+  linkedin: {
+    // LinkedIn is heavily protected. apimaestro's actor handles auth + proxy.
+    // Handles personal profiles (linkedin.com/in/USERNAME) and company pages.
+    profile: {
+      id: 'apimaestro~linkedin-profile-detail',
+      timeout: 45,
+      input: (handle) => {
+        const h = handle.replace(/^@/, '');
+        const url = h.startsWith('http')
+          ? h
+          : `https://www.linkedin.com/in/${h}/`;
+        return { username: h, profileUrls: [url] };
+      },
+      normalise: (items) => {
+        const p = items?.[0];
+        if (!p) return null;
+        return {
+          followers: num(p.followers || p.followerCount || p.connections),
+          verified: false,
+          display_name: p.fullName || p.name || p.firstName + ' ' + p.lastName || null,
+          bio: p.headline || p.about || null,
+        };
+      },
+    },
+    // No reliable, cheap posts actor for LinkedIn public timeline — skip.
+  },
+
+  snapchat: {
+    // Snapchat public profiles expose limited data (display name, score, story
+    // highlights). This actor scrapes snapchat.com/add/USERNAME public pages.
+    profile: {
+      id: 'epctex~snapchat-scraper',
+      timeout: 30,
+      input: (handle) => ({
+        startUrls: [{ url: `https://www.snapchat.com/add/${handle.replace(/^@/, '')}` }],
+        maxItems: 1,
+      }),
+      normalise: (items) => {
+        const p = items?.[0];
+        if (!p) return null;
+        return {
+          followers: num(p.subscriberCount || p.followers || p.subscribers),
+          verified: !!(p.verified || p.officialAccount),
+          display_name: p.displayName || p.title || null,
+          bio: p.bio || p.description || null,
+        };
+      },
+    },
+  },
+
+  facebook: {
+    profile: {
+      id: 'apify~facebook-pages-scraper',
+      timeout: 45,
+      input: (handle) => ({
+        startUrls: [{ url: `https://www.facebook.com/${handle.replace(/^@/, '')}` }],
+        resultsLimit: 1,
+      }),
+      normalise: (items) => {
+        const p = items?.[0];
+        if (!p) return null;
+        return {
+          followers: num(p.followers || p.likes),
+          verified: !!p.verified,
+          display_name: p.title || p.name || null,
+        };
+      },
+    },
+  },
+
+  x: {
+    profile: {
+      id: 'apidojo~twitter-user-scraper',
+      timeout: 30,
+      input: (handle) => ({
+        usernames: [handle.replace(/^@/, '')],
+      }),
+      normalise: (items) => {
+        const p = items?.[0];
+        if (!p) return null;
+        return {
+          followers: num(p.followers_count || p.followers),
+          verified: !!(p.verified || p.is_blue_verified),
+          display_name: p.name || null,
+          bio: p.description || null,
+        };
+      },
+    },
   },
 };
 
-// Run an actor synchronously and return its dataset items. Throws on actor
-// failure or HTTP error.
+// Internal: run a single actor and return its parsed dataset items.
+async function callActor(actorId, input, timeout = 45, signal) {
+  const url = `${BASE}/acts/${actorId}/run-sync-get-dataset-items?token=${KEY}&timeout=${timeout}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(`Apify ${actorId} ${res.status}: ${text.slice(0, 200)}`);
+    err.status = res.status;
+    err.actor = actorId;
+    throw err;
+  }
+  const items = await res.json();
+  return Array.isArray(items) ? items : [];
+}
+
+// Public: run all configured actors for the platform/handle and return a merged
+// { profile, posts, items } shape. Posts actor is always preferred for posts;
+// profile metadata comes from whichever actor provides it (profile > posts).
 export async function runActor(platform, handle, opts = {}) {
   const cfg = ACTORS[platform];
   if (!cfg) throw new Error(`No Apify actor configured for platform: ${platform}`);
 
-  const url = `${BASE}/acts/${cfg.id}/run-sync-get-dataset-items?token=${KEY}&timeout=${cfg.timeout}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(cfg.input(handle)),
-    signal: opts.signal,
-  });
+  let profile = null;
+  let posts = [];
+  let postsActorItems = [];
+  const errors = [];
 
-  if (!res.ok) {
-    const text = await res.text();
-    const err = new Error(`Apify ${platform} run failed: ${res.status} ${text.slice(0, 200)}`);
-    err.status = res.status;
-    throw err;
+  // 1) Profile actor (if configured) — for follower count + bio
+  if (cfg.profile) {
+    try {
+      const items = await callActor(cfg.profile.id, cfg.profile.input(handle), cfg.profile.timeout, opts.signal);
+      profile = cfg.profile.normalise(items);
+    } catch (e) {
+      errors.push({ actor: cfg.profile.id, error: e.message });
+    }
   }
 
-  // Body is a JSON array of dataset items (Apify sync format)
-  const items = await res.json();
+  // 2) Posts actor (if configured) — for recent posts + sometimes profile too
+  if (cfg.posts) {
+    try {
+      postsActorItems = await callActor(cfg.posts.id, cfg.posts.input(handle), cfg.posts.timeout, opts.signal);
+      posts = cfg.posts.normalisePosts ? cfg.posts.normalisePosts(postsActorItems) : [];
+      // Some posts actors also surface profile data (e.g. TikTok). Use it if
+      // the dedicated profile actor wasn't configured or didn't return anything.
+      if ((!profile || profile.followers == null) && cfg.posts.normaliseProfile) {
+        const fromPosts = cfg.posts.normaliseProfile(postsActorItems);
+        profile = { ...(profile || {}), ...(fromPosts || {}) };
+      }
+    } catch (e) {
+      errors.push({ actor: cfg.posts.id, error: e.message });
+    }
+  }
+
   return {
-    items: Array.isArray(items) ? items : [],
-    profile: cfg.normaliseProfile(items),
-    posts: cfg.normalisePosts(items),
+    profile: profile || {},
+    posts: posts || [],
+    items: postsActorItems,
+    errors,
   };
 }
 
-// Apify costs vary per actor — return a rough estimate in cents for usage_log.
-// These are conservative defaults; actual is on the Apify invoice.
+// Rough cost estimate (cents) — sum of actors that ran for this platform.
 export function estimateScrapeCost(platform) {
-  return { instagram: 5, tiktok: 4, youtube: 3 }[platform] || 5;
+  const base = { instagram: 6, tiktok: 4, youtube: 3, linkedin: 8, snapchat: 4, facebook: 4, x: 3 };
+  return base[platform] || 5;
 }
