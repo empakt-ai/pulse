@@ -333,6 +333,67 @@ const platformBrand = { ig: '#D62976', tt: '#010101', yt: '#FF0000', li: '#0A66C
 
 Object.assign(window, { D, formatNum, platformLabel, platformBrand });
 
+// Canonical lookup tables shared by Onboarding + Settings.
+// Each entry is [id, label] — id is what gets persisted, label is what's shown.
+// Add to these lists in one place and both flows update automatically.
+
+const CATEGORIES = [
+  ['music', 'Music / Culture'],
+  ['ecommerce', 'Ecommerce / Retail'],
+  ['food', 'Food & Beverage'],
+  ['fashion', 'Fashion & Beauty'],
+  ['tech', 'Tech / SaaS'],
+  ['realestate', 'Real Estate'],
+  ['education', 'Education'],
+  ['health', 'Health & Wellness'],
+  ['finance', 'Finance & Business'],
+  ['entertainment', 'Entertainment'],
+  ['other', 'Other'],
+];
+
+const COUNTRIES = [
+  ['GLOBAL', '🌍 Global / Multi-region'],
+  ['CA', 'Canada'], ['US', 'United States'], ['GB', 'United Kingdom'],
+  ['SA', 'Saudi Arabia'], ['AE', 'United Arab Emirates'], ['KW', 'Kuwait'],
+  ['QA', 'Qatar'], ['BH', 'Bahrain'], ['OM', 'Oman'],
+  ['EG', 'Egypt'], ['JO', 'Jordan'], ['LB', 'Lebanon'], ['IL', 'Israel'], ['TR', 'Turkey'],
+  ['PK', 'Pakistan'], ['IN', 'India'], ['BD', 'Bangladesh'], ['LK', 'Sri Lanka'],
+  ['ID', 'Indonesia'], ['MY', 'Malaysia'], ['SG', 'Singapore'], ['PH', 'Philippines'],
+  ['TH', 'Thailand'], ['VN', 'Vietnam'],
+  ['JP', 'Japan'], ['KR', 'South Korea'], ['CN', 'China'], ['HK', 'Hong Kong'], ['TW', 'Taiwan'],
+  ['AU', 'Australia'], ['NZ', 'New Zealand'],
+  ['DE', 'Germany'], ['FR', 'France'], ['ES', 'Spain'], ['IT', 'Italy'],
+  ['NL', 'Netherlands'], ['BE', 'Belgium'], ['CH', 'Switzerland'], ['AT', 'Austria'],
+  ['SE', 'Sweden'], ['NO', 'Norway'], ['DK', 'Denmark'], ['FI', 'Finland'], ['IE', 'Ireland'],
+  ['PL', 'Poland'], ['PT', 'Portugal'], ['GR', 'Greece'],
+  ['MX', 'Mexico'], ['BR', 'Brazil'], ['AR', 'Argentina'], ['CL', 'Chile'],
+  ['CO', 'Colombia'], ['PE', 'Peru'],
+  ['ZA', 'South Africa'], ['NG', 'Nigeria'], ['KE', 'Kenya'], ['GH', 'Ghana'],
+  ['MA', 'Morocco'], ['TN', 'Tunisia'], ['DZ', 'Algeria'],
+];
+
+const REGION_PRESETS = [
+  ['gcc', 'GCC (Gulf states)'],
+  ['mena', 'MENA'],
+  ['north-america', 'North America'],
+  ['eu', 'European Union'],
+  ['uk-ireland', 'UK & Ireland'],
+  ['nordics', 'Nordic countries'],
+  ['apac', 'Asia-Pacific'],
+  ['south-asia', 'South Asia'],
+  ['southeast-asia', 'Southeast Asia'],
+  ['latam', 'Latin America'],
+  ['africa', 'Africa'],
+];
+
+// Build a focus-regions multi-select: presets first (chips), then a separate
+// section for individual countries (chips again, ordered same as COUNTRIES).
+const ALL_FOCUS_OPTIONS = [...REGION_PRESETS, ...COUNTRIES.filter(([id]) => id !== 'GLOBAL')];
+
+const labelFor = (list, id) => list.find(([k]) => k === id)?.[1] || id;
+
+Object.assign(window, { CATEGORIES, COUNTRIES, REGION_PRESETS, ALL_FOCUS_OPTIONS, labelFor });
+
 </script>
 <script type="text/babel">
 // Pulse UI primitives
@@ -1851,10 +1912,13 @@ const Onboarding = ({ onDone }) => {
   const [step, setStep]           = React.useState(0);
   const [userType, setUserType]   = React.useState('creator');
   const [category, setCategory]   = React.useState('');
-  const [market, setMarket]       = React.useState('canada');
+  const [country, setCountry]     = React.useState('CA');
+  const [focusRegions, setFocusRegions] = React.useState([]);
   const [accountAge, setAccountAge] = React.useState('6-12mo');
   const [workspaceName, setWorkspaceName] = React.useState('');
   const [saving, setSaving]       = React.useState(false);
+  const toggleFocus = (id) =>
+    setFocusRegions(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const steps = ['About you', 'Your market', 'You\'re in'];
 
@@ -1868,11 +1932,12 @@ const Onboarding = ({ onDone }) => {
           'Authorization': `Bearer ${window.__pulseToken}`
         },
         body: JSON.stringify({
-          name:        workspaceName || 'My Workspace',
-          user_type:   userType,
-          category:    category || 'other',
-          market:      market,
-          account_age: accountAge
+          name:          workspaceName || 'My Workspace',
+          user_type:     userType,
+          category:      category || 'other',
+          country:       country,
+          focus_regions: focusRegions,
+          account_age:   accountAge,
         })
       });
     } catch (e) {
@@ -1959,22 +2024,18 @@ const Onboarding = ({ onDone }) => {
               <div>
                 <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">Content category</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {[
-                    'Music / Culture', 'Ecommerce', 'Food & Beverage',
-                    'Fashion & Beauty', 'Tech / SaaS', 'Real Estate',
-                    'Education', 'Health & Wellness', 'Finance', 'Entertainment'
-                  ].map(n => (
+                  {CATEGORIES.filter(([id]) => id !== 'other').map(([id, label]) => (
                     <button
-                      key={n}
-                      onClick={() => setCategory(n)}
+                      key={id}
+                      onClick={() => setCategory(id)}
                       className={cls(
                         'h-9 px-3.5 rounded-full text-[13px] font-medium border transition',
-                        category === n
+                        category === id
                           ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
                           : 'border-line dark:border-lineDark hover:border-ink/30'
                       )}
                     >
-                      {n}
+                      {label}
                     </button>
                   ))}
                 </div>
@@ -2007,39 +2068,75 @@ const Onboarding = ({ onDone }) => {
           </div>
         )}
 
-        {/* Step 1 — Market */}
+        {/* Step 1 — Country + focus regions */}
         {step === 1 && (
           <div className="fade-up">
-            <Eyebrow color="text-ultra">Market</Eyebrow>
+            <Eyebrow color="text-ultra">Where</Eyebrow>
             <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
-              Where is your audience?
+              Your country & focus.
             </h1>
             <p className="text-[15px] text-mute dark:text-muteDark mb-8">
-              This shapes which platforms we prioritise and how we read competitor signals.
+              Where you operate, and the regions you want to compare against. We use this to prioritise platforms (e.g. Snapchat for the Gulf, YouTube in Pakistan) and surface competitor signals.
             </p>
-            <div className="grid sm:grid-cols-2 gap-2.5">
-              {[
-                { id: 'ksa',      label: 'Saudi Arabia',  sub: 'Snapchat + TikTok dominant' },
-                { id: 'uae',      label: 'UAE',           sub: 'Instagram + Snapchat' },
-                { id: 'gcc',      label: 'GCC (All)',     sub: 'Full Gulf region' },
-                { id: 'pakistan', label: 'Pakistan',      sub: 'TikTok + YouTube dominant' },
-                { id: 'canada',   label: 'Canada',        sub: 'Instagram + YouTube' },
-                { id: 'global',   label: 'Global',        sub: 'Multi-region coverage' },
-              ].map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setMarket(m.id)}
-                  className={cls(
-                    'p-4 rounded-2xl border text-left transition',
-                    market === m.id
-                      ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
-                      : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30 bg-chalk dark:bg-coalsoft'
-                  )}
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Your country</label>
+                <select
+                  value={country}
+                  onChange={e => setCountry(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition appearance-none"
                 >
-                  <div className="text-[14px] font-semibold">{m.label}</div>
-                  <div className={cls('text-[12px] mt-0.5', market === m.id ? 'text-paper/60 dark:text-ink/60' : 'text-mute dark:text-muteDark')}>{m.sub}</div>
-                </button>
-              ))}
+                  {COUNTRIES.map(([id, label]) => (
+                    <option key={id} value={id}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">
+                  Focus regions <span className="text-[11px] text-mute dark:text-muteDark">— who you want to compare against</span>
+                </label>
+
+                <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Regions</div>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {REGION_PRESETS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => toggleFocus(id)}
+                      className={cls(
+                        'h-8 px-3 rounded-full text-[12.5px] font-medium border transition',
+                        focusRegions.includes(id)
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Specific countries</div>
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                  {COUNTRIES.filter(([id]) => id !== 'GLOBAL').map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => toggleFocus(id)}
+                      className={cls(
+                        'h-8 px-3 rounded-full text-[12px] font-medium border transition',
+                        focusRegions.includes(id)
+                          ? 'bg-ultra text-white border-ultra'
+                          : 'border-line dark:border-lineDark hover:border-ink/30 text-mute dark:text-muteDark'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-mute dark:text-muteDark mt-2">
+                  {focusRegions.length === 0 ? 'No focus regions selected — that\'s fine, you can add them later in Settings.' : `${focusRegions.length} selected`}
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -3028,8 +3125,17 @@ const SettingsScreen = () => {
 
   // Workspace form state
   const [form, setForm] = React.useState({
-    name: '', user_type: 'creator', category: 'music', market: 'canada', account_age: '6-12mo'
+    name: '', user_type: 'creator', category: 'music',
+    country: 'CA', focus_regions: [],
+    account_age: '6-12mo'
   });
+  const toggleFocus = (id) =>
+    setForm(f => ({
+      ...f,
+      focus_regions: f.focus_regions?.includes(id)
+        ? f.focus_regions.filter(x => x !== id)
+        : [...(f.focus_regions || []), id],
+    }));
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type });
@@ -3048,15 +3154,18 @@ const SettingsScreen = () => {
         setUsage(wsData.usage);
         setAccounts(acctData.accounts || []);
         setForm({
-          name:        wsData.workspace.name || '',
-          user_type:   wsData.workspace.user_type || 'creator',
-          category:    wsData.workspace.category || 'music',
-          market:      wsData.workspace.market || 'canada',
-          account_age: wsData.workspace.account_age || '6-12mo'
+          name:          wsData.workspace.name || '',
+          user_type:     wsData.workspace.user_type || 'creator',
+          category:      wsData.workspace.category || 'music',
+          country:       wsData.workspace.country
+                          || ({ ksa:'SA', uae:'AE', pakistan:'PK', canada:'CA', global:'GLOBAL' }[wsData.workspace.market])
+                          || 'CA',
+          focus_regions: wsData.workspace.focus_regions || [],
+          account_age:   wsData.workspace.account_age || '6-12mo',
         });
       } catch (e) {
         // Not yet authenticated — show form with defaults
-        setForm({ name: D.workspace, user_type: 'creator', category: 'music', market: 'canada', account_age: '6-12mo' });
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo' });
       } finally {
         setLoading(false);
       }
@@ -3256,28 +3365,18 @@ const SettingsScreen = () => {
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
                   className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
                 >
-                  {[
-                    ['music','Music / Culture'], ['ecommerce','Ecommerce / Retail'],
-                    ['food','Food & Beverage'], ['fashion','Fashion & Beauty'],
-                    ['tech','Tech / SaaS'], ['realestate','Real Estate'],
-                    ['education','Education'], ['health','Health & Wellness'],
-                    ['finance','Finance & Business'], ['entertainment','Entertainment'],
-                    ['other','Other']
-                  ].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  {CATEGORIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
 
               <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">Primary market</label>
+                <label className="block text-[12.5px] font-medium mb-1.5">Your country</label>
                 <select
-                  value={form.market}
-                  onChange={e => setForm(f => ({ ...f, market: e.target.value }))}
+                  value={form.country}
+                  onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
                   className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
                 >
-                  {[
-                    ['canada','Canada'], ['ksa','Saudi Arabia'], ['uae','UAE'],
-                    ['gcc','GCC (All)'], ['pakistan','Pakistan'], ['global','Global']
-                  ].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  {COUNTRIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
 
@@ -3295,6 +3394,54 @@ const SettingsScreen = () => {
                 </select>
               </div>
 
+            </div>
+
+            {/* Focus regions — full-width below the 2-col grid */}
+            <div className="mt-4">
+              <label className="block text-[12.5px] font-medium mb-1">
+                Focus regions <span className="text-[11px] text-mute dark:text-muteDark">— who you want to compare against</span>
+              </label>
+              <p className="text-[11.5px] text-mute dark:text-muteDark mb-3">
+                {form.focus_regions?.length ? `${form.focus_regions.length} selected` : 'None selected. Pick regions or specific countries to track competitors in.'}
+              </p>
+
+              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Regions</div>
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {REGION_PRESETS.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleFocus(id)}
+                    className={cls(
+                      'h-8 px-3 rounded-full text-[12.5px] font-medium border transition',
+                      form.focus_regions?.includes(id)
+                        ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                        : 'border-line dark:border-lineDark hover:border-ink/30'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Specific countries</div>
+              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                {COUNTRIES.filter(([id]) => id !== 'GLOBAL').map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleFocus(id)}
+                    className={cls(
+                      'h-8 px-3 rounded-full text-[12px] font-medium border transition',
+                      form.focus_regions?.includes(id)
+                        ? 'bg-ultra text-white border-ultra'
+                        : 'border-line dark:border-lineDark hover:border-ink/30 text-mute dark:text-muteDark'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="mt-5 flex justify-end">

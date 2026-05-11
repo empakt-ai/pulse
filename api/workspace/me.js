@@ -2,7 +2,7 @@ import { authenticate, json } from '../lib/auth.js';
 import { supabase } from '../lib/supabase.js';
 import { tierFor, getMonthlyUsage } from '../lib/tiers.js';
 
-const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age'];
+const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions'];
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -37,8 +37,24 @@ export default async function handler(req, res) {
     for (const k of ALLOWED_FIELDS) if (k in (body || {})) patch[k] = body[k];
     if (!Object.keys(patch).length) return json(res, 400, { error: 'No valid fields to update' });
 
-    const rows = await supabase.update('workspaces', patch, { eq: { id: workspace.id } });
-    return json(res, 200, { workspace: rows?.[0] || null });
+    try {
+      const rows = await supabase.update('workspaces', patch, { eq: { id: workspace.id } });
+      return json(res, 200, { workspace: rows?.[0] || null });
+    } catch (e) {
+      // Schema fallback: if country/focus_regions columns don't exist yet
+      // (migration 002 not run), strip them and retry.
+      if (/country|focus_regions/.test(e.message)) {
+        const { country, focus_regions, ...legacyPatch } = patch;
+        if (Object.keys(legacyPatch).length) {
+          const rows = await supabase.update('workspaces', legacyPatch, { eq: { id: workspace.id } });
+          return json(res, 200, {
+            workspace: rows?.[0] || null,
+            warning: 'country/focus_regions not yet supported — run migrations/002_country_focus_regions.sql in Supabase SQL Editor to enable.',
+          });
+        }
+      }
+      return json(res, 500, { error: e.message });
+    }
   }
 
   return json(res, 405, { error: 'Method not allowed' });
