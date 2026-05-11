@@ -113,10 +113,14 @@ export const ACTORS = {
   youtube: {
     posts: {
       id: 'streamers~youtube-scraper',
-      timeout: 50,  // bumped from 45 — actor crawls per-video pages, slow on large channels
+      timeout: 55,  // close to Vercel's 60s ceiling
       input: (handle) => ({
         startUrls: [{ url: `https://www.youtube.com/${handle.startsWith('@') ? handle : '@' + handle}/videos` }],
-        maxResults: 6,  // dropped from 12 — each video's detail page adds ~5s; 6 fits comfortably in 50s
+        // Actor visits each video's detail page individually — slow on large
+        // channels like @mkbhd. Cap at 3 videos for sustainable cron runs;
+        // for richer competitor analysis users should use the manual sync
+        // endpoint with a longer timeout.
+        maxResults: 3,
         downloadSubtitles: false,
       }),
       normaliseProfile: (items) => {
