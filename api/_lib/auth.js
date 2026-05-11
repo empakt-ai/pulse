@@ -15,15 +15,27 @@ export async function authenticate(req) {
     return { error: 'Invalid token', status: 401 };
   }
 
-  // Workspace is auto-created via Supabase trigger on signup.
-  const workspace = await supabase.select('workspaces', {
+  // Workspace selection: a user may own multiple workspaces (one per
+  // subscription). The client picks the active workspace via the
+  // `x-workspace-id` header (stored in localStorage). If absent or invalid,
+  // fall back to the oldest workspace the user owns — that's their original
+  // signup workspace, auto-created by the Supabase trigger.
+  const requestedWsId =
+    req.headers?.['x-workspace-id'] || req.headers?.['X-Workspace-Id'] || null;
+
+  const owned = await supabase.select('workspaces', {
     select: '*',
     eq: { owner_id: user.id },
-    limit: 1,
-    single: true,
-  });
+    order: 'created_at.asc',
+  }) || [];
 
-  return { user, workspace, token };
+  let workspace = null;
+  if (requestedWsId) {
+    workspace = owned.find(w => w.id === requestedWsId) || null;
+  }
+  if (!workspace) workspace = owned[0] || null;
+
+  return { user, workspace, token, workspaces: owned };
 }
 
 // Helper to send JSON consistently

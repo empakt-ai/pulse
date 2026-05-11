@@ -145,6 +145,7 @@ export default async function handler(req, res) {
 
   return json(res, 200, {
     workspace: ws,
+    workspaces: auth.workspaces || [],
     user: { id: auth.user.id, email: auth.user.email, name: auth.user.user_metadata?.full_name || auth.user.email?.split('@')[0] },
     tier: { ...tier, key: ws.tier || 'creator' },
     usage: { used: usage.used, limit: tier.runs_per_month },
