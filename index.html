@@ -3232,8 +3232,20 @@ const SettingsScreen = () => {
 
   // ── Disconnect a platform ────────────────────────────────────────────────
   const disconnectPlatform = async (platformId) => {
+    const acct = accounts.find(a => a.platform === platformId);
+    // Optimistic update
     setAccounts(prev => prev.filter(a => a.platform !== platformId));
-    showToast(`${platformId} disconnected`);
+    try {
+      await api('/disconnect', {
+        method: 'POST',
+        body: JSON.stringify(acct?.id ? { id: acct.id } : { platform: platformId }),
+      });
+      showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label || platformId} disconnected`);
+    } catch (e) {
+      // Rollback the optimistic update on failure
+      if (acct) setAccounts(prev => [...prev, acct]);
+      showToast(`Disconnect failed: ${e.message}`, 'err');
+    }
   };
 
   // ── Save workspace settings ───────────────────────────────────────────────

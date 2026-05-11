@@ -46,7 +46,7 @@ export default async function handler(req, res) {
 
   const [accounts, posts, snapshots, competitors, signals] = await Promise.all([
     supabase.select('connected_accounts', {
-      select: '*', eq: { workspace_id: ws.id }, order: 'connected_at.asc',
+      select: '*', eq: { workspace_id: ws.id, is_active: true }, order: 'connected_at.asc',
     }).catch(() => []),
     supabase.select('posts', {
       select: '*', eq: { workspace_id: ws.id }, order: 'posted_at.desc', limit: 200,

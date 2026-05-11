@@ -10,7 +10,7 @@ export default async function handler(req, res) {
 
   const accounts = await supabase.select('connected_accounts', {
     select: '*',
-    eq: { workspace_id: auth.workspace.id },
+    eq: { workspace_id: auth.workspace.id, is_active: true },
     order: 'connected_at.asc',
   }).catch(() => []);
 

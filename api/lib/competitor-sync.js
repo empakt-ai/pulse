@@ -3,9 +3,23 @@
 
 import { supabase } from './supabase.js';
 import { runActor, estimateScrapeCost, ACTORS } from './apify.js';
+import { scrapeChannel as scrapeYouTubeChannel } from './youtube.js';
 
 // Min hours between scrapes of the same competitor (avoid burning Apify credit)
 const MIN_HOURS_BETWEEN = 6;
+
+// YouTube goes through the official Google Data API; everything else uses Apify.
+function isSupported(platform) {
+  return platform === 'youtube' || !!ACTORS[platform];
+}
+
+async function fetchPlatform(platform, handle) {
+  if (platform === 'youtube') {
+    const { profile, posts, errors } = await scrapeYouTubeChannel(handle);
+    return { profile, posts, errors };
+  }
+  return runActor(platform, handle);
+}
 
 function hoursSince(iso) {
   if (!iso) return Infinity;
@@ -18,7 +32,7 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
     eq: { workspace_id: workspace.id },
   }).catch(() => []);
 
-  const active = (rows || []).filter(c => c.is_active !== false && ACTORS[c.platform]);
+  const active = (rows || []).filter(c => c.is_active !== false && isSupported(c.platform));
   if (!active.length) return { competitors: 0, scraped: 0, results: [] };
 
   const today = new Date().toISOString().slice(0, 10);
@@ -40,7 +54,7 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
     } catch {}
 
     try {
-      const { profile, posts, errors } = await runActor(comp.platform, comp.handle);
+      const { profile, posts, errors } = await fetchPlatform(comp.platform, comp.handle);
 
       const postRows = (posts || [])
         .filter(p => p.platform_post_id)
@@ -76,8 +90,10 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
       }
 
       if (logRow) {
+        // YouTube uses the free Google API; everything else estimates Apify cost.
+        const cost = comp.platform === 'youtube' ? 0 : estimateScrapeCost(comp.platform);
         await supabase.update('usage_log',
-          { status: 'completed', records_fetched: postRows.length, cost_cents: estimateScrapeCost(comp.platform) },
+          { status: 'completed', records_fetched: postRows.length, cost_cents: cost },
           { eq: { id: logRow.id } }
         ).catch(() => {});
       }
