@@ -22,12 +22,10 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
   if (!active.length) return { competitors: 0, scraped: 0, results: [] };
 
   const today = new Date().toISOString().slice(0, 10);
-  const results = [];
 
-  for (const comp of active) {
+  async function syncOne(comp) {
     if (!force && hoursSince(comp.last_synced_at) < MIN_HOURS_BETWEEN) {
-      results.push({ handle: comp.handle, platform: comp.platform, skipped: 'recently_synced' });
-      continue;
+      return { handle: comp.handle, platform: comp.platform, skipped: 'recently_synced' };
     }
 
     let logRow = null;
@@ -42,11 +40,8 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
     } catch {}
 
     try {
-      const { profile, posts } = await runActor(comp.platform, comp.handle);
+      const { profile, posts, errors } = await runActor(comp.platform, comp.handle);
 
-      // Persist posts (source='competitor'). Drop prior posts for this
-      // competitor and re-insert — sidesteps the missing UNIQUE constraint on
-      // posts(workspace_id, platform, platform_post_id).
       const postRows = (posts || [])
         .filter(p => p.platform_post_id)
         .map(p => ({
@@ -62,7 +57,6 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
         await supabase.insert('posts', postRows);
       }
 
-      // Update competitor row
       const updates = {
         followers: profile.followers ?? comp.followers,
         display_name: profile.display_name || comp.display_name || comp.handle,
@@ -70,7 +64,6 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
       };
       await supabase.update('competitors', updates, { eq: { id: comp.id } });
 
-      // Snapshot — for delta computation
       if (profile.followers != null) {
         await supabase.upsert('account_snapshots', [{
           workspace_id: workspace.id,
@@ -82,27 +75,32 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
         }], { onConflict: 'workspace_id,platform,handle,snapshot_date' }).catch(() => {});
       }
 
-      const cost = estimateScrapeCost(comp.platform);
       if (logRow) {
         await supabase.update('usage_log',
-          { status: 'completed', records_fetched: postRows.length, cost_cents: cost },
+          { status: 'completed', records_fetched: postRows.length, cost_cents: estimateScrapeCost(comp.platform) },
           { eq: { id: logRow.id } }
         ).catch(() => {});
       }
 
-      results.push({
+      return {
         handle: comp.handle, platform: comp.platform,
         posts: postRows.length, followers: profile.followers,
-      });
+        actor_errors: errors?.length ? errors : undefined,
+      };
     } catch (e) {
       if (logRow) {
         await supabase.update('usage_log',
           { status: 'failed' }, { eq: { id: logRow.id } }
         ).catch(() => {});
       }
-      results.push({ handle: comp.handle, platform: comp.platform, error: e.message });
+      return { handle: comp.handle, platform: comp.platform, error: e.message };
     }
   }
+
+  // Parallel across competitors — Apify handles each actor run independently
+  // on their side, so we don't need to throttle here. Vercel's 60s budget
+  // is the real constraint, and parallelism is what makes it fit.
+  const results = await Promise.all(active.map(syncOne));
 
   return {
     competitors: active.length,

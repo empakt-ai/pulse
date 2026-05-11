@@ -254,50 +254,53 @@ async function callActor(actorId, input, timeout = 45, signal) {
   return Array.isArray(items) ? items : [];
 }
 
-// Public: run all configured actors for the platform/handle and return a merged
-// { profile, posts, items } shape. Posts actor is always preferred for posts;
-// profile metadata comes from whichever actor provides it (profile > posts).
+// Public: run all configured actors for the platform/handle in PARALLEL and
+// return merged { profile, posts, items }. Parallel matters here — Vercel
+// functions have a 60s cap and sequential profile+posts calls per competitor,
+// across 3-5 competitors, blows that budget.
 export async function runActor(platform, handle, opts = {}) {
   const cfg = ACTORS[platform];
   if (!cfg) throw new Error(`No Apify actor configured for platform: ${platform}`);
+
+  const tasks = [];
+  if (cfg.profile) {
+    tasks.push(
+      callActor(cfg.profile.id, cfg.profile.input(handle), cfg.profile.timeout, opts.signal)
+        .then(items => ({ kind: 'profile', items }))
+        .catch(e => ({ kind: 'profile', error: e.message, actor: cfg.profile.id }))
+    );
+  }
+  if (cfg.posts) {
+    tasks.push(
+      callActor(cfg.posts.id, cfg.posts.input(handle), cfg.posts.timeout, opts.signal)
+        .then(items => ({ kind: 'posts', items }))
+        .catch(e => ({ kind: 'posts', error: e.message, actor: cfg.posts.id }))
+    );
+  }
+
+  const results = await Promise.all(tasks);
 
   let profile = null;
   let posts = [];
   let postsActorItems = [];
   const errors = [];
 
-  // 1) Profile actor (if configured) — for follower count + bio
-  if (cfg.profile) {
-    try {
-      const items = await callActor(cfg.profile.id, cfg.profile.input(handle), cfg.profile.timeout, opts.signal);
-      profile = cfg.profile.normalise(items);
-    } catch (e) {
-      errors.push({ actor: cfg.profile.id, error: e.message });
+  for (const r of results) {
+    if (r.error) { errors.push({ actor: r.actor, error: r.error }); continue; }
+    if (r.kind === 'profile' && cfg.profile?.normalise) {
+      profile = cfg.profile.normalise(r.items);
     }
-  }
-
-  // 2) Posts actor (if configured) — for recent posts + sometimes profile too
-  if (cfg.posts) {
-    try {
-      postsActorItems = await callActor(cfg.posts.id, cfg.posts.input(handle), cfg.posts.timeout, opts.signal);
-      posts = cfg.posts.normalisePosts ? cfg.posts.normalisePosts(postsActorItems) : [];
-      // Some posts actors also surface profile data (e.g. TikTok). Use it if
-      // the dedicated profile actor wasn't configured or didn't return anything.
+    if (r.kind === 'posts' && cfg.posts) {
+      postsActorItems = r.items;
+      if (cfg.posts.normalisePosts) posts = cfg.posts.normalisePosts(r.items);
       if ((!profile || profile.followers == null) && cfg.posts.normaliseProfile) {
-        const fromPosts = cfg.posts.normaliseProfile(postsActorItems);
+        const fromPosts = cfg.posts.normaliseProfile(r.items);
         profile = { ...(profile || {}), ...(fromPosts || {}) };
       }
-    } catch (e) {
-      errors.push({ actor: cfg.posts.id, error: e.message });
     }
   }
 
-  return {
-    profile: profile || {},
-    posts: posts || [],
-    items: postsActorItems,
-    errors,
-  };
+  return { profile: profile || {}, posts: posts || [], items: postsActorItems, errors };
 }
 
 // Rough cost estimate (cents) — sum of actors that ran for this platform.
