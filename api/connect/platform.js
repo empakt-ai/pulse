@@ -1,12 +1,14 @@
 import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
+import { buildAuthUrl as buildYouTubeAuthUrl } from '../_lib/youtube.js';
 
-// NOTE: YouTube intentionally goes through the direct Google Data API
-// (api/_lib/youtube.js for competitors; a future Google OAuth flow for own
-// accounts), NOT Zernio. Don't add 'youtube' here — Zernio would try to OAuth
-// it and create a duplicate path we don't want.
-const SUPPORTED = ['instagram', 'tiktok', 'facebook', 'linkedin', 'x', 'snapchat'];
+// Most platforms go through Zernio's hosted OAuth. YouTube uses Google's
+// OAuth directly so we get a refresh_token + Analytics API access scoped to
+// the actual creator account (Zernio's flow doesn't expose raw tokens).
+const ZERNIO_SUPPORTED = ['instagram', 'tiktok', 'facebook', 'linkedin', 'x', 'snapchat'];
+const DIRECT_SUPPORTED = ['youtube'];
+const SUPPORTED = [...ZERNIO_SUPPORTED, ...DIRECT_SUPPORTED];
 
 function pickProfileId(res) {
   // Zernio shapes seen in the wild:
@@ -53,9 +55,21 @@ export default async function handler(req, res) {
     return json(res, 400, { error: `Unsupported platform: ${platform}` });
   }
 
+  const appUrl = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
+
   try {
+    // YouTube uses direct Google OAuth — no Zernio profile involved.
+    // The redirect_uri MUST be registered in Google Cloud Console exactly.
+    // We deliberately omit query params from redirect_uri so it matches the
+    // single registered URI; the platform is identified via OAuth `state`.
+    if (platform === 'youtube') {
+      const redirectUri = `${appUrl}/api/connect/callback`;
+      const authUrl = buildYouTubeAuthUrl(auth.workspace.id, redirectUri);
+      return json(res, 200, { authUrl, platform });
+    }
+
+    // Everything else goes through Zernio.
     const profileId = await ensureProfile(auth.workspace);
-    const appUrl = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
     const redirectUrl = `${appUrl}/api/connect/callback?platform=${platform}`;
     const result = await zernio.getConnectUrl(platform, profileId, redirectUrl);
     const authUrl = result?.authUrl || result?.url || result?.auth_url;

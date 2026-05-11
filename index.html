@@ -3052,9 +3052,9 @@ const api = async (path, opts = {}) => {
 const PLATFORMS = [
   { id: 'instagram', label: 'Instagram',  icon: 'ig', color: '#D62976', note: 'Business or Creator account required' },
   { id: 'tiktok',    label: 'TikTok',     icon: 'tt', color: '#010101', note: 'Personal or Business account' },
-  // YouTube uses direct Google OAuth (not Zernio) — wiring is in progress.
-  // Until then, public competitor data still works via YOUTUBE_API_KEY.
-  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Direct Google integration coming soon', comingSoon: true },
+  // YouTube uses direct Google OAuth (not Zernio) for full read access
+  // including Analytics API. Public competitor data uses the API key.
+  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Sign in with Google · read-only' },
   { id: 'facebook',  label: 'Facebook',   icon: 'fb', color: '#1877F2', note: 'Page required (not personal profile)' },
   { id: 'linkedin',  label: 'LinkedIn',   icon: 'li', color: '#0A66C2', note: 'Personal profile or Company page' },
   { id: 'x',         label: 'X / Twitter', icon: 'x', color: '#000',   note: 'Basic or higher API access needed' },

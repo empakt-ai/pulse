@@ -9,6 +9,7 @@ import { zernio } from '../_lib/zernio.js';
 import { json } from '../_lib/auth.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
+import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -79,23 +80,35 @@ async function refreshWorkspace(ws) {
       logRow = inserted?.[0];
     } catch {}
 
+    let postRows;
     try {
-      const analytics = await zernio.getAnalytics(acct.zernio_account_id, fromDate, toDate);
-      const posts = Array.isArray(analytics) ? analytics : (analytics?.posts || analytics?.data || []);
-      const postRows = posts.map(p => {
-        const rate = engagementRate(p);
-        return {
-          workspace_id: ws.id, source: 'own', platform: acct.platform,
-          platform_post_id: String(p.id || p._id || p.postId || ''),
-          post_type: p.type || p.mediaType || null,
-          caption: p.caption || p.title || null,
-          posted_at: p.posted_at || p.publishedAt || p.created_at || null,
-          views: Number(p.views || p.impressions || 0),
-          likes: Number(p.likes || 0), comments: Number(p.comments || 0),
-          saves: Number(p.saves || 0), shares: Number(p.shares || 0),
-          engagement_rate: rate, signal: signalFor(rate), raw_data: p,
-        };
-      }).filter(r => r.platform_post_id);
+      if (acct.platform === 'youtube') {
+        // Direct Google API, not Zernio
+        const channelKey = acct.metadata?.channel_id || acct.zernio_account_id;
+        const yt = await scrapeYouTubeChannel(channelKey, { maxResults: 12 });
+        postRows = (yt.posts || []).map(p => {
+          const rate = engagementRate(p);
+          return { workspace_id: ws.id, source: 'own', platform: 'youtube',
+            ...p, engagement_rate: rate, signal: signalFor(rate) };
+        }).filter(r => r.platform_post_id);
+      } else {
+        const analytics = await zernio.getAnalytics(acct.zernio_account_id, fromDate, toDate);
+        const posts = Array.isArray(analytics) ? analytics : (analytics?.posts || analytics?.data || []);
+        postRows = posts.map(p => {
+          const rate = engagementRate(p);
+          return {
+            workspace_id: ws.id, source: 'own', platform: acct.platform,
+            platform_post_id: String(p.id || p._id || p.postId || ''),
+            post_type: p.type || p.mediaType || null,
+            caption: p.caption || p.title || null,
+            posted_at: p.posted_at || p.publishedAt || p.created_at || null,
+            views: Number(p.views || p.impressions || 0),
+            likes: Number(p.likes || 0), comments: Number(p.comments || 0),
+            saves: Number(p.saves || 0), shares: Number(p.shares || 0),
+            engagement_rate: rate, signal: signalFor(rate), raw_data: p,
+          };
+        }).filter(r => r.platform_post_id);
+      }
 
       if (postRows.length) {
         await supabase.upsert('posts', postRows, { onConflict: 'workspace_id,platform,platform_post_id' });
