@@ -1318,7 +1318,6 @@ const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'b
       <Integrations />
       <Testimonials />
       <Pricing activePlan={activePlan} onSignUp={onSignUp} />
-      <ComparePlans onSignUp={onSignUp} />
       <FAQ />
       <CTA onSignUp={onSignUp} />
       <Footer />
@@ -1641,6 +1640,129 @@ const Testimonials = () => (
   </section>
 );
 
+// Compare table data — defined outside Pricing so the inline ComparePlans
+// component can share it without re-allocating on every render.
+const COMPARE_GROUPS = [
+  { category: 'Workspaces & Accounts', rows: [
+    { label: 'Workspaces',         creator: '2',          brand: '3',               agency: '20 client workspaces' },
+    { label: 'Social accounts',    creator: '5 total',    brand: '7 (1 per platform)', agency: '~100 (5 per workspace)' },
+    { label: 'Competitors tracked',creator: '5',          brand: '10',              agency: '30' },
+    { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
+  ]},
+  { category: 'Intelligence', rows: [
+    { label: 'Daily brief',        creator: false,        brand: true,              agency: true },
+    { label: 'Weekly brief',       creator: true,         brand: true,              agency: true },
+    { label: 'Live signal alerts', creator: false,        brand: false,             agency: true },
+    { label: 'Competitor analysis',creator: true,         brand: true,              agency: true },
+    { label: 'AI verdict + signals',creator: true,        brand: true,              agency: true },
+    { label: 'Market context',     creator: false,        brand: true,              agency: true },
+  ]},
+  { category: 'Ad Intelligence', rows: [
+    { label: 'Ad performance dashboard',  creator: false, brand: true,  agency: true },
+    { label: 'Organic vs paid comparison',creator: false, brand: true,  agency: true },
+    { label: 'Cross-platform ad reporting',creator: false,brand: true,  agency: true },
+    { label: 'Per-client ad reporting',   creator: false, brand: false, agency: true },
+  ]},
+  { category: 'Reports & Export', rows: [
+    { label: 'PDF reports',        creator: false,        brand: true,              agency: true },
+    { label: 'White-label reports',creator: false,        brand: false,             agency: true },
+    { label: 'CSV export',         creator: false,        brand: true,              agency: true },
+    { label: 'Daily email brief',  creator: false,        brand: true,              agency: true },
+  ]},
+  { category: 'Billing', rows: [
+    { label: 'Monthly price',      creator: '$15',        brand: '$99',             agency: '$449' },
+    { label: 'Annual (2 mo free)', creator: '$150/yr',    brand: '$990/yr',         agency: '$4,490/yr' },
+    { label: 'Free trial',         creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
+    { label: 'Add-on accounts',    creator: false,        brand: '+$5/account',     agency: '+$5/account' },
+  ]},
+];
+
+// Borderless side-by-side comparison. Renders as a CSS grid (no <table>)
+// so we can layer the featured-column tint as a single rounded background
+// behind the column instead of per-cell. Plan headers + CTAs live at the
+// top; category breaks are full-width display-font headings — the same
+// visual rhythm as the Features and FAQ sections.
+const ComparePlans = ({ onSignUp }) => {
+  const Val = ({ v, featured }) => {
+    if (v === true) {
+      return (
+        <span className={cls('inline-flex items-center justify-center w-6 h-6 rounded-full',
+          featured ? 'bg-lime/20 text-lime' : 'bg-ultra/10 text-ultra dark:bg-ultra/15')}>
+          <Icon name="check" className="w-3.5 h-3.5" stroke={2.5} />
+        </span>
+      );
+    }
+    if (v === false) return <span className="text-mute/40 dark:text-muteDark/40 text-[15px]">—</span>;
+    return <span className={cls('text-[13px] leading-snug', featured && 'font-medium')}>{v}</span>;
+  };
+
+  // 5fr / 3fr / 3fr / 3fr → label column gets a touch more room.
+  const cols = 'grid-cols-[1.6fr_1fr_1fr_1fr]';
+
+  return (
+    <div className="mt-10 sm:mt-12">
+      <div className="rounded-3xl bg-chalk/60 dark:bg-coalsoft/60 px-3 sm:px-6 py-6 sm:py-8 overflow-x-auto">
+        {/* Plan header row */}
+        <div className={cls('grid items-end gap-x-3 sm:gap-x-6 px-3 pb-5 border-b border-line dark:border-lineDark', cols)}>
+          <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
+            Compare features
+          </div>
+          {[
+            { key: 'creator', name: 'Creator', price: '$15', cta: 'Start trial', variant: 'outline', featured: false },
+            { key: 'brand',   name: 'Brand',   price: '$99', cta: 'Start trial', variant: 'ink',     featured: true  },
+            { key: 'agency',  name: 'Agency',  price: '$449',cta: 'Talk to sales', variant: 'outline', featured: false },
+          ].map(p => (
+            <div key={p.key} className={cls('text-center px-1 sm:px-2', p.featured && 'relative')}>
+              {p.featured && (
+                <span className="inline-flex items-center px-2 h-5 rounded-full bg-lime text-ink text-[9.5px] font-mono uppercase tracking-[0.12em] font-medium mb-1.5">Popular</span>
+              )}
+              <div className="font-display text-[18px] sm:text-[20px] font-semibold tracking-tight">{p.name}</div>
+              <div className="font-mono text-[12px] text-mute dark:text-muteDark mt-0.5">{p.price}/mo</div>
+              <Btn variant={p.variant} size="sm" onClick={onSignUp} className="mt-3 w-full justify-center text-[12px]">
+                {p.cta}
+              </Btn>
+            </div>
+          ))}
+        </div>
+
+        {/* Feature groups */}
+        {COMPARE_GROUPS.map((group, gi) => (
+          <div key={gi} className="pt-7 sm:pt-9">
+            <div className={cls('grid gap-x-3 sm:gap-x-6 px-3 mb-2', cols)}>
+              <h4 className="font-display text-[17px] sm:text-[18px] font-semibold tracking-tight">
+                {group.category}
+              </h4>
+            </div>
+            <div className="rounded-xl overflow-hidden">
+              {group.rows.map((row, ri) => (
+                <div
+                  key={ri}
+                  className={cls(
+                    'grid items-center gap-x-3 sm:gap-x-6 px-3 py-3.5',
+                    cols,
+                    ri > 0 && 'border-t border-line/60 dark:border-lineDark/40'
+                  )}
+                >
+                  <div className="text-[13px] sm:text-[13.5px] text-ink/85 dark:text-paper/85">{row.label}</div>
+                  <div className={cls('text-center px-1', 'rounded-md')}>
+                    <Val v={row.creator} />
+                  </div>
+                  <div className={cls('text-center px-1 py-1 rounded-md bg-ultra/[0.06] dark:bg-ultra/[0.12]')}>
+                    <Val v={row.brand} featured />
+                  </div>
+                  <div className="text-center px-1">
+                    <Val v={row.agency} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const Pricing = ({ activePlan, onSignUp }) => {
   const plans = [
     { id: 'creator', name: 'Creator', price: 15, blurb: 'For solo creators starting out.',
@@ -1676,6 +1798,26 @@ const Pricing = ({ activePlan, onSignUp }) => {
       ],
       cta: 'Talk to sales', featured: false }
   ];
+  const [showCompare, setShowCompare] = React.useState(false);
+
+  // Auto-open the comparison if the page is loaded with #compare in the
+  // URL (or the user clicks a #compare link after first paint). Smooth-
+  // scroll into view once the panel has mounted.
+  React.useEffect(() => {
+    const apply = () => {
+      if (typeof window === 'undefined') return;
+      if (window.location.hash !== '#compare') return;
+      setShowCompare(true);
+      requestAnimationFrame(() => {
+        const el = document.getElementById('compare');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    };
+    apply();
+    window.addEventListener('hashchange', apply);
+    return () => window.removeEventListener('hashchange', apply);
+  }, []);
+
   return (
     <section id="pricing" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
       <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="7-day free trial on Creator & Brand. No credit card required." />
@@ -1706,115 +1848,22 @@ const Pricing = ({ activePlan, onSignUp }) => {
           );
         })}
       </div>
-    </section>
-  );
-};
 
-const ComparePlans = ({ onSignUp }) => {
-  const features = [
-    { category: 'Workspaces & Accounts', rows: [
-      { label: 'Workspaces',         creator: '2',          brand: '3',               agency: '20 client workspaces' },
-      { label: 'Social accounts',    creator: '5 total',    brand: '7 (1 per platform)', agency: '~100 (5 per workspace)' },
-      { label: 'Competitors tracked',creator: '5',          brand: '10',              agency: '30' },
-      { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
-    ]},
-    { category: 'Intelligence', rows: [
-      { label: 'Daily brief',        creator: false,        brand: true,              agency: true },
-      { label: 'Weekly brief',       creator: true,         brand: true,              agency: true },
-      { label: 'Live signal alerts', creator: false,        brand: false,             agency: true },
-      { label: 'Competitor analysis',creator: true,         brand: true,              agency: true },
-      { label: 'AI verdict + signals',creator: true,        brand: true,              agency: true },
-      { label: 'Market context',     creator: false,        brand: true,              agency: true },
-    ]},
-    { category: 'Ad Intelligence', rows: [
-      { label: 'Ad performance dashboard', creator: false,  brand: true,              agency: true },
-      { label: 'Organic vs paid comparison', creator: false,brand: true,              agency: true },
-      { label: 'Cross-platform ad reporting', creator: false, brand: true,            agency: true },
-      { label: 'Per-client ad reporting', creator: false,   brand: false,             agency: true },
-    ]},
-    { category: 'Reports & Export', rows: [
-      { label: 'PDF reports',        creator: false,        brand: true,              agency: true },
-      { label: 'White-label reports',creator: false,        brand: false,             agency: true },
-      { label: 'CSV export',         creator: false,        brand: true,              agency: true },
-      { label: 'Daily email brief',  creator: false,        brand: true,              agency: true },
-    ]},
-    { category: 'Billing', rows: [
-      { label: 'Monthly price',      creator: '$15',        brand: '$99',             agency: '$449' },
-      { label: 'Annual (2 mo free)', creator: '$150/yr',    brand: '$990/yr',         agency: '$4,490/yr' },
-      { label: 'Free trial',         creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
-      { label: 'Add-on accounts',    creator: false,        brand: '+$5/account',     agency: '+$5/account' },
-    ]},
-  ];
-
-  const Check = () => <Icon name="check" className="w-4 h-4 text-ultra dark:text-lime mx-auto" stroke={2.5} />;
-  const Cross = () => <span className="text-mute dark:text-muteDark text-[13px] mx-auto block text-center">—</span>;
-  const Val = ({ v }) => {
-    if (v === true) return <Check />;
-    if (v === false) return <Cross />;
-    return <span className="text-[12.5px] font-mono text-center block">{v}</span>;
-  };
-
-  return (
-    <section id="compare" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
-      <SectionHead
-        eyebrow="Compare plans"
-        title="Everything, side by side."
-        sub="Pick the plan that fits your stage. Upgrade or downgrade anytime."
-      />
-      <div className="overflow-x-auto rounded-2xl border border-line dark:border-lineDark">
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-line dark:border-lineDark bg-chalk dark:bg-coalsoft">
-              <th className="px-5 py-4 text-left font-medium text-mute dark:text-muteDark w-[40%]">Feature</th>
-              {['Creator', 'Brand', 'Agency'].map((p, i) => (
-                <th key={p} className={cls('px-4 py-4 text-center', i === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
-                  <div className="font-display text-[16px] font-semibold tracking-tight">{p}</div>
-                  <div className={cls('font-mono text-[13px] mt-0.5', i === 1 ? 'text-ultra' : 'text-mute dark:text-muteDark')}>
-                    {i === 0 ? '$15/mo' : i === 1 ? '$99/mo' : '$449/mo'}
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {features.map((group, gi) => (
-              <React.Fragment key={gi}>
-                <tr className="bg-ink/[0.02] dark:bg-paper/[0.02]">
-                  <td colSpan={4} className="px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark font-semibold">
-                    {group.category}
-                  </td>
-                </tr>
-                {group.rows.map((row, ri) => (
-                  <tr key={ri} className="border-t border-line/50 dark:border-lineDark/50 hover:bg-ink/[0.015] dark:hover:bg-paper/[0.015] transition">
-                    <td className="px-5 py-3 text-[13px]">{row.label}</td>
-                    {[row.creator, row.brand, row.agency].map((v, ci) => (
-                      <td key={ci} className={cls('px-4 py-3 text-center', ci === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
-                        <Val v={v} />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </React.Fragment>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t border-line dark:border-lineDark bg-chalk dark:bg-coalsoft">
-              <td className="px-5 py-4" />
-              {[
-                { label: 'Start free trial', variant: 'outline' },
-                { label: 'Start free trial', variant: 'ink' },
-                { label: 'Talk to sales', variant: 'outline' },
-              ].map((btn, i) => (
-                <td key={i} className={cls('px-4 py-4 text-center', i === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
-                  <Btn variant={btn.variant} size="sm" onClick={onSignUp} className="w-full justify-center">
-                    {btn.label}
-                  </Btn>
-                </td>
-              ))}
-            </tr>
-          </tfoot>
-        </table>
+      {/* Compare toggle — collapsed by default so the Pricing area stays
+          calm. Anchor lives on the wrapping div so #compare jumps land
+          on the toggle/comparison area, not the section top. */}
+      <div id="compare" className="mt-10 flex justify-center scroll-mt-20">
+        <button
+          type="button"
+          onClick={() => setShowCompare(v => !v)}
+          aria-expanded={showCompare}
+          className="inline-flex items-center gap-2 px-5 h-11 rounded-full border border-line dark:border-lineDark bg-chalk/60 dark:bg-coalsoft/60 hover:bg-chalk dark:hover:bg-coalsoft text-[13.5px] font-medium transition"
+        >
+          {showCompare ? 'Hide full comparison' : 'Compare all features'}
+          <Icon name="chevDown" className={cls('w-4 h-4 transition-transform', showCompare && 'rotate-180')} />
+        </button>
       </div>
+      {showCompare && <ComparePlans onSignUp={onSignUp} />}
     </section>
   );
 };
