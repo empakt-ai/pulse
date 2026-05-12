@@ -5572,48 +5572,50 @@ const UsageMeter = ({ used, limit, tier }) => {
 };
 
 // ── Intelligence Layer (model switcher + comparison) ────────────────────
-const MODEL_META = {
-  claude: { label: 'Claude (Anthropic)', sub: 'claude-sonnet-4-6 · deep reasoning', accent: '#D6905A' },
-  gemini: { label: 'Gemini (Google)',    sub: 'gemini-2.5-flash · fast & cheap',   accent: '#1A73E8' },
+// ─────────────────────────────────────────────────────────────────────────────
+// ToneSwitcher (formerly ModelSwitcher). Agency-only control during the
+// Gemini-only phase. Lets the workspace owner pick a brief tone preset.
+// The backend (api/_lib/intelligence.js) layers a TONE OVERRIDE on top of
+// the system prompt at generation time, so the change is visible on the
+// very next brief. Removed when public model selection ships.
+// ─────────────────────────────────────────────────────────────────────────────
+const TONE_META = {
+  analytical: { label: 'Analytical', sub: 'Data-heavy. Numbers-forward. Minimal narrative.', accent: '#1A7FD4' },
+  strategic:  { label: 'Strategic',  sub: 'Balanced data + recommendations. The default.',   accent: '#6B5BFF' },
+  executive:  { label: 'Executive',  sub: 'Short, direct, action items only.',                accent: '#FF2D6A' },
 };
-const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
+const ToneSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
   const [active, setActive]   = React.useState(null);
-  const [switching, setSwitching] = React.useState(null); // 'claude' | 'gemini' | null
-  const [comparing, setComparing] = React.useState(false);
-  const [compare, setCompare]    = React.useState(null);
+  const [switching, setSwitching] = React.useState(null);
   // Manual brief regenerate state — explicit diagnostic surface so the user
   // can see exactly what generateBrief returned (success counts, persist
-  // errors, model used, fallbacks).
+  // errors, fallbacks).
   const [generating, setGenerating] = React.useState(false);
   const [generateResult, setGenerateResult] = React.useState(null);
 
-  // Load current selection on mount.
+  // Load current tone preference on mount.
   React.useEffect(() => {
     let cancelled = false;
     api('/workspace/ai-model')
-      .then(r => { if (!cancelled) setActive(r.ai_model || 'gemini'); })
-      .catch(() => { if (!cancelled) setActive('claude'); });
+      .then(r => { if (!cancelled) setActive(r.brief_tone || 'strategic'); })
+      .catch(() => { if (!cancelled) setActive('strategic'); });
     return () => { cancelled = true; };
   }, [workspaceId]);
 
-  const switchTo = async (model) => {
-    if (model === active || switching) return;
-    setSwitching(model);
+  const switchTo = async (tone) => {
+    if (tone === active || switching) return;
+    setSwitching(tone);
     try {
       const r = await api('/workspace/ai-model', {
         method: 'PATCH',
-        body: JSON.stringify({ ai_model: model }),
+        body: JSON.stringify({ brief_tone: tone }),
       });
-      const newModel = r.ai_model || model;
-      setActive(newModel);
-      // Tell the parent the raw model id changed. The parent owns the
-      // toast copy. (Previously we passed a full message string here and
-      // the parent's strict equality check on 'gemini' silently fell back
-      // to the Claude label.)
-      onSwitched?.(newModel);
-      // PATCH only changes which provider is used on the NEXT brief.
-      // Trigger one immediately so the user sees output reflected right
-      // away. Best-effort — surface failures as an error toast.
+      const newTone = r.brief_tone || tone;
+      setActive(newTone);
+      onSwitched?.(newTone);
+      // Tone only changes the NEXT brief's style. Trigger a fresh brief now
+      // so the change is visible immediately. Best-effort — failures get a
+      // toast but don't roll back the tone change.
       try {
         const gen = await api('/intelligence/generate', { method: 'POST' });
         if (gen?.error) {
@@ -5621,8 +5623,6 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         } else if (gen?.skipped) {
           onError?.(`Brief skipped: ${gen.skipped} (need ${gen.accounts ? 'posts' : 'accounts'})`);
         }
-        // On success: stay silent. The user already got the "switched to X"
-        // toast above; another toast right after feels noisy.
       } catch (e) {
         onError?.(`Regenerate failed: ${e.message}`);
       }
@@ -5630,19 +5630,6 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
       onError?.(e.message);
     } finally {
       setSwitching(null);
-    }
-  };
-
-  const runCompare = async () => {
-    setComparing(true);
-    setCompare(null);
-    try {
-      const r = await api('/analytics/compare-models', { method: 'POST' });
-      setCompare(r);
-    } catch (e) {
-      onError?.(e.message);
-    } finally {
-      setComparing(false);
     }
   };
 
@@ -5667,20 +5654,20 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
 
   return (
     <div>
-      <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Intelligence Layer</h3>
+      <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Brief tone</h3>
       <p className="text-[13px] text-mute dark:text-muteDark mb-4">
-        Choose which AI model generates your brief and signals. The switch takes effect on the next sync.
+        Agency-only preview. Pick how the daily brief reads — switches on the next regeneration.
       </p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-3">
-        {['claude', 'gemini'].map(m => {
-          const meta = MODEL_META[m];
-          const isActive = active === m;
-          const isSwitching = switching === m;
+      <div className="grid grid-cols-1 sm:grid-cols-3 items-stretch gap-3">
+        {['analytical', 'strategic', 'executive'].map(t => {
+          const meta = TONE_META[t];
+          const isActive = active === t;
+          const isSwitching = switching === t;
           return (
             <button
-              key={m}
-              onClick={() => switchTo(m)}
+              key={t}
+              onClick={() => switchTo(t)}
               disabled={isActive || !!switching}
               className={cls(
                 'h-full text-left p-4 rounded-2xl border transition relative overflow-hidden',
@@ -5692,10 +5679,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
               <div className="flex items-center justify-between mb-2">
                 <span className="w-3 h-3 rounded-full" style={{ background: meta.accent }} />
                 {isActive && (
-                  <span className={cls(
-                    'inline-flex items-center gap-1 px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em]',
-                    'bg-lime/25 text-limeDeep dark:text-lime'
-                  )}>
+                  <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] bg-lime/25 text-limeDeep dark:text-lime">
                     <span className="w-1 h-1 rounded-full bg-limeDeep dark:bg-lime" /> Active
                   </span>
                 )}
@@ -5704,7 +5688,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
                 )}
               </div>
               <div className="font-display text-[16px] font-semibold tracking-tighter">{meta.label}</div>
-              <div className={cls('text-[11.5px] mt-1 font-mono', isActive ? 'text-paper/70 dark:text-ink/70' : 'text-mute dark:text-muteDark')}>
+              <div className={cls('text-[11.5px] mt-1 leading-relaxed', isActive ? 'text-paper/70 dark:text-ink/70' : 'text-mute dark:text-muteDark')}>
                 {meta.sub}
               </div>
             </button>
@@ -5713,14 +5697,11 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-4">
-        <Btn variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
-          {comparing ? 'Running both…' : 'Run comparison'}
-        </Btn>
         <Btn variant="ink" size="sm" onClick={runRegenerate} disabled={generating}>
           {generating ? 'Generating…' : 'Regenerate brief now'}
         </Btn>
         <span className="text-[11.5px] text-mute dark:text-muteDark">
-          "Run comparison" runs both side-by-side without saving. "Regenerate" creates a fresh live brief with the active model.
+          Picks the active tone above. Cycles up against your monthly quota.
         </span>
       </div>
 
@@ -5733,67 +5714,12 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         )}>
           <div className="font-semibold mb-1">
             {generateResult.ok
-              ? `✓ Brief generated with ${generateResult.model_used}`
+              ? `✓ Brief generated`
               : `✗ ${generateResult.error || 'Failed'}`}
           </div>
           <div className="text-[11px] opacity-80 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
             {JSON.stringify(generateResult, null, 2)}
           </div>
-        </div>
-      )}
-
-      {compare && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-3 mt-4">
-          {['claude', 'gemini'].map(m => {
-            const r = compare[m];
-            return (
-              <div key={m} className="h-full rounded-xl border border-line dark:border-lineDark p-4 bg-chalk dark:bg-coalsoft">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full" style={{ background: MODEL_META[m].accent }} />
-                    <span className="text-[12.5px] font-semibold">{MODEL_META[m].label}</span>
-                  </div>
-                  <span className="text-[10px] font-mono text-mute dark:text-muteDark">
-                    {r?.latency_ms != null ? `${(r.latency_ms / 1000).toFixed(1)}s · ${r.tokens_used || 0} tok` : '—'}
-                  </span>
-                </div>
-                {r?.error ? (
-                  <div className="text-[12px] text-magenta">{r.error}</div>
-                ) : r?.parse_failed ? (
-                  <div className="space-y-2">
-                    <div className="text-[11px] text-amber">
-                      Response wasn't valid JSON — see raw output below.
-                    </div>
-                    <pre className="text-[10.5px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-paper dark:bg-ink rounded-lg p-2 border border-line dark:border-lineDark">
-                      {r.raw_excerpt || '(empty)'}
-                    </pre>
-                    {r?.fallback_from && (
-                      <div className="text-[10px] text-amber">
-                        Fell back from {r.fallback_from} ({r.fallback_reason?.slice(0, 60)})
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Verdict</div>
-                    <div className="text-[12.5px] font-medium mb-1 leading-snug">{r?.brief?.verdict?.title || '—'}</div>
-                    <div className="text-[11.5px] text-mute dark:text-muteDark mb-3 leading-relaxed">
-                      {(r?.brief?.verdict?.body || '').slice(0, 200)}{(r?.brief?.verdict?.body || '').length > 200 ? '…' : ''}
-                    </div>
-                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1.5">Top signals</div>
-                    {(r?.signals || []).slice(0, 3).map((s, i) => (
-                      <div key={i} className="text-[11.5px] mb-1 truncate">{s.title}</div>
-                    ))}
-                    {r?.fallback_from && (
-                      <div className="text-[10px] text-amber mt-2">
-                        Fell back from {r.fallback_from} ({r.fallback_reason?.slice(0, 60)})
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })}
         </div>
       )}
     </div>
@@ -6248,16 +6174,15 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               Other tiers always get the default provider chosen server-side. */}
           {tier === 'agency' && (
             <>
-              <ModelSwitcher
+              <ToneSwitcher
                 workspaceId={workspace?.id}
                 tier={tier}
-                onSwitched={(model) => {
-                  // model is the raw id ('claude' | 'gemini'). The parent
-                  // owns the toast copy so we always show the right label.
-                  showToast(`Intelligence switched to ${model === 'gemini' ? 'Gemini (Google)' : 'Claude (Anthropic)'}`);
-                  // A switch triggers a fresh brief, which writes a new
-                  // usage_log row. Re-fetch workspace state so the monthly
-                  // counter on this same page advances right away.
+                onSwitched={(tone) => {
+                  const label = { analytical: 'Analytical', strategic: 'Strategic', executive: 'Executive' }[tone] || tone;
+                  showToast(`Brief tone switched to ${label}`);
+                  // Switching triggers a fresh regeneration which writes a
+                  // new usage_log row — refresh the workspace state so the
+                  // monthly counter on this same page advances right away.
                   api('/workspaces').then(d => {
                     if (d?.workspace) setWorkspace(d.workspace);
                     if (d?.usage) setUsage(d.usage);

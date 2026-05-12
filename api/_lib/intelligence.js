@@ -430,15 +430,43 @@ text. If no clean comparison exists, return null instead of fabricating one.
 
 Final reminder: this brief lands in someone's inbox at 6 AM. They have coffee in one hand and 90 seconds. Earn that 90 seconds. If your verdict could have been written without seeing their data, it's wrong. Rewrite it.`;
 
-function buildUserMessage(payload) {
-  return `Generate today's PULSE brief for this workspace.\n\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
+// Tone presets layered on top of the base prompt. Agency-tier preference;
+// default 'strategic' keeps the brief style we shipped on launch.
+const TONE_GUIDANCE = {
+  analytical: `
+═══ TONE OVERRIDE: ANALYTICAL ═══
+Lead with the numbers. Every claim must reference a specific metric with the
+exact value (e.g. "21,318 views, 11.4× catalogue median"). Minimise narrative
+framing. Keep verdict body to 1-2 dense sentences of data observations. Cut
+hype words ("strong", "great", "amazing"). Prefer percentages, ratios, and
+absolute counts over adjectives.`,
+
+  strategic: `
+═══ TONE OVERRIDE: STRATEGIC ═══
+Default balance. Numbers ground every claim, but the verdict argues a thesis
+and the actions tie the numbers to a strategic move. Keep insights specific —
+the goal is "this is what the data means and what to do" not "the data is X".`,
+
+  executive: `
+═══ TONE OVERRIDE: EXECUTIVE ═══
+Brief reads like a one-paragraph memo to a CMO. Verdict body: 1-2 sentences
+maximum. Each action: a single sentence, decision-first. Drop preamble, drop
+hedging, drop "consider" / "you might". State the move. The data is in the
+signals — the verdict is the call to make.`,
+};
+
+function buildUserMessage(payload, tone) {
+  const toneBlock = TONE_GUIDANCE[tone] ? `\n${TONE_GUIDANCE[tone]}\n` : '';
+  return `Generate today's PULSE brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
 }
 
-// Re-export the prompt-building flow so the compare-models endpoint can run
-// the identical prompt against both providers without copying internal logic.
+// Re-export the prompt-building flow so the compare-models endpoint can
+// run the identical prompt without copying internal logic. Tone is read
+// from the workspace and threaded into the user message.
 export function buildBriefPrompt({ workspace, accounts, posts, snapshots, competitors }) {
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
-  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload) };
+  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
+  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, tone) };
 }
 
 // ── Persist generated brief into signals table ─────────────────────────────────
@@ -760,12 +788,13 @@ export async function generateBrief(workspace) {
   // 3) Build prompt
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
 
-  // 4) Call the AI router — picks Claude or Gemini per workspace.ai_model
-  //    with automatic fallback on provider failure.
+  // 4) Call the AI router (Gemini-only during this phase). Tone preference
+  //    is applied via buildUserMessage and reads workspace.brief_tone
+  //    (analytical / strategic / executive). Default 'strategic'.
+  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
   const result = await generateIntelligence({
     system: SYSTEM_PROMPT,
-    user:   buildUserMessage(payload),
-    model:  workspace.ai_model || 'gemini',
+    user:   buildUserMessage(payload, tone),
     max_tokens: 6000,
     temperature: 0.6,
   });
