@@ -30,7 +30,10 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 
-const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone', 'weekly_digest_enabled', 'digest_email', 'brief_tone', 'featured_on_homepage'];
+// Tier is intentionally NOT in this list — a client PATCH could otherwise
+// upgrade itself from Creator to Agency for free. tier changes happen
+// server-side only, via the conversion endpoint once payment lands.
+const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone', 'weekly_digest_enabled', 'digest_email', 'brief_tone', 'featured_on_homepage', 'trial_intent_tier', 'trial_promo_code'];
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -119,6 +122,23 @@ export default async function handler(req, res) {
     const patch = {};
     for (const k of ALLOWED_FIELDS) if (k in (body || {})) patch[k] = body[k];
     if (!Object.keys(patch).length) return json(res, 400, { error: 'No valid fields to update' });
+
+    // Mirror trial_intent_tier onto tier while the workspace is still on
+    // an active trial. Tier is the user's *intent* during trial; the
+    // actual feature caps come from trial_active clamping. We refuse to
+    // touch tier once the trial converts — that's a paid-conversion
+    // event handled server-side only.
+    if ('trial_intent_tier' in patch && workspace.trial_active && !workspace.trial_converted_at) {
+      const allowed = new Set(['creator', 'brand', 'agency']);
+      if (allowed.has(patch.trial_intent_tier)) {
+        patch.tier = patch.trial_intent_tier;
+      }
+    }
+    // Normalise promo code: trim + uppercase so 'beta50' and 'BETA50'
+    // collapse to the same record for analytics.
+    if (patch.trial_promo_code != null) {
+      patch.trial_promo_code = String(patch.trial_promo_code).trim().toUpperCase() || null;
+    }
 
     try {
       const rows = await supabase.update('workspaces', patch, { eq: { id: workspace.id } });
