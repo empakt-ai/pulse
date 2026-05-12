@@ -248,78 +248,29 @@ Object.assign(window, { PlatformIcons, Icon });
 
 </script>
 <script type="text/babel">
-// Pulse Data — mock profile + posts + signals + cycles
+// Pulse Data — empty seed only. Every field below is replaced by hydrateD()
+// once /api/brief returns. The initial shape exists so screens that render
+// during the loading window (before the brief resolves) don't blow up on
+// undefined property access.
 const D = {
-  user: { name: 'Alex Rivera', initials: 'AR', handle: 'alexrivera', location: 'Brooklyn, NY', plan: 'Creator' },
-  workspace: 'Alex / Studio',
-  lastSync: 'Today, 06:04',
-  nextSync: 'Tomorrow, 06:00',
-  intelScore: 87,
-  weeklyTrend: 8.2,
-  accounts: {
-    ig: { handle: '@alexrivera', followers: 48200, posts: 312, totalViews4W: 1240000, engRate4W: 8.4, avgViews: 39800 },
-    tt: { handle: '@alexrivera', followers: 102000, videos: 88, totalPlays: 2810000 },
-    yt: { name: 'Alex Rivera', subs: 12400, videos: 42, totalViews: 484000 },
-    li: { name: 'Alex Rivera', connections: 3200, posts: 21 },
-    fb: { name: 'Alex Rivera', followers: 6100, posts: 14 }
-  },
-  posts: [
-    { id: 1, platform: 'ig', type: 'reel', title: 'The Future of Work Reel', daysAgo: 2, views: 842000, likes: 124502, comments: 1842, saves: 6210, shares: 4120, engRate: 14.8, signal: 'viral', emoji: '⚡' },
-    { id: 2, platform: 'tt', type: 'video', title: 'Eco-Tech Deep Dive', daysAgo: 1, views: 1240000, likes: 320400, comments: 4210, saves: 18200, engRate: 25.8, signal: 'viral', emoji: '🌱' },
-    { id: 3, platform: 'yt', type: 'video', title: 'Omni-Channel API tutorial', daysAgo: 1, views: 125400, likes: 18290, comments: 942, engRate: 12.2, signal: 'stable', emoji: '🎬' },
-    { id: 4, platform: 'li', type: 'post', title: 'Building remote-first teams', daysAgo: 0, views: 31400, likes: 4120, comments: 312, engRate: 13.1, signal: 'rising', emoji: '💼' },
-    { id: 5, platform: 'ig', type: 'reel', title: 'AI Strategy in 60s', daysAgo: 4, views: 312000, likes: 42100, comments: 612, saves: 2840, engRate: 9.2, signal: 'rising', emoji: '🤖' },
-    { id: 6, platform: 'tt', type: 'video', title: 'Slow Tech movement', daysAgo: 5, views: 84000, likes: 12400, engRate: 6.8, signal: 'steady', emoji: '🌀' },
-    { id: 7, platform: 'ig', type: 'post', title: 'Behind the scenes', daysAgo: 7, views: 18400, likes: 2100, engRate: 4.2, signal: 'steady', emoji: '🎥' }
-  ],
-  signals: [
-    { id: 's1', kind: 'viral', label: 'Viral formula', platform: 'tt', title: 'Eco-Tech Deep Dive is 340% over baseline', body: 'Your TikTok crossed the algorithmic velocity threshold 14 minutes ago. Reposting today extends the recommendation window.', impact: 'High Impact', action: 'Cross-post to Reels' },
-    { id: 's2', kind: 'gap', label: 'Platform gap', platform: 'yt', title: '29 vertical Reels never repurposed as YT Shorts', body: 'Your IG library has 29 sub-60s vertical posts. Each represents zero-edit Shorts upload pipeline.', impact: 'Strategic', action: 'Open Shorts queue' },
-    { id: 's3', kind: 'collab', label: 'Collab signal', platform: 'ig', title: '3 creators in your niche are open to collab', body: 'Cross-engagement analysis surfaces @maya.studio, @theyfound, @ledr.eats as highest-leverage DMs this week.', impact: 'Strategic', action: 'Draft DMs' },
-    { id: 's4', kind: 'engagement', label: 'Engagement quality', platform: 'ig', title: 'Save rate is 4.2× your category benchmark', body: 'Saves correlate with returning viewers. The "tutorial" carousel format drives 6× saves vs your reels.', impact: 'High Impact', action: 'Replicate format' },
-    { id: 's5', kind: 'warning', label: 'Market risk', platform: 'all', title: 'Ad-spend inflation on SaaS keywords +12% WoW', body: 'North America CPC trending upward. Consider organic-first messaging this cycle.', impact: 'Strategic Warning', action: 'See analysis' },
-    { id: 's6', kind: 'audience', label: 'Audience identity', platform: 'li', title: 'LinkedIn audience is 68% senior IC, not management', body: 'Your post hooks aimed at managers are converting at 0.8× the rate of IC-coded hooks. Rewrite the opener.', impact: 'Core Identity', action: 'Rewrite hooks' },
-    { id: 's7', kind: 'timing', label: 'Timing window', platform: 'ig', title: 'Peak window is Tue/Wed 18:00–21:00 ET', body: 'Posts in this window earn 2.4× engagement. Last 4 reels missed the window.', impact: 'High Impact', action: 'Schedule next' },
-    { id: 's8', kind: 'trend', label: 'Emerging trend', platform: 'tt', title: '"Slow tech" up 180% in your niche', body: 'Keyword cluster around intentionality + focus is climbing. Early entry recommended.', impact: 'Strategic', action: 'Generate brief' }
-  ],
-  todayActions: [
-    { id: 'a1', when: 'Now', urgency: 'urgent', icon: 'flame', title: 'Reply to 124K Reel', body: 'Engagement is peaking. Replying now extends reach by 1.8×.', cta: 'Open comments →' },
-    { id: 'a2', when: '4:00 PM ET', urgency: 'schedule', icon: 'clock', title: 'Post to TikTok', body: 'Your peak window is 4–6 PM. Eco-Tech b-roll is queued and ready.', cta: 'Review draft →' },
-    { id: 'a3', when: 'This week', urgency: 'optional', icon: 'sparkle', title: 'Review trends', body: '"Slow Tech" is +180%. 2 of your old reels fit perfectly.', cta: 'Read analysis →' }
-  ],
-  cycles: [
-    { id: 'c1', label: 'Cycle 01', range: 'Apr 9 → May 9', status: 'completed',
-      targets: [
-        { metric: 'IG Followers', platform: 'ig', start: 41200, target: 46000, actual: 48200, status: 'exceeded', verdict: '+2,200 over target. The Future-of-Work reel drove an unexpectedly strong month.' },
-        { metric: 'Avg Views / Post', platform: 'ig', start: 18000, target: 28000, actual: 39800, status: 'exceeded', verdict: 'Two outlier viral posts pulled the average up. Non-tutorial posts still avg ~12K.' }
-      ]},
-    { id: 'c2', label: 'Cycle 02', range: 'May 9 → Jun 8', status: 'active',
-      targets: [
-        { metric: 'IG Followers → 60K', platform: 'ig', start: 48200, target: 60000, actual: 49100, status: 'active', verdict: 'At your current pace (+29/day) you\'ll reach ~52K. The @maya.studio collab is your highest-leverage action.' },
-        { metric: 'TikTok Posts → 12', platform: 'tt', start: 1, target: 12, actual: 3, status: 'needs_push', verdict: '9 more in 28 days. Your Reels library has 29 untapped vertical posts.' },
-        { metric: 'Collab DMs sent', platform: 'ig', start: 0, target: 5, actual: 1, status: 'pending', verdict: 'Cross-niche collabs proved the model. Send 4 more this week.' },
-        { metric: 'YouTube Shorts → 8', platform: 'yt', start: 0, target: 8, actual: 0, status: 'active', verdict: 'Zero-edit pipeline from IG. Minimum effort, maximum leverage.' }
-      ]},
-    { id: 'c3', label: 'Cycle 03', range: 'Jun 8 → Jul 8', status: 'upcoming', targets: [] },
-    { id: 'c4', label: 'Cycle 04', range: 'Jul 8 → Aug 7', status: 'upcoming', targets: [] }
-  ],
-  competitors: [
-    { handle: '@maya.studio', platform: 'ig', followers: 142000, delta: 12.4 },
-    { handle: '@theyfound', platform: 'tt', followers: 88000, delta: 8.2 },
-    { handle: '@ledr.eats', platform: 'ig', followers: 220000, delta: -2.1 },
-    { handle: '@nomadnotebook', platform: 'yt', followers: 64000, delta: 4.6 },
-    { handle: '@quietworks', platform: 'li', followers: 28000, delta: 1.2 }
-  ],
-  heatmap: [
-    // Mon Tue Wed Thu Fri Sat Sun  ← cols
-    [0,0,1,0,0,1,1], // 06–09
-    [0,1,2,1,1,0,2], // 09–12
-    [1,2,3,2,1,1,2], // 12–15
-    [1,2,4,3,1,1,2], // 15–18
-    [2,3,4,4,2,1,3], // 18–21  ← peak window
-    [1,1,3,2,1,0,1]  // 21–00
-  ],
+  user: { firstName: null, name: 'You', initials: 'YO', plan: 'Creator' },
+  workspace: 'Workspace',
+  workspaces: [],
+  activeWorkspaceId: null,
+  lastSync: null,
+  nextSync: null,
+  intelScore: null,
+  accounts: {},
+  posts: [],
+  signals: [],
+  todayActions: [],
+  competitors: [],
+  // 6 rows × 7 cols, all zero. Real values come from /api/brief.heatmap.
+  heatmap: Array.from({ length: 6 }, () => Array(7).fill(0)),
   heatmapHours: ['06–09','09–12','12–15','15–18','18–21','21–00'],
+  ads: null,
+  verdict: null,
+  connectedPlatforms: [],
 };
 
 const formatNum = (n) => {
@@ -1620,6 +1571,23 @@ const sbAuth = {
     return data;
   },
 
+  // Update the current user's metadata (e.g. first name). Goes through
+  // Supabase Auth's PUT /user endpoint with the user's own access token —
+  // the service role is not involved on the client side.
+  updateUser: async (accessToken, patch) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+      method: 'PUT',
+      headers: {
+        ...sbAuth.headers(),
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Update failed');
+    return data; // updated user
+  },
+
   // Exchange a refresh_token for a fresh access_token. Supabase access tokens
   // expire after 1 hour; without this, anyone who left the tab open and came
   // back gets logged out.
@@ -1953,6 +1921,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
 // ── Onboarding ────────────────────────────────────────────────────────────────
 const Onboarding = ({ onDone }) => {
   const [step, setStep]           = React.useState(0);
+  const [firstName, setFirstName] = React.useState('');
   const [userType, setUserType]   = React.useState('creator');
   const [category, setCategory]   = React.useState('');
   const [country, setCountry]     = React.useState('CA');
@@ -1967,6 +1936,18 @@ const Onboarding = ({ onDone }) => {
 
   const saveWorkspace = async () => {
     if (!window.__pulseToken) return;
+    // Save first name to user_metadata so it's available everywhere we read
+    // the user (greetings, future per-user email digests, etc.) — separate
+    // from workspace settings which are per-workspace.
+    if (firstName.trim()) {
+      try {
+        await sbAuth.updateUser(window.__pulseToken, {
+          data: { first_name: firstName.trim() },
+        });
+      } catch (e) {
+        console.error('Failed to save first name:', e);
+      }
+    }
     try {
       await fetch('/api/workspaces', {
         method: 'PATCH',
@@ -2031,6 +2012,16 @@ const Onboarding = ({ onDone }) => {
               We'll tune your intelligence brief to your situation.
             </p>
             <div className="space-y-6">
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Your first name</label>
+                <input
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  placeholder="What should we call you?"
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  autoFocus
+                />
+              </div>
               <div>
                 <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Workspace name</label>
                 <input
@@ -2424,8 +2415,24 @@ Object.assign(window, { TopBar, AccountBar, MobileNav, ScreenHeader });
 </script>
 <script type="text/babel">
 // Screen 1 — Morning Brief
+// Returns "Good morning", "Good afternoon", "Good evening", "Good night" based
+// on the browser's local hour. Cheaper than a per-render Date object — runs
+// once per BriefScreen mount + every refreshBrief tick.
+const greetingFor = (hour) => {
+  if (hour < 5)  return 'Good night';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  if (hour < 22) return 'Good evening';
+  return 'Good night';
+};
+
 const BriefScreen = ({ activePlatform }) => {
-  const greeting = `Good morning, ${(D.user.name || 'there').split(' ')[0]}.`;
+  // Use the actual first name when we have one; otherwise just "there".
+  // We never want to greet someone by their email prefix.
+  const rawName = (D.user.firstName || D.user.name || '').split(' ')[0];
+  const looksLikeEmail = rawName.includes('@') || rawName.includes('.');
+  const firstName = (!rawName || looksLikeEmail) ? 'there' : rawName;
+  const greeting = `${greetingFor(new Date().getHours())}, ${firstName}.`;
   const connected = D.connectedPlatforms || [];
   const isAll = activePlatform === 'all' || !activePlatform;
 
@@ -2692,13 +2699,14 @@ const OverviewScreen = ({ activePlatform }) => {
 
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
         <div className="lg:col-span-4 space-y-4">
-          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
-            <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-ultra/30 blur-2xl" />
-            <Eyebrow color="text-lime">Intelligence score</Eyebrow>
-            <div className="font-display text-[64px] font-semibold leading-none tracking-tightest mt-3">{D.intelScore}<span className="text-[24px] text-paper/40">/100</span></div>
-            <div className="text-[12px] text-paper/60 mt-2 mb-4">98th percentile · Creator plan</div>
-            <div className="flex items-center justify-between text-[11px] font-mono pt-3 border-t border-paper/10"><span className="text-paper/50">Weekly trend</span><span className="text-lime">↗ +{D.weeklyTrend}%</span></div>
-          </Card>
+          {typeof D.intelScore === 'number' && D.intelScore > 0 && (
+            <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+              <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-ultra/30 blur-2xl" />
+              <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+              <div className="font-display text-[64px] font-semibold leading-none tracking-tightest mt-3">{D.intelScore}<span className="text-[24px] text-paper/40">/100</span></div>
+              <div className="text-[12px] text-paper/60 mt-2">{D.user?.plan || 'Creator'} plan · refreshed with each brief</div>
+            </Card>
+          )}
           {isAll && platformReachMix && platformReachMix.length > 0 && (
             <Card>
               <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Platform mix</h3>
@@ -3652,114 +3660,28 @@ Object.assign(window, { IntelScreen });
 </script>
 <script type="text/babel">
 // Screen 6 — Targets & Actuals
-const TargetsScreen = () => {
-  const [active, setActive] = React.useState('c2');
-  const cycle = D.cycles.find(c => c.id === active);
-  return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
-      <ScreenHeader eyebrow="Cycles" title="Targets & actuals" sub="Set 30-day cycles. Pulse tracks pace, predicts outcomes, and recommends pivots." right={<div className="flex gap-2"><Pill color="ultra">4 active</Pill><Pill color="lime">2 on track</Pill><Pill color="ink">1 done</Pill></div>} />
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        {D.cycles.map(c => (
-          <button key={c.id} onClick={() => setActive(c.id)} className={cls('rounded-2xl p-4 text-left transition-all border', active === c.id ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper' : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark hover:border-ink/30')}>
-            <div className="text-[10px] font-mono uppercase tracking-[0.14em] opacity-60 mb-1">{c.range}</div>
-            <div className="font-display text-[20px] font-semibold tracking-tighter">{c.label}</div>
-            <div className="text-[11px] mt-1 capitalize opacity-70">{c.status.replace('_', ' ')}</div>
-          </button>
-        ))}
+// Targets aren't backed by Supabase yet — there's no /api/targets endpoint
+// and no `targets` table. Showing fabricated cycles here would teach users
+// to trust numbers that aren't theirs, so we render an honest empty state
+// until the feature is wired up.
+const TargetsScreen = () => (
+  <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+    <ScreenHeader
+      eyebrow="Cycles"
+      title="Targets & actuals"
+      sub="Set 30-day growth cycles and let Pulse track pace, project outcomes, and recommend pivots."
+    />
+    <Card className="text-center py-16">
+      <div className="w-14 h-14 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-5">
+        <Icon name="target" className="w-6 h-6" />
       </div>
-
-      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
-        <div className="lg:col-span-8 space-y-4">
-          {cycle.status === 'upcoming' && (
-            <Card className="text-center py-12">
-              <Icon name="calendar" className="w-10 h-10 mx-auto mb-3 text-mute" />
-              <h3 className="font-display text-[20px] font-semibold tracking-tighter">Cycle starts {cycle.range.split(' → ')[0]}</h3>
-              <p className="text-[13px] text-mute dark:text-muteDark mt-2">Pulse will recommend targets based on this cycle's results.</p>
-            </Card>
-          )}
-          {cycle.targets?.map((t, i) => <TargetCard key={i} target={t} cycleStatus={cycle.status} />)}
-        </div>
-        <div className="lg:col-span-4 space-y-4">
-          <Card className="bg-ink text-paper border-transparent">
-            <h3 className="font-display text-[16px] font-semibold tracking-tight mb-3">How Pulse sets targets</h3>
-            <div className="space-y-3">
-              {[
-                { n: '01', t: 'Analyze last cycle', d: 'We extract growth rates, viral hits, and bottlenecks.' },
-                { n: '02', t: 'Set realistic targets', d: '70th-percentile of your trajectory — stretch but reachable.' },
-                { n: '03', t: 'Daily pace tracking', d: 'Every morning we tell you if you\'re ahead or behind.' },
-                { n: '04', t: 'Recommend pivots', d: 'If pace slips, Pulse suggests the highest-leverage action.' }
-              ].map(s => (
-                <div key={s.n} className="flex gap-3">
-                  <div className="font-mono text-[11px] text-lime flex-shrink-0">{s.n}</div>
-                  <div>
-                    <div className="text-[12.5px] font-medium">{s.t}</div>
-                    <div className="text-[11px] text-paper/60 leading-snug">{s.d}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">{cycle.label} timeline</h3>
-            <div className="space-y-3">
-              {[
-                { i: 'play', l: 'Cycle start', d: cycle.range.split(' → ')[0], state: 'done' },
-                { i: 'sparkle', l: 'Mid-cycle review', d: 'May 24', state: 'now' },
-                { i: 'target', l: 'Targets review', d: 'Jun 1', state: 'soon' },
-                { i: 'check', l: 'Cycle close', d: cycle.range.split(' → ')[1], state: 'pending' }
-              ].map((m,i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className={cls('w-7 h-7 rounded-full flex items-center justify-center', m.state === 'now' ? 'bg-magenta text-white' : m.state === 'done' ? 'bg-lime/30 text-limeDeep dark:text-lime' : 'bg-ink/5 dark:bg-paper/5 text-mute')}>
-                    <Icon name={m.i} className="w-3 h-3" />
-                  </div>
-                  <div className="flex-1"><div className="text-[12.5px] font-medium">{m.l}</div></div>
-                  <span className="font-mono text-[11px] text-mute dark:text-muteDark">{m.d}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const TargetCard = ({ target: t, cycleStatus }) => {
-  const isCompleted = cycleStatus === 'completed';
-  const pct = typeof t.actual === 'number' && typeof t.target === 'number' ? Math.min((t.actual / t.target) * 100, 105) : 0;
-  const statusColor = t.status === 'exceeded' ? 'lime' : t.status === 'active' ? 'ultraSoft' : t.status === 'needs_push' ? 'magentaSoft' : 'amber';
-  return (
-    <Card>
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3">
-          <Plat p={t.platform} className="w-7 h-7" />
-          <div>
-            <div className="font-display text-[18px] font-semibold tracking-tighter">{t.metric}</div>
-            <div className="text-[11.5px] text-mute dark:text-muteDark">{platformLabel[t.platform]}</div>
-          </div>
-        </div>
-        <Pill color={statusColor}>{t.status.replace('_', ' ')}</Pill>
-      </div>
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        {[
-          { l: isCompleted ? 'Start' : 'Now', v: typeof t.start === 'number' ? formatNum(t.start) : (t.actual === 'Not sent' ? '0' : '—') },
-          { l: 'Target', v: typeof t.target === 'number' ? formatNum(t.target) : t.target },
-          { l: 'Actual', v: typeof t.actual === 'number' ? formatNum(t.actual) : t.actual }
-        ].map((c,i) => (
-          <div key={i} className="rounded-xl bg-paper dark:bg-ink border border-line dark:border-lineDark p-3">
-            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{c.l}</div>
-            <div className="font-display text-[20px] font-semibold tracking-tighter mt-1">{c.v}</div>
-          </div>
-        ))}
-      </div>
-      {typeof t.actual === 'number' && <Progress value={pct} color={t.status === 'exceeded' ? 'bg-lime' : t.status === 'needs_push' ? 'bg-magenta' : 'bg-ultra'} />}
-      <div className="mt-4 p-3 rounded-xl bg-ink/[0.03] dark:bg-paper/[0.04] border-l-2 border-ultra">
-        <p className="text-[12.5px] leading-relaxed">{t.verdict}</p>
-      </div>
+      <h3 className="font-display text-[22px] font-semibold tracking-tighter">Targets are coming next.</h3>
+      <p className="text-[13.5px] text-mute dark:text-muteDark mt-2 max-w-md mx-auto">
+        Set follower, view, or engagement goals per platform and Pulse will calculate the daily pace, surface pivots when you slip, and grade the cycle when it closes. We'll enable this once the underlying growth data has settled.
+      </p>
     </Card>
-  );
-};
+  </div>
+);
 
 Object.assign(window, { TargetsScreen });
 
@@ -4607,12 +4529,12 @@ const hydrateD = (brief) => {
   const u = brief.user || {};
   const a = brief.accountSummary || {};
 
-  // User block
+  // User block. firstName is the explicit value captured during onboarding;
+  // name falls back to the first word of that, or the email prefix.
   D.user = {
-    name: u.name || u.email?.split('@')[0] || 'You',
-    initials: initialsOf(u.name || u.email),
-    handle: u.email?.split('@')[0] || 'pulse',
-    location: '',
+    firstName: u.first_name || null,
+    name: u.first_name || u.name || u.email?.split('@')[0] || 'You',
+    initials: initialsOf(u.first_name || u.name || u.email),
     plan: brief.tier?.label || 'Creator',
   };
 

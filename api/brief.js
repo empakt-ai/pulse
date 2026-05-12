@@ -146,7 +146,17 @@ export default async function handler(req, res) {
   return json(res, 200, {
     workspace: ws,
     workspaces: auth.workspaces || [],
-    user: { id: auth.user.id, email: auth.user.email, name: auth.user.user_metadata?.full_name || auth.user.email?.split('@')[0] },
+    user: {
+      id: auth.user.id,
+      email: auth.user.email,
+      // Prefer the explicit first_name captured during onboarding, then the
+      // first word of full_name from any OAuth provider, then the email
+      // prefix as the last-resort fallback.
+      name: auth.user.user_metadata?.first_name
+         || (auth.user.user_metadata?.full_name || '').split(' ')[0]
+         || auth.user.email?.split('@')[0],
+      first_name: auth.user.user_metadata?.first_name || null,
+    },
     tier: { ...tier, key: ws.tier || 'creator' },
     usage: { used: usage.used, limit: tier.runs_per_month },
     accounts: accounts || [],
