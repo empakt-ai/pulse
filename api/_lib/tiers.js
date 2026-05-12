@@ -43,20 +43,20 @@ export function tierFor(workspace) {
   return TIERS[workspace?.tier] || TIERS.creator;
 }
 
-// Count usage_log entries this month for the workspace.
+// Count usage_log entries this calendar month for the workspace.
+// Previously this built a URLSearchParams locally and never passed it to
+// supabase.select — so it actually counted lifetime usage, which is why
+// the dashboard counter looked "static". Now uses the proper gte filter
+// on created_at against the start of the current UTC month.
 export async function getMonthlyUsage(workspaceId) {
   const start = new Date();
   start.setUTCDate(1);
   start.setUTCHours(0, 0, 0, 0);
 
-  const params = new URLSearchParams({
-    select: 'id,cost_cents,status',
-    workspace_id: `eq.${workspaceId}`,
-    created_at: `gte.${start.toISOString()}`,
-  });
   const rows = await supabase.select('usage_log', {
-    select: 'id,cost_cents,status',
-    eq: { workspace_id: workspaceId },
+    select: 'id,cost_cents,status,created_at',
+    eq:  { workspace_id: workspaceId },
+    gte: { created_at: start.toISOString() },
   }).catch(() => []);
   const used = (rows || []).filter(r => r.status !== 'failed').length;
   const cost_cents = (rows || []).reduce((s, r) => s + (r.cost_cents || 0), 0);

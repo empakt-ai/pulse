@@ -46,6 +46,8 @@ export const supabase = {
     if (q.select) params.set('select', q.select);
     if (q.eq) for (const [k, v] of Object.entries(q.eq)) params.set(k, `eq.${v}`);
     if (q.in) for (const [k, vals] of Object.entries(q.in)) params.set(k, `in.(${vals.join(',')})`);
+    if (q.gte) for (const [k, v] of Object.entries(q.gte)) params.set(k, `gte.${v}`);
+    if (q.lt)  for (const [k, v] of Object.entries(q.lt))  params.set(k, `lt.${v}`);
     if (q.order) params.set('order', q.order);
     if (q.limit) params.set('limit', String(q.limit));
     const headers = q.single ? { 'Accept': 'application/vnd.pgrst.object+json' } : {};
