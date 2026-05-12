@@ -2568,7 +2568,7 @@ const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, t
 
 // Filter to only show actually-connected platforms. If nothing is connected,
 // hide the bar entirely so the dashboard doesn't show ghost tabs.
-const AccountBar = ({ activePlatform, setActivePlatform, connectedPlatforms, onGoConnect }) => {
+const AccountBar = ({ activePlatform, setActivePlatform, activeBrand, setActiveBrand, connectedPlatforms, onGoConnect }) => {
   const PLATFORM_LABEL = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X', sc: 'Snapchat' };
   // Map connected platform keys (ig/tt/yt/li/fb/x/sc) to display rows, pulling
   // handle from the hydrated D.accounts shape so it stays in sync with /api/brief.
@@ -2585,8 +2585,32 @@ const AccountBar = ({ activePlatform, setActivePlatform, connectedPlatforms, onG
     ...connectedAccs,
   ];
 
+  // Brand-axis chips: the user's own brand + every tracked competitor.
+  // Clicking a chip filters competitor-aware screens (Top Competitor Content)
+  // to just that brand. Hidden when no competitors are tracked.
+  const competitors = D.competitors || [];
+  const brandChips = competitors.length > 0 ? [
+    { id: null, label: 'All brands', sub: `${competitors.length + 1} tracked` },
+    ...competitors.map(c => ({
+      id: c.id,
+      label: c.display_name || c.handle,
+      handle: c.handle,
+      platform: c.platform,
+      followers: c.followers,
+    })),
+  ] : [];
+
+  // Compact follower-count formatter for the chip badge.
+  const fmtFollowers = (n) => {
+    if (n == null) return null;
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(n);
+  };
+
   return (
     <div className="hidden md:block border-b border-line dark:border-lineDark bg-paper dark:bg-ink">
+      {/* Platform-axis row */}
       <div className="max-w-[1440px] mx-auto px-6 flex items-center gap-1 overflow-x-auto no-scrollbar h-12">
         {accs.map(a => (
           <button key={a.id} onClick={() => setActivePlatform(a.id)} className={cls('flex items-center gap-2 h-9 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap transition border', activePlatform === a.id ? 'bg-chalk dark:bg-coalsoft border-ink/15 dark:border-paper/15' : 'border-transparent hover:bg-ink/5 dark:hover:bg-paper/5')}>
@@ -2603,6 +2627,36 @@ const AccountBar = ({ activePlatform, setActivePlatform, connectedPlatforms, onG
           <Icon name="plus" className="w-3.5 h-3.5" /> Connect account
         </button>
       </div>
+
+      {/* Brand-axis row — only renders when competitors are tracked */}
+      {brandChips.length > 0 && (
+        <div className="max-w-[1440px] mx-auto px-6 flex items-center gap-1 overflow-x-auto no-scrollbar h-10 border-t border-line/60 dark:border-lineDark/60">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mr-2 flex-shrink-0">Brands</span>
+          {brandChips.map(c => {
+            const active = activeBrand === c.id;
+            return (
+              <button
+                key={c.id ?? 'all-brands'}
+                onClick={() => setActiveBrand(c.id)}
+                className={cls(
+                  'flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11.5px] font-medium whitespace-nowrap transition border',
+                  active
+                    ? 'bg-ultra text-white border-ultra'
+                    : 'bg-paper dark:bg-ink border-line dark:border-lineDark hover:border-ultra/40'
+                )}
+              >
+                {c.platform && <Plat p={c.platform} className="w-3 h-3" />}
+                <span>{c.label}</span>
+                {c.followers != null && (
+                  <span className={cls('font-mono text-[10px]', active ? 'text-white/70' : 'text-mute dark:text-muteDark')}>
+                    {fmtFollowers(c.followers)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
@@ -3661,7 +3715,7 @@ const BenchmarkRow = ({ label, value, suffix = '', percentile, avg }) => {
   );
 };
 
-const ContentScreen = ({ activePlatform }) => {
+const ContentScreen = ({ activePlatform, activeBrand }) => {
   const isAll = activePlatform === 'all' || !activePlatform;
   // Local list — start with whatever brief seeded into D, then enrich from
   // /api/posts on mount so the picker isn't capped at 12.
@@ -3933,7 +3987,7 @@ const ContentScreen = ({ activePlatform }) => {
       )}
 
       {/* ── Top Competitor Content ──────────────────────────────────────── */}
-      <CompetitorTopContent activePlatform={activePlatform} />
+      <CompetitorTopContent activePlatform={activePlatform} activeBrand={activeBrand} />
     </div>
   );
 };
@@ -3941,7 +3995,7 @@ const ContentScreen = ({ activePlatform }) => {
 // Top-performing competitor posts, sorted by views, with pattern badges.
 // Lazy-loads on mount and quietly hides itself if the workspace has no
 // competitors connected yet.
-const CompetitorTopContent = ({ activePlatform }) => {
+const CompetitorTopContent = ({ activePlatform, activeBrand }) => {
   const [posts, setPosts] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -3949,15 +4003,23 @@ const CompetitorTopContent = ({ activePlatform }) => {
     let cancelled = false;
     setLoading(true);
     const q = activePlatform && activePlatform !== 'all' ? `&platform=${activePlatform}` : '';
-    api(`/competitors?mode=top-content&limit=20${q}`)
+    api(`/competitors?mode=top-content&limit=40${q}`)
       .then(r => { if (!cancelled) setPosts(r.posts || []); })
       .catch(() => { if (!cancelled) setPosts([]); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [activePlatform]);
 
+  // Brand filter is client-side — the endpoint already returned the top set
+  // and we just narrow it down to the chosen competitor when one is selected.
+  const visible = React.useMemo(() => {
+    if (!posts) return null;
+    if (!activeBrand) return posts.slice(0, 20);
+    return posts.filter(p => p.competitor.id === activeBrand).slice(0, 20);
+  }, [posts, activeBrand]);
+
   if (loading) return null;
-  if (!posts || posts.length === 0) return null;
+  if (!visible || visible.length === 0) return null;
 
   // Format big numbers compactly. 32,600,000 → 32.6M, 182,400 → 182K.
   const fmt = (n) => {
@@ -3982,8 +4044,10 @@ const CompetitorTopContent = ({ activePlatform }) => {
       <SectionHead
         eyebrow="Benchmark"
         title="Top competitor content"
-        sub="What's working for the brands you track — and the hook formula behind each one."
-        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> {posts.length} post{posts.length === 1 ? '' : 's'}</span>}
+        sub={activeBrand
+          ? `Filtered to one brand. Clear the brand filter in the top bar to see everyone.`
+          : "What's working for the brands you track — and the hook formula behind each one."}
+        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> {visible.length} post{visible.length === 1 ? '' : 's'}</span>}
       />
 
       <Card className="overflow-hidden p-0">
@@ -4001,7 +4065,7 @@ const CompetitorTopContent = ({ activePlatform }) => {
               </tr>
             </thead>
             <tbody>
-              {posts.map(p => (
+              {visible.map(p => (
                 <tr key={p.id} className="border-b border-line dark:border-lineDark last:border-b-0 hover:bg-ink/[0.02] dark:hover:bg-paper/[0.02] transition">
                   <td className="px-4 py-3 align-top">
                     <div className="flex items-center gap-2 min-w-0">
@@ -4033,7 +4097,7 @@ const CompetitorTopContent = ({ activePlatform }) => {
 
         {/* Mobile card list */}
         <div className="md:hidden">
-          {posts.map(p => (
+          {visible.map(p => (
             <div key={p.id} className="px-4 py-3 border-b border-line dark:border-lineDark last:border-b-0">
               <div className="flex items-start justify-between gap-3 mb-1.5">
                 <div className="flex items-center gap-2 min-w-0">
@@ -5740,6 +5804,10 @@ function App() {
   // etc. Settings reads it on mount and scrolls to the matching section.
   const [settingsAnchor, setSettingsAnchor] = React.useState(null);
   const [activePlatform, setActivePlatform] = React.useState('all');
+  // activeBrand: null = all brands; or a competitor id (string). Drives the
+  // "filter to one brand" mode on competitor-aware screens (Content tab's
+  // Top Competitor Content table). Platform-axis filters stay independent.
+  const [activeBrand, setActiveBrand]   = React.useState(null);
   const [range, setRange]               = React.useState('4W');
   const [t, setTweak]                   = useTweaks(DEFAULTS);
   const [showTweaks, setShowTweaks]     = React.useState(false);
@@ -5973,7 +6041,7 @@ function App() {
     Brief:    <BriefScreen activePlatform={activePlatform} />,
     Stats:    <OverviewScreen activePlatform={activePlatform} />,
     Growth:   <GrowthScreen activePlatform={activePlatform} />,
-    Content:  <ContentScreen activePlatform={activePlatform} />,
+    Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
     Actions:  <ActionsScreen activePlatform={activePlatform} />,
     Targets:  <TargetsScreen />,
@@ -6033,6 +6101,8 @@ function App() {
           <AccountBar
             activePlatform={activePlatform}
             setActivePlatform={setActivePlatform}
+            activeBrand={activeBrand}
+            setActiveBrand={setActiveBrand}
             connectedPlatforms={briefData?.state?.hasAccounts ? Object.keys(briefData.accountSummary || {}) : []}
             onGoConnect={() => setTab('Settings')}
           />
