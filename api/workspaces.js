@@ -30,7 +30,7 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 
-const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions'];
+const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone'];
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -95,15 +95,16 @@ export default async function handler(req, res) {
       const rows = await supabase.update('workspaces', patch, { eq: { id: workspace.id } });
       return json(res, 200, { workspace: rows?.[0] || null });
     } catch (e) {
-      // Schema fallback: if country/focus_regions columns don't exist yet,
-      // strip and retry. (Migration 002 not applied.)
-      if (/country|focus_regions/.test(e.message)) {
-        const { country, focus_regions, ...legacyPatch } = patch;
+      // Schema fallback: strip newer columns and retry if their migration
+      // hasn't been applied. 002 added country/focus_regions; 004 added
+      // timezone.
+      if (/country|focus_regions|timezone/.test(e.message)) {
+        const { country, focus_regions, timezone, ...legacyPatch } = patch;
         if (Object.keys(legacyPatch).length) {
           const rows = await supabase.update('workspaces', legacyPatch, { eq: { id: workspace.id } });
           return json(res, 200, {
             workspace: rows?.[0] || null,
-            warning: 'country/focus_regions not yet supported — run migrations/002.',
+            warning: 'Some newer columns not yet supported — run pending migrations in Supabase.',
           });
         }
       }

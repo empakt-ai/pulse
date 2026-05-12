@@ -1949,6 +1949,13 @@ const Onboarding = ({ onDone }) => {
       }
     }
     try {
+      // Browser IANA timezone — drives the per-workspace cron schedule
+      // (6am-local brief, 8/13/18-local live signals, Sunday deep sync).
+      // Falls back to UTC if Intl is unavailable for any reason.
+      const timezone = (() => {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+        catch { return 'UTC'; }
+      })();
       await fetch('/api/workspaces', {
         method: 'PATCH',
         headers: {
@@ -1962,6 +1969,7 @@ const Onboarding = ({ onDone }) => {
           country:       country,
           focus_regions: focusRegions,
           account_age:   accountAge,
+          timezone,
         })
       });
     } catch (e) {
@@ -3894,8 +3902,18 @@ const SettingsScreen = () => {
         const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
         if (justConnected) {
           const label = PLATFORMS.find(p => p.id === platform)?.label || platform;
-          showToast(`${label} connected ✓`);
-          api('/analytics/refresh', { method: 'POST' }).catch(() => {});
+          showToast(`${label} connected — backfilling history…`);
+          // First-connect backfill: server reads workspace.account_age and
+          // pulls 90/180/365 days accordingly. Gated server-side by
+          // initial_sync_complete so subsequent connects of the same account
+          // no-op. Refresh the dashboard once it returns.
+          api('/sync?mode=backfill', { method: 'POST' })
+            .then(r => {
+              if (r?.ran) showToast(`Backfilled ${r.posts || 0} posts ✓`);
+              // Dashboard re-fetches whenever the user navigates off Settings,
+              // so no explicit refresh is needed here.
+            })
+            .catch(() => {});
         } else if (!anyConnected) {
           // OAuth round-tripped but Zernio didn't surface the account. Most
           // common cause for Instagram: a personal IG profile (Pulse needs a
@@ -4202,17 +4220,18 @@ const SettingsScreen = () => {
                   onClick={async () => {
                     setSyncing(true);
                     try {
-                      // Account refresh (followers + handles) — fast.
+                      // Account-handle refresh first (fast, just listAccounts).
                       const synced = await api('/accounts', { method: 'POST' });
                       setAccounts(synced.accounts || []);
-                      // Full analytics + AI brief — slower, runs in the
-                      // background. This is also where Apify scrapes own-
-                      // account followers as a fallback when Zernio's
-                      // Analytics add-on isn't active.
-                      api('/analytics/refresh', { method: 'POST' })
+                      // Manual data sync — bypasses the 60-min cooldown but
+                      // counts against the daily tier cap (3 / 8 / unlimited).
+                      api('/analytics/refresh', {
+                        method: 'POST',
+                        body: JSON.stringify({ mode: 'incremental' }),
+                      })
                         .then(r => showToast(`Refreshed ${r.posts || 0} posts ✓`))
-                        .catch(e => showToast(`Analytics: ${e.message}`, 'warn'));
-                      showToast(`Synced ${synced.synced} accounts — refreshing analytics…`);
+                        .catch(e => showToast(e.message, 'warn'));
+                      showToast(`Synced ${synced.synced} accounts — pulling latest data…`);
                     } catch (e) {
                       showToast(e.message, 'err');
                     } finally {
@@ -4711,6 +4730,22 @@ function App() {
     if (tab === 'Settings') return;
     refreshBrief();
   }, [route, tab, refreshBrief]);
+
+  // Silent background sync on app entry. Server-side cooldown (60 min) keeps
+  // this cheap — the call returns { ran: false, reason: 'cooldown' } when
+  // skipped. When it actually runs, refresh the brief afterwards so the UI
+  // reflects the new posts without the user clicking anything.
+  React.useEffect(() => {
+    if (route !== 'app' || !window.__pulseToken) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/sync', { method: 'POST' });
+        if (!cancelled && r?.ran) refreshBrief();
+      } catch { /* silent — background work */ }
+    })();
+    return () => { cancelled = true; };
+  }, [route, refreshBrief]);
 
   React.useEffect(() => {
     document.documentElement.classList.toggle('dark', t.theme === 'dark');
