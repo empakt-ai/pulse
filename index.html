@@ -477,6 +477,8 @@ const D = {
   posts: [],
   signals: [],
   todayActions: [],
+  actionPlan: [],
+  formula: null,
   competitors: [],
   // 6 rows × 7 cols, all zero. Real values come from /api/brief.heatmap.
   heatmap: Array.from({ length: 6 }, () => Array(7).fill(0)),
@@ -3401,30 +3403,13 @@ const GrowthScreen = ({ activePlatform }) => {
           </Card>
 
           <Card>
-            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Competitor comparison</h3>
-            {competitors.length === 0 ? (
-              <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
-                No competitors yet. Add comparison accounts in Settings → Competitors.
+            <div className="flex items-baseline justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Reach scorecard</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">Followers vs the leader of your tracked set. Your accounts are highlighted.</p>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {competitors.map(c => (
-                  <div key={`${c.platform}-${c.handle}`} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
-                    <Plat p={c.platform} className="w-5 h-5" />
-                    <span className="flex-1 text-[13px] font-medium">
-                      @{c.handle.replace(/^@/, '')}
-                      {c.display_name && c.display_name !== c.handle && (
-                        <span className="text-mute dark:text-muteDark font-normal ml-2 text-[12px]">· {c.display_name}</span>
-                      )}
-                    </span>
-                    <span className="font-mono text-[12px] text-mute dark:text-muteDark">{c.latest != null ? formatNum(c.latest) : '—'}</span>
-                    <span className={cls('font-mono text-[12px] w-16 text-right', c.wow_pct == null ? 'text-mute dark:text-muteDark' : c.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
-                      {c.wow_pct == null ? '—' : `${c.wow_pct >= 0 ? '↑' : '↓'} ${Math.abs(c.wow_pct)}%`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
+            </div>
+            <ReachGapBars velocity={velocity} competitors={competitors} />
           </Card>
         </div>
 
@@ -3472,7 +3457,99 @@ const GrowthScreen = ({ activePlatform }) => {
   );
 };
 
-Object.assign(window, { GrowthScreen });
+// ReachGapBars — horizontal "% of leader" bars combining the user's own
+// accounts and tracked competitors into one ranked scorecard. The user's
+// rows are highlighted in the brand color so the gap is obvious. Replaces
+// the older flat "competitor comparison" list.
+const ReachGapBars = ({ velocity, competitors }) => {
+  const rows = React.useMemo(() => {
+    const own = (velocity || [])
+      .filter(v => v.latest && v.latest > 0)
+      .map(v => ({
+        key: `own-${v.platform}`,
+        platform: v.platform,
+        handle: 'you',
+        display_name: `${PLATFORM_LABEL[v.platform] || v.platform} (you)`,
+        followers: v.latest,
+        wow_pct: v.wow_pct,
+        own: true,
+      }));
+    const comp = (competitors || [])
+      .filter(c => c.latest && c.latest > 0)
+      .map(c => ({
+        key: `comp-${c.platform}-${c.handle}`,
+        platform: c.platform,
+        handle: c.handle,
+        display_name: c.display_name || c.handle,
+        followers: c.latest,
+        wow_pct: c.wow_pct,
+        own: false,
+      }));
+    return [...own, ...comp].sort((a, b) => b.followers - a.followers);
+  }, [velocity, competitors]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
+        Reach scorecard appears once at least one account or competitor has follower data. Add comparison accounts in Settings → Competitors.
+      </div>
+    );
+  }
+
+  const leader = rows[0].followers;
+
+  return (
+    <div className="space-y-2.5">
+      {rows.map(r => {
+        const pct = Math.max(1.5, (r.followers / leader) * 100);
+        // Soft "% of leader" label shown only on rows that aren't the leader.
+        const ratioLabel = r === rows[0] ? 'leader' : `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}% of leader`;
+        return (
+          <div
+            key={r.key}
+            className={cls(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg border',
+              r.own
+                ? 'bg-ultraSoft border-ultra/30 dark:bg-ultra/10'
+                : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark'
+            )}
+          >
+            <Plat p={r.platform} className="w-4 h-4 flex-shrink-0" />
+            <div className="min-w-0 w-[120px] sm:w-[140px] flex-shrink-0">
+              <div className={cls('text-[12.5px] font-semibold truncate', r.own && 'text-ultra')}>
+                {r.own ? r.display_name : `@${String(r.handle).replace(/^@/, '')}`}
+              </div>
+              <div className="text-[10.5px] font-mono text-mute dark:text-muteDark truncate">
+                {ratioLabel}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="h-2 rounded-full bg-ink/5 dark:bg-paper/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${pct}%`,
+                    background: r.own ? PLATFORM_COLOR[r.platform] || '#6B5BFF' : (PLATFORM_COLOR[r.platform] || '#9A958A') + 'AA',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="w-[64px] sm:w-[88px] flex-shrink-0 text-right">
+              <div className="font-mono text-[12.5px] font-semibold">{formatNum(r.followers)}</div>
+              {r.wow_pct != null && (
+                <div className={cls('font-mono text-[10.5px]', r.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                  {r.wow_pct >= 0 ? '↑' : '↓'} {Math.abs(r.wow_pct)}%
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+Object.assign(window, { GrowthScreen, ReachGapBars });
 
 </script>
 <script type="text/babel">
@@ -4008,6 +4085,9 @@ const IntelScreen = ({ activePlatform }) => {
             </Card>
           )}
 
+          {/* Content Formula — the AI-derived "do this exact thing" playbook */}
+          <ContentFormulaCard />
+
           {/* Stream — every other signal in the current scope */}
           {rest.length > 0 && (
             <>
@@ -4027,7 +4107,56 @@ const IntelScreen = ({ activePlatform }) => {
   );
 };
 
-Object.assign(window, { IntelScreen });
+// ContentFormulaCard — distilled "do this exact thing" playbook from the
+// latest brief. Renders the 4 ingredients (hook, differentiator, caption,
+// niche) in their own colored panels. Hides itself if the brief didn't
+// produce a formula (workspace has too little data, or pre-formula brief).
+const ContentFormulaCard = () => {
+  const f = D.formula;
+  if (!f || (!f.hook && !f.differentiator && !f.caption && !f.niche)) return null;
+
+  const ingredients = [
+    { eyebrow: '① The hook',           tone: 'magenta', body: f.hook },
+    { eyebrow: '② The differentiator', tone: 'ultra',   body: f.differentiator },
+    { eyebrow: '③ Caption structure',  tone: 'amber',   body: f.caption },
+    { eyebrow: '④ Your niche',         tone: 'lime',    body: f.niche },
+  ].filter(i => i.body);
+
+  if (ingredients.length === 0) return null;
+
+  const toneBg = {
+    magenta: 'bg-magenta/8 border-magenta/25',
+    ultra:   'bg-ultra/8 border-ultra/25',
+    amber:   'bg-amber/8 border-amber/25',
+    lime:    'bg-lime/15 border-lime/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="layers" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">The content formula</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Distilled from your data: the four ingredients to apply on your next post.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {ingredients.map(i => (
+          <div key={i.eyebrow} className={cls('rounded-xl border p-3.5', toneBg[i.tone])}>
+            <div className={cls('text-[10px] font-mono uppercase tracking-[0.12em] mb-1.5 font-semibold',
+              i.tone === 'magenta' ? 'text-magenta' :
+              i.tone === 'ultra'   ? 'text-ultra'   :
+              i.tone === 'amber'   ? 'text-amber'   : 'text-limeDeep dark:text-lime'
+            )}>{i.eyebrow}</div>
+            <p className="text-[13px] leading-relaxed">{i.body}</p>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+};
+
+Object.assign(window, { IntelScreen, ContentFormulaCard });
 
 </script>
 <script type="text/babel">
@@ -5392,10 +5521,14 @@ const hydrateD = (brief) => {
   if (brief.heatmap?.length) D.heatmap = brief.heatmap;
   if (typeof brief.intelScore === 'number') D.intelScore = brief.intelScore;
   if (brief.todayActions?.length) D.todayActions = brief.todayActions;
+  // Full action plan (6 actions across all timeframes) — Actions screen.
+  D.actionPlan = brief.actionPlan || brief.todayActions || [];
   // Expose the AI verdict for the Brief screen's dark hero card
   if (brief.verdict) {
     D.verdict = brief.verdict;
   }
+  // Distilled content formula — null until brief regenerates with the new schema.
+  D.formula = brief.formula || null;
   // Which platforms are actually connected (keys of accountSummary).
   // Used by AccountBar to hide ghost tabs and by Brief's Pipeline status.
   D.connectedPlatforms = Object.keys(a || {});

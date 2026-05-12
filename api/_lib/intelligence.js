@@ -392,8 +392,19 @@ Return STRICT JSON only. No prose before or after. No code fences.
   ],
   "score_factors": [
     "string, ≤14 words — what's pushing the intel score up or down (mix positives and negatives)"
-  ]
+  ],
+  "formula": {
+    "hook": "string, 1 sentence — the opening device that works for this workspace's audience right now. Cite the post + metric that proves it.",
+    "differentiator": "string, 1 sentence — the angle this workspace owns that competitors can't copy (cultural, format, niche, identity).",
+    "caption": "string, 1 sentence — caption structure that's outperforming. Language + length + ingredients.",
+    "niche": "string, 1 sentence — the content territory this workspace should claim and why it's defensible."
+  }
 }
+
+The "formula" object is a distilled playbook a creator can act on immediately.
+Each field must reference a concrete pattern visible in this workspace's data
+— not generic advice. If the data is too thin to derive a formula (fewer than
+5 posts), return null instead of inventing one.
 
 Final reminder: this brief lands in someone's inbox at 6 AM. They have coffee in one hand and 90 seconds. Earn that 90 seconds. If your verdict could have been written without seeing their data, it's wrong. Rewrite it.`;
 
@@ -455,7 +466,11 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
     action: 'Read brief',
     is_series: false,
     ...provenance,
-    metadata: { ...baseMeta, score_factors: brief.score_factors || [] },
+    metadata: {
+      ...baseMeta,
+      score_factors: brief.score_factors || [],
+      formula: brief.formula || null,
+    },
   });
 
   // Actions

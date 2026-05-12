@@ -211,6 +211,14 @@ export default async function handler(req, res) {
         score_factors: v.metadata?.score_factors || [],
       };
     })(),
+    // Distilled "do this exact thing" playbook — 4 ingredients (hook,
+    // differentiator, caption structure, niche territory). Returned by the
+    // AI in the same brief generation. Null until the next brief regenerates
+    // because older verdict rows don't have it in metadata.
+    formula: (() => {
+      const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
+      return v?.metadata?.formula || null;
+    })(),
     // Full action plan — every action from the current brief, sorted by
     // the urgency order the model returned them in. The Action Plan screen
     // groups these by `when` into Now/Today/This week/This month buckets.
