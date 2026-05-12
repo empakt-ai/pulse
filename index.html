@@ -144,12 +144,21 @@ tailwind.config = {
 <!-- React + Babel -->
 <!-- React dev builds — slower to parse than production but they show full
      error messages in the console when components throw, which has saved
-     us multiple times during silent-mount issues. Babel is loaded async
-     so it can fetch in parallel with React.
-     TODO: swap back to production builds once the app is stable. -->
-<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
-<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
-<script async crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+     us multiple times during silent-mount issues.
+
+     Babel must load AFTER React (no async, no defer) — Babel-standalone
+     auto-compiles text/babel scripts as soon as it loads, and those
+     compiled outputs reference React.createElement. If Babel loads first,
+     the compiled scripts fail with "React is not defined" silently. -->
+<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.development.js"
+        onload="window.__pulse_loaded_react = true"
+        onerror="window.__pulse_failed_react = this.src"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"
+        onload="window.__pulse_loaded_reactDom = true"
+        onerror="window.__pulse_failed_reactDom = this.src"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"
+        onload="window.__pulse_loaded_babel = true"
+        onerror="window.__pulse_failed_babel = this.src"></script>
 
 <style>
   /* Splash overlay — painted by the browser before React/Babel finish
@@ -274,9 +283,17 @@ tailwind.config = {
     splash.style.pointerEvents = 'auto';
     document.documentElement.removeAttribute('data-ready');
 
-    var details = __pulse_errors.length
-      ? __pulse_errors.slice(0, 5).map(function (s) { return s.slice(0, 200); }).join('\n')
-      : 'No errors captured — React or Babel may have failed to load.';
+    // Build a load-state report so we know which CDN scripts made it.
+    var loadState = [
+      'React:    ' + (window.React ? '✓ loaded' : (window.__pulse_loaded_react ? '⚠ tag loaded but no global' : (window.__pulse_failed_react ? '✗ failed to load (' + window.__pulse_failed_react + ')' : '— never started'))),
+      'ReactDOM: ' + (window.ReactDOM ? '✓ loaded' : (window.__pulse_loaded_reactDom ? '⚠ tag loaded but no global' : (window.__pulse_failed_reactDom ? '✗ failed to load' : '— never started'))),
+      'Babel:    ' + (window.Babel ? '✓ loaded' : (window.__pulse_loaded_babel ? '⚠ tag loaded but no global' : (window.__pulse_failed_babel ? '✗ failed to load' : '— never started'))),
+      'UA:       ' + (navigator.userAgent || '').slice(0, 90),
+    ].join('\n');
+
+    var details = (__pulse_errors.length
+      ? __pulse_errors.slice(0, 5).map(function (s) { return s.slice(0, 200); }).join('\n') + '\n\n'
+      : '') + 'Load state:\n' + loadState;
     var safeDetails = details.replace(/[<>&]/g, function (c) {
       return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
     });
