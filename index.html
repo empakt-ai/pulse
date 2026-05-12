@@ -1452,20 +1452,34 @@ const MiniBriefPreview = () => (
   </div>
 );
 
-const SocialProofMarquee = () => (
-  <section className="py-7 border-y border-line dark:border-lineDark bg-chalk/50 dark:bg-coal/50 overflow-hidden">
-    <div className="text-center mb-5"><span className="text-[11px] uppercase tracking-[0.18em] font-mono text-mute dark:text-muteDark">Trusted by creators, brands & agencies worldwide</span></div>
-    <div className="flex marquee whitespace-nowrap gap-12 font-display text-[22px] font-semibold tracking-tighter opacity-50">
-      {[...Array(2)].map((_,k) => (
-        <div key={k} className="flex gap-12 px-6">
-          {['LUNA STUDIO', 'Northwind &', 'kanaa.', 'EVERYDAY/CO', 'maya.studio', 'thequiet.', 'LEDR Agency', 'NomadNote', 'CIRCA', 'paperboy'].map((b,i) => (
-            <span key={i}>{b}</span>
-          ))}
-        </div>
-      ))}
-    </div>
-  </section>
-);
+// Live "Trusted by" marquee. Pulls real workspace names from /api/featured
+// (workspaces that opted in from Settings). Returns null when no one has
+// opted in yet — better to hide the section than to ship fabricated logos.
+const SocialProofMarquee = () => {
+  const [names, setNames] = React.useState(null); // null = loading, [] = none
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch('/api/featured')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (!cancelled) setNames(Array.isArray(d?.names) ? d.names : []); })
+      .catch(() => { if (!cancelled) setNames([]); });
+    return () => { cancelled = true; };
+  }, []);
+  // Hide entirely while loading and when there's nothing to show.
+  if (!names || names.length === 0) return null;
+  return (
+    <section className="py-7 border-y border-line dark:border-lineDark bg-chalk/50 dark:bg-coal/50 overflow-hidden">
+      <div className="text-center mb-5"><span className="text-[11px] uppercase tracking-[0.18em] font-mono text-mute dark:text-muteDark">Trusted by creators, brands &amp; agencies worldwide</span></div>
+      <div className="flex marquee whitespace-nowrap gap-12 font-display text-[22px] font-semibold tracking-tighter opacity-50">
+        {[...Array(2)].map((_, k) => (
+          <div key={k} className="flex gap-12 px-6">
+            {names.map((b, i) => <span key={i}>{b}</span>)}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+};
 
 const DashboardPreview = () => (
   <section className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
@@ -5860,10 +5874,11 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           account_age:   wsData.workspace.account_age || '6-12mo',
           weekly_digest_enabled: !!wsData.workspace.weekly_digest_enabled,
           digest_email:  wsData.workspace.digest_email || '',
+          featured_on_homepage: !!wsData.workspace.featured_on_homepage,
         });
       } catch (e) {
         // Not yet authenticated — show form with defaults
-        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '' });
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false });
       } finally {
         setLoading(false);
       }
@@ -6512,6 +6527,31 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                   />
                 </div>
               )}
+            </div>
+
+            {/* Feature on homepage — opt-in. Shows the workspace name in
+                the "Trusted by" marquee on the public landing page. Name
+                only — no handles, no metrics. Off by default. */}
+            <div className="mt-5 pt-5 border-t border-line dark:border-lineDark">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <label className="block text-[13.5px] font-semibold">Feature on homepage</label>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
+                    Show <strong>{form.name || 'this workspace'}</strong> in the "Trusted by" marquee on karvan-pulse.vercel.app. Only the workspace name is shown — never your handles, follower counts, or any account data.
+                  </p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer select-none flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!form.featured_on_homepage}
+                    onChange={e => setForm(f => ({ ...f, featured_on_homepage: e.target.checked }))}
+                  />
+                  <div className="w-10 h-6 rounded-full bg-ink/10 dark:bg-paper/15 peer-checked:bg-lime relative transition">
+                    <div className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                  </div>
+                </label>
+              </div>
             </div>
 
             <div className="mt-5 flex justify-end">
