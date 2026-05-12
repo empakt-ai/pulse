@@ -56,17 +56,6 @@ export default async function handler(req, res) {
   const accountId = body?.accountId || body?.id;
   if (!accountId) return json(res, 400, { error: 'accountId is required' });
 
-  // Tier gate. Backfill burns real Apify quota, so we restrict it on
-  // Creator until they upgrade. The frontend Settings UI also hides the
-  // button for Creator — this is the server-side safety net.
-  const tier = (ws.tier || 'creator').toLowerCase();
-  if (tier !== 'brand' && tier !== 'agency') {
-    return json(res, 402, {
-      error: 'Backfill is available on Brand and Agency tiers.',
-      upgrade_required: true,
-    });
-  }
-
   // Resolve the account and verify it belongs to this workspace.
   const account = await supabase.select('connected_accounts', {
     select: '*',

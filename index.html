@@ -5946,13 +5946,12 @@ const PLATFORMS = [
 ];
 
 // ── Platform connect card ─────────────────────────────────────────────────────
-const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onBackfill, backfilling, tier }) => {
+const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onBackfill, backfilling }) => {
   const connected = !!account;
-  // Backfill is only meaningful for own-handle platforms (skip when nothing
-  // is connected), and only offered on paid tiers. Show as a one-shot
-  // action — the server stamps historic_backfilled_at and refuses to
-  // re-run, so once it's done the button becomes a status pill.
-  const canBackfill = connected && (tier === 'brand' || tier === 'agency');
+  // One-shot history fetch — only meaningful when an account is actually
+  // connected. The server stamps historic_backfilled_at and refuses to
+  // re-run, so once it's done the button flips to a status pill.
+  const canBackfill = connected;
   const alreadyBackfilled = !!account?.historic_backfilled_at;
   return (
     <div className={cls(
@@ -5990,16 +5989,16 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onB
             alreadyBackfilled ? (
               <span
                 className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11.5px] font-medium text-mute dark:text-muteDark border border-line dark:border-lineDark"
-                title={`Historic posts backfilled on ${new Date(account.historic_backfilled_at).toLocaleDateString()}`}
+                title={`History fetched on ${new Date(account.historic_backfilled_at).toLocaleDateString()}`}
               >
                 <Icon name="check" className="w-3 h-3 text-limeDeep dark:text-lime" stroke={2.5} />
-                Backfilled
+                History fetched
               </span>
             ) : (
               <button
                 onClick={() => onBackfill && onBackfill(account.id)}
                 disabled={backfilling}
-                title="One-time scrape of the last ~100 public posts on this profile"
+                title="One-time pull of the last ~100 public posts on this profile"
                 className={cls(
                   'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium border transition whitespace-nowrap',
                   backfilling
@@ -6008,8 +6007,8 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onB
                 )}
               >
                 {backfilling
-                  ? <><Icon name="refresh" className="w-3 h-3 animate-spin" /> Backfilling…</>
-                  : <><Icon name="download" className="w-3 h-3" /> Backfill history</>}
+                  ? <><Icon name="refresh" className="w-3 h-3 animate-spin" /> Fetching…</>
+                  : <><Icon name="download" className="w-3 h-3" /> Fetch history</>}
               </button>
             )
           )}
@@ -6455,7 +6454,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
       });
       showToast(
         r?.persisted
-          ? `Backfilled ${r.persisted} post${r.persisted === 1 ? '' : 's'} from ${r.platform}.`
+          ? `Fetched ${r.persisted} post${r.persisted === 1 ? '' : 's'} from ${r.platform}.`
           : `No historic posts found for this account.`
       );
       // Mark locally so the button updates instantly — server already
@@ -6466,8 +6465,8 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
       // Refresh the brief so the new posts feed into Growth/Content/Targets.
       window.dispatchEvent(new CustomEvent('pulse:refresh-brief'));
     } catch (e) {
-      // Surface the actual server message (402 upgrade, 409 already done, etc.)
-      showToast(`Backfill failed: ${e.message}`, 'err');
+      // Surface the actual server message (409 already done, scrape failure, etc.)
+      showToast(`Fetch failed: ${e.message}`, 'err');
     } finally {
       setBackfillingId(null);
     }
@@ -6698,7 +6697,6 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                   onDisconnect={disconnectPlatform}
                   onBackfill={backfillAccount}
                   backfilling={backfillingId === connectedMap[platform.id]?.id}
-                  tier={tier}
                 />
               ))}
             </div>
