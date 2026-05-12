@@ -70,14 +70,45 @@ export async function messages({
   };
 }
 
-// Convenience for JSON-mode responses — strips ```json fences if Claude adds them.
+// Convenience for JSON-mode responses. Handles three failure shapes we've
+// actually seen in the wild:
+//   1. Plain JSON (the happy path — both Claude and Gemini in JSON mode).
+//   2. JSON wrapped in ```json fences (Claude occasionally adds these when
+//      JSON mode isn't engaged).
+//   3. JSON embedded inside prose — model says "Here's your brief:" and
+//      then the JSON block. We fall back to extracting the largest
+//      {...} or [...] substring and parsing that.
 export function parseJsonResponse(text) {
   if (!text) return null;
   let clean = text.trim();
+
+  // Strip ```json / ``` fences if they wrap the whole response.
   if (clean.startsWith('```')) {
     clean = clean.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '');
   }
-  try { return JSON.parse(clean); } catch { return null; }
+
+  // Direct parse first — covers the JSON-mode happy path.
+  try { return JSON.parse(clean); } catch {}
+
+  // Fallback: locate the first { ... matching } (or [ ... ]) and try that.
+  // Naive bracket balancing, which is enough for our top-level brief JSON.
+  const tryBalanced = (open, close) => {
+    const start = clean.indexOf(open);
+    if (start < 0) return null;
+    let depth = 0;
+    for (let i = start; i < clean.length; i++) {
+      if (clean[i] === open) depth++;
+      else if (clean[i] === close) {
+        depth--;
+        if (depth === 0) {
+          const slice = clean.slice(start, i + 1);
+          try { return JSON.parse(slice); } catch { return null; }
+        }
+      }
+    }
+    return null;
+  };
+  return tryBalanced('{', '}') || tryBalanced('[', ']');
 }
 
 // Quick cost estimate (cents) given usage and model.

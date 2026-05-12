@@ -60,10 +60,18 @@ export default async function handler(req, res) {
   // Shape both into the side-by-side payload the SPA expects.
   const shape = (settled, label) => {
     if (settled.status === 'rejected') {
-      return { error: settled.reason?.message || String(settled.reason), model: label };
+      return {
+        error: settled.reason?.message || String(settled.reason),
+        model: label,
+        // Both providers failed — surface what each returned so we can
+        // tell whether it was a quota, safety block, or empty response.
+        primary_error: settled.reason?.primary_error,
+        fallback_error: settled.reason?.fallback_error,
+      };
     }
     const r = settled.value;
-    const parsed = parseJsonResponse(r.text) || {};
+    const parsed = parseJsonResponse(r.text);
+    const parsedOk = parsed && (parsed.verdict || parsed.actions || parsed.signals);
     return {
       model_used: r.model_used,
       model_requested: r.model_requested,
@@ -73,12 +81,17 @@ export default async function handler(req, res) {
       tokens_used: r.tokens_used,
       cost_cents: r.cost_cents,
       brief: {
-        verdict: parsed.verdict || null,
+        verdict: parsed?.verdict || null,
       },
-      top_actions: (parsed.actions || []).slice(0, 3).map(a => a.title).filter(Boolean),
-      signals: (parsed.signals || []).slice(0, 5).map(s => ({
+      top_actions: (parsed?.actions || []).slice(0, 3).map(a => a.title).filter(Boolean),
+      signals: (parsed?.signals || []).slice(0, 5).map(s => ({
         kind: s.kind, platform: s.platform, title: s.title, impact: s.impact,
       })),
+      // When parsing failed, ship the raw text so the SPA can show it
+      // (and we can see exactly what the model emitted). Capped at 600
+      // chars to stay friendly to the panel.
+      raw_excerpt: parsedOk ? null : (r.text || '').slice(0, 600),
+      parse_failed: !parsedOk,
     };
   };
 

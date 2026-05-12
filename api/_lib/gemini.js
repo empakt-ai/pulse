@@ -26,9 +26,12 @@ function buildBody({ system, user, max_tokens, temperature, json }) {
     },
   };
   if (system) {
-    body.systemInstruction = { role: 'system', parts: [{ text: system }] };
+    // Gemini's systemInstruction does NOT accept a `role` field — including
+    // it causes the API to silently ignore the instruction in some regions.
+    // Shape is { parts: [{ text }] } only.
+    body.systemInstruction = { parts: [{ text: system }] };
   }
-  // Strict JSON output is supported on 1.5+ / 2.0 models — saves us from
+  // Strict JSON output. Supported on 1.5+ / 2.0 models — saves us from
   // chasing markdown fences in the response text.
   if (json) {
     body.generationConfig.responseMimeType = 'application/json';
@@ -56,11 +59,31 @@ export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, te
     err.body = data || text;
     throw err;
   }
-  const out = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+  const candidate = data?.candidates?.[0];
+  const out = candidate?.content?.parts?.map(p => p.text || '').join('') || '';
+  const finishReason = candidate?.finishReason || 'UNKNOWN';
+  // Surface meaningful failures (safety blocks, max-tokens cutoff, empty
+  // candidates) instead of returning silently-empty text. The router
+  // catches and falls back to Claude on any throw here.
+  if (!out) {
+    const reason = data?.promptFeedback?.blockReason
+      || finishReason
+      || 'empty response';
+    const err = new Error(`Gemini returned no content (${reason})`);
+    err.status = 502;
+    err.body = data;
+    throw err;
+  }
+  if (finishReason === 'MAX_TOKENS') {
+    // We got a response but it was truncated — log a warning and continue.
+    // The parser may still produce a usable verdict from a partial brief.
+    console.warn('[gemini] response truncated at max_tokens; consider raising max_tokens');
+  }
   const usage = data?.usageMetadata || {};
   return {
     text: out,
     model,
+    finish_reason: finishReason,
     usage: {
       input_tokens: usage.promptTokenCount ?? 0,
       output_tokens: usage.candidatesTokenCount ?? 0,

@@ -4067,6 +4067,20 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
                 </div>
                 {r?.error ? (
                   <div className="text-[12px] text-magenta">{r.error}</div>
+                ) : r?.parse_failed ? (
+                  <div className="space-y-2">
+                    <div className="text-[11px] text-amber">
+                      Response wasn't valid JSON — see raw output below.
+                    </div>
+                    <pre className="text-[10.5px] font-mono whitespace-pre-wrap break-words max-h-40 overflow-y-auto bg-paper dark:bg-ink rounded-lg p-2 border border-line dark:border-lineDark">
+                      {r.raw_excerpt || '(empty)'}
+                    </pre>
+                    {r?.fallback_from && (
+                      <div className="text-[10px] text-amber">
+                        Fell back from {r.fallback_from} ({r.fallback_reason?.slice(0, 60)})
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <>
                     <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Verdict</div>
