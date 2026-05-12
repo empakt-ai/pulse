@@ -435,6 +435,10 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
   const now = new Date().toISOString();
   const baseMeta = { generated_at: now, model, intel_score: intelScore };
 
+  // PostgREST (Supabase REST) requires every row in a bulk insert to have
+  // the EXACT same set of keys — otherwise it returns "All object keys
+  // must match" (PGRST102). So every row below must carry is_series.
+
   // Verdict
   rows.push({
     workspace_id: workspace.id,
@@ -444,6 +448,7 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
     body: brief.verdict?.body || '',
     impact: 'High Impact',
     action: 'Read brief',
+    is_series: false,
     ...provenance,
     metadata: { ...baseMeta, score_factors: brief.score_factors || [] },
   });
@@ -458,6 +463,7 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
       body: a.body || '',
       impact: a.when || 'Today',
       action: a.cta || 'Open →',
+      is_series: false,
       ...provenance,
       metadata: { ...baseMeta, when: a.when, icon: a.icon, order: i },
     });
