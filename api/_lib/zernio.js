@@ -6,6 +6,71 @@ const KEY = process.env.ZERNIO_API_KEY;
 
 if (!KEY) console.warn('[zernio] ZERNIO_API_KEY missing — backend calls will fail');
 
+// Defensive follower extractor — walks any object looking for a numeric value
+// at a plausibly-named "follower*" / "subscriber*" key. We do this because
+// Zernio's response shape isn't documented and varies across platforms.
+// Returns null when nothing usable is found.
+function isFollowerKey(key) {
+  if (typeof key !== 'string') return false;
+  const k = key.toLowerCase().replace(/[_\s-]/g, '');
+  return k === 'followers' || k === 'followercount' || k === 'followerstotal'
+      || k === 'subscribers' || k === 'subscribercount' || k === 'subs'
+      || k === 'fans' || k === 'fancount'
+      || k === 'edgefollowedby'           // IG graph shape
+      || k === 'audiencesize';            // some aggregators
+}
+
+function coerceNumber(v) {
+  if (v == null) return null;
+  if (typeof v === 'number' && Number.isFinite(v)) return v;
+  if (typeof v === 'string' && /^\d+(\.\d+)?$/.test(v)) return Number(v);
+  // IG graph nests count under .count
+  if (typeof v === 'object' && typeof v.count === 'number') return v.count;
+  return null;
+}
+
+export function extractFollowers(obj, depth = 0) {
+  if (obj == null || depth > 5) return null;
+
+  // Array — pick the newest entry by date/timestamp, then recurse.
+  if (Array.isArray(obj)) {
+    if (!obj.length) return null;
+    const sorted = [...obj].sort((a, b) =>
+      String(b?.date || b?.timestamp || b?.snapshot_date || '').localeCompare(
+      String(a?.date || a?.timestamp || a?.snapshot_date || '')));
+    for (const item of sorted) {
+      const n = extractFollowers(item, depth + 1);
+      if (n != null) return n;
+    }
+    return null;
+  }
+
+  if (typeof obj !== 'object') return null;
+
+  // Check own keys first (prefer top-level over deep nesting).
+  for (const [k, v] of Object.entries(obj)) {
+    if (isFollowerKey(k)) {
+      const n = coerceNumber(v);
+      if (n != null) return n;
+    }
+  }
+  // Common alternative shapes: { current, history }, { latest, ... }
+  if (typeof obj.current === 'number') return obj.current;
+  if (typeof obj.latest === 'number') return obj.latest;
+  if (typeof obj.value === 'number' && (obj.metric === 'followers' || obj.type === 'followers')) {
+    return obj.value;
+  }
+
+  // Recurse into nested objects/arrays.
+  for (const v of Object.values(obj)) {
+    if (v && typeof v === 'object') {
+      const n = extractFollowers(v, depth + 1);
+      if (n != null) return n;
+    }
+  }
+  return null;
+}
+
 async function call(path, opts = {}) {
   const url = `${BASE}${path}`;
   const res = await fetch(url, {
@@ -85,24 +150,24 @@ export const zernio = {
   // Convenience: just the latest follower count (or null on any failure).
   // Used during /api/accounts sync and the cron analytics refresh because
   // Zernio's /accounts endpoint doesn't reliably populate the followers field.
-  async latestFollowers(accountId) {
+  //
+  // Strategy: try /follower-stats first (proper history endpoint), and if
+  // that doesn't give us a number, walk the raw /accounts payload looking
+  // for any plausibly-named follower field anywhere in the tree.
+  async latestFollowers(accountId, rawAccount = null) {
+    // 1) follower-stats endpoint
     try {
       const stats = await this.getFollowerStats(accountId);
-      if (stats == null) return null;
-      if (typeof stats.current === 'number') return stats.current;
-      if (typeof stats.followers === 'number') return stats.followers;
-      if (typeof stats.followerCount === 'number') return stats.followerCount;
-      const arr = Array.isArray(stats) ? stats : (stats.history || stats.data || []);
-      if (Array.isArray(arr) && arr.length) {
-        const sorted = [...arr].sort((a, b) =>
-          String(b.date || b.timestamp || '').localeCompare(String(a.date || a.timestamp || '')));
-        const top = sorted[0];
-        return Number(top?.count ?? top?.followers ?? top?.value) || null;
-      }
-      return null;
-    } catch {
-      return null;
+      const n = extractFollowers(stats);
+      if (n != null) return n;
+    } catch { /* fall through */ }
+
+    // 2) deep-walk the raw account object we already have from listAccounts
+    if (rawAccount) {
+      const n = extractFollowers(rawAccount);
+      if (n != null) return n;
     }
+    return null;
   },
 
   // Disconnect an account from the Zernio profile. Mirrors what the user

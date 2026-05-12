@@ -1,6 +1,6 @@
 import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
-import { zernio } from '../_lib/zernio.js';
+import { zernio, extractFollowers } from '../_lib/zernio.js';
 import { checkUsageCap } from '../_lib/tiers.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
@@ -56,11 +56,15 @@ export default async function handler(req, res) {
   const failures = [];
   const snapshots = [];
 
-  // Refresh follower counts up-front (Zernio /accounts doesn't include them
-  // reliably; we always want the latest before the analytics snapshot lands).
+  // Refresh follower counts up-front. Try the cached metadata first (we
+  // saved the raw Zernio account payload during sync), and fall back to the
+  // /follower-stats endpoint if the deep-walk doesn't find anything.
   await Promise.all((accounts || []).map(async (acct) => {
     if (acct.platform === 'youtube' || !acct.zernio_account_id) return;
-    const followers = await zernio.latestFollowers(acct.zernio_account_id);
+    let followers = extractFollowers(acct.metadata);
+    if (followers == null) {
+      followers = await zernio.latestFollowers(acct.zernio_account_id, acct.metadata);
+    }
     if (followers != null && followers !== acct.followers) {
       acct.followers = followers;
       await supabase.update('connected_accounts',

@@ -5,7 +5,7 @@
 // when you set CRON_SECRET as an env var. Reject any call without it.
 
 import { supabase } from '../_lib/supabase.js';
-import { zernio } from '../_lib/zernio.js';
+import { zernio, extractFollowers } from '../_lib/zernio.js';
 import { json } from '../_lib/auth.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
@@ -66,11 +66,14 @@ async function refreshWorkspace(ws) {
 
   if (!accounts?.length) return { workspace_id: ws.id, accounts: 0, posts: 0 };
 
-  // 1.5) refresh follower counts via /follower-stats (Zernio /accounts
-  // doesn't populate them reliably). Best-effort per account.
+  // 1.5) refresh follower counts. Deep-walk metadata first (already-cached
+  // Zernio payload), fall back to /follower-stats. Best-effort.
   await Promise.all(accounts.map(async (acct) => {
     if (acct.platform === 'youtube' || !acct.zernio_account_id) return;
-    const followers = await zernio.latestFollowers(acct.zernio_account_id);
+    let followers = extractFollowers(acct.metadata);
+    if (followers == null) {
+      followers = await zernio.latestFollowers(acct.zernio_account_id, acct.metadata);
+    }
     if (followers != null && followers !== acct.followers) {
       acct.followers = followers;
       await supabase.update('connected_accounts',

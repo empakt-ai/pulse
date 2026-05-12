@@ -7,7 +7,7 @@
 
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
-import { zernio } from './_lib/zernio.js';
+import { zernio, extractFollowers } from './_lib/zernio.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -37,30 +37,59 @@ export default async function handler(req, res) {
     }
     const list = Array.isArray(remote) ? remote : (remote?.accounts || remote?.data || []);
 
-    // Build the upsert rows. Followers from /accounts is often null — we
-    // backfill with /accounts/{id}/follower-stats below.
+    // Build the upsert rows. We try three sources for follower counts, in
+    // order of trust:
+    //   1. Deep-walk the raw listAccounts payload (catches whatever nested
+    //      shape Zernio uses for this platform).
+    //   2. /accounts/{id}/follower-stats endpoint.
+    //   3. Fall back to null + leave a diagnostic in metadata so we can see
+    //      exactly what came back.
     const baseRows = list.map(a => ({
       workspace_id: ws.id,
       platform: a.platform || a.provider,
       zernio_account_id: a._id || a.id || a.accountId,
       platform_username: a.username || a.handle || a.name || null,
       platform_user_id: a.platformUserId || a.platform_user_id || a.userId || null,
-      followers: a.followers ?? a.followerCount ?? null,
+      _raw: a,
       verified: !!a.verified,
       last_synced_at: new Date().toISOString(),
-      metadata: a,
     })).filter(r => r.platform && r.zernio_account_id);
 
-    // Parallel follower-stats fetch — Zernio's /accounts endpoint doesn't
-    // include a reliable followers field, so we hit /follower-stats per
-    // account and merge the value back into the upsert payload.
-    const followerCounts = await Promise.all(
-      baseRows.map(r => zernio.latestFollowers(r.zernio_account_id))
-    );
-    const rows = baseRows.map((r, i) => ({
-      ...r,
-      followers: followerCounts[i] ?? r.followers ?? null,
+    // For each account: deep-walk first (free), then call follower-stats
+    // only if the walk didn't find anything (saves N parallel requests on
+    // platforms where Zernio /accounts already returns the count).
+    const enriched = await Promise.all(baseRows.map(async (r) => {
+      const fromList = extractFollowers(r._raw);
+      let followers = fromList;
+      let followerSource = fromList != null ? 'listAccounts' : null;
+      let followerStatsRaw = null;
+      if (followers == null) {
+        try {
+          followerStatsRaw = await zernio.getFollowerStats(r.zernio_account_id);
+          const fromStats = extractFollowers(followerStatsRaw);
+          if (fromStats != null) {
+            followers = fromStats;
+            followerSource = 'follower-stats';
+          }
+        } catch (e) {
+          followerStatsRaw = { error: e.message };
+        }
+      }
+      return {
+        ...r,
+        followers,
+        metadata: {
+          ...r._raw,
+          _diag: {
+            follower_source: followerSource,
+            // When followers is still null, this is what we have to look at
+            // in Supabase to figure out what Zernio actually sent us.
+            follower_stats_raw: followerStatsRaw,
+          },
+        },
+      };
     }));
+    const rows = enriched.map(({ _raw, ...rest }) => rest);
 
     const existing = await supabase.select('connected_accounts', {
       select: 'zernio_account_id,platform',
