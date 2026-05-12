@@ -824,7 +824,11 @@ export async function generateBrief(workspace) {
     };
   }
 
-  // 6) Log usage
+  // 6) Log usage. The legacy usage_log table has `run_at timestamptz`
+  //    as a required column without a default — leaving it off made
+  //    every insert silently fail (we used to swallow the error with
+  //    a no-op catch), which is why the monthly counter was pinned at
+  //    zero even after several real briefs.
   await supabase.insert('usage_log', {
     workspace_id: workspace.id,
     run_type: 'intelligence',
@@ -832,7 +836,8 @@ export async function generateBrief(workspace) {
     records_fetched: (brief.signals?.length || 0) + (brief.actions?.length || 0) + 1,
     cost_cents: result.cost_cents || 0,
     status: 'completed',
-  }).catch(() => {});
+    run_at: new Date().toISOString(),
+  }).catch(e => console.warn('[intelligence] usage_log insert failed:', e.message));
 
   return {
     ok: true,

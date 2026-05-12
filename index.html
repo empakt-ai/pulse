@@ -2810,10 +2810,15 @@ const BriefScreen = ({ activePlatform, setTab }) => {
         eyebrow={(() => {
           const v = D.verdict;
           if (!v?.generated_at) return `Today · ${D.lastSync || '—'}`;
-          // Render in the workspace's own timezone so the label reads as the
-          // user expects ("generated 6:04 AM" matches their wall clock).
+          // Display in the workspace timezone when one is explicitly set;
+          // otherwise (or if it's still the default UTC) fall back to the
+          // viewer's browser timezone so the "generated 5:29 PM" line
+          // matches their actual wall clock.
           try {
-            const tz = v.timezone || 'UTC';
+            let tz = v.timezone;
+            if (!tz || tz === 'UTC') {
+              tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            }
             const dt = new Date(v.generated_at);
             const day = dt.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' });
             const time = dt.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });

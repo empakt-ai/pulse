@@ -57,6 +57,7 @@ export async function syncCompetitorsForWorkspace(workspace, { force = false } =
         run_type: 'competitor_scrape',
         platform: comp.platform,
         status: 'running',
+        run_at: new Date().toISOString(),
       });
       logRow = inserted?.[0];
     } catch {}

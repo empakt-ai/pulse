@@ -76,6 +76,7 @@ export default async function handler(req, res) {
   try {
     const inserted = await supabase.insert('usage_log', {
       workspace_id: ws.id, run_type: 'manual_sync', status: 'running',
+      run_at: new Date().toISOString(),
     });
     logRow = inserted?.[0];
   } catch {}
