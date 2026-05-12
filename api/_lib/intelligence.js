@@ -59,6 +59,70 @@ function computeIntelScore({ accounts, posts, snapshots }) {
 }
 
 // ── Aggregate the workspace into a compact prompt payload ─────────────────────
+// Series detection — group posts whose captions contain "Part N", "Episode N",
+// "Ep N", "Pt N", or "#N" markers under a shared series key (the caption with
+// the marker stripped, lowercased and trimmed). Returns groups with 3+ entries
+// so the prompt can generate a series performance comparison instead of a
+// naive "do Part N+1" recommendation.
+const SERIES_PATTERNS = [
+  /\b(?:part|episode|ep|pt|chapter|day)\s*[#:.]?\s*(\d+)\b/i,
+  /(?:^|\s)#(\d+)(?:\s|$)/,
+];
+
+function detectSeries(posts) {
+  const groups = new Map();
+  for (const p of posts) {
+    const cap = p.caption || '';
+    if (!cap) continue;
+    let match = null;
+    for (const re of SERIES_PATTERNS) {
+      const m = cap.match(re);
+      if (m) { match = m; break; }
+    }
+    if (!match) continue;
+    const entryNumber = Number(match[1]);
+    if (!Number.isFinite(entryNumber)) continue;
+    // Series key = caption with the matched marker removed, normalized.
+    const key = (cap.replace(match[0], '').replace(/\s+/g, ' ').trim().toLowerCase().slice(0, 80))
+              + `::${p.platform}`;
+    if (!key.replace(`::${p.platform}`, '').length) continue; // marker was the entire caption
+    if (!groups.has(key)) groups.set(key, { key, platform: p.platform, entries: [] });
+    groups.get(key).entries.push({
+      number: entryNumber,
+      caption: cap.slice(0, 100),
+      posted_at: p.posted_at,
+      views: p.views || 0,
+      likes: p.likes || 0,
+      comments: p.comments || 0,
+      saves: p.saves || 0,
+      shares: p.shares || 0,
+      engagement_rate: p.engagement_rate || 0,
+      signal: p.signal,
+    });
+  }
+  // Only return series with 3+ entries — fewer than that and a "do Part N+1"
+  // recommendation is the right call.
+  const result = [];
+  for (const g of groups.values()) {
+    if (g.entries.length < 3) continue;
+    g.entries.sort((a, b) => a.number - b.number);
+    const views = g.entries.map(e => e.views);
+    const engs  = g.entries.map(e => e.engagement_rate);
+    g.summary = {
+      total: g.entries.length,
+      latest_number: g.entries[g.entries.length - 1].number,
+      avg_views: Math.round(views.reduce((s, n) => s + n, 0) / g.entries.length),
+      peak_views: Math.max(...views),
+      avg_engagement_rate: Math.round((engs.reduce((s, n) => s + n, 0) / g.entries.length) * 100) / 100,
+      trajectory: views[views.length - 1] > views[0] ? 'growing'
+                : views[views.length - 1] < views[0] * 0.7 ? 'declining'
+                : 'flat',
+    };
+    result.push(g);
+  }
+  return result;
+}
+
 function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
   const ownPosts = posts.filter(p => p.source === 'own');
   const byPlatform = {};
@@ -94,6 +158,10 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
       signal: p.signal,
     }));
 
+  // Series with 3+ entries — fed to the prompt so it generates performance
+  // comparison signals instead of "do Part N+1" recommendations.
+  const series = detectSeries(ownPosts);
+
   return {
     workspace: {
       user_type: workspace.user_type,
@@ -104,6 +172,7 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
     },
     platforms: byPlatform,
     top_posts: topPosts,
+    series,
     competitors: (competitors || []).slice(0, 10).map(c => ({
       platform: c.platform, handle: c.handle, followers: c.followers || 0,
     })),
@@ -160,6 +229,14 @@ Exactly 3. Ordered by urgency (Now → Today → This week). Each action must:
   • Move ONE metric the reader cares about
   • Avoid generic copy ("engage with your audience" → no, "reply to the top 8 comments on the 'Khasara' reel within the next hour" → yes)
 
+═══ SERIES HANDLING ═══
+
+If \`series\` is present in the payload, the user has already published 3+ entries in a numbered series (Part N / Episode N / #N). For each series:
+  • DO NOT recommend "make Part N+1" as an action. Continuation is the obvious move and they're already doing it.
+  • INSTEAD, generate one \`engagement\` or \`trend\` signal that compares the series' performance: which entry peaked, what the trajectory is (growing / flat / declining), and what that tells them about the format.
+  • Use is_series: true on that signal (the field is optional and only valid here).
+  • Cite the actual entry numbers and view counts from the data.
+
 ═══ SIGNALS ═══
 
 4-8 signals, varied across kinds and platforms when the data supports it. Each signal:
@@ -193,7 +270,8 @@ Return STRICT JSON only. No prose before or after. No code fences.
       "title": "string, 6-14 words, the signal headline with a number or specific in it",
       "body": "string, 1-2 sentences with specific numbers AND the strategic implication",
       "impact": "High Impact" | "Strategic" | "Core Identity" | "Strategic Warning",
-      "action": "string, 2-5 words describing the next move"
+      "action": "string, 2-5 words describing the next move",
+      "is_series": "boolean, optional — true only on series-comparison signals"
     }
   ],
   "score_factors": [
@@ -209,9 +287,15 @@ function buildUserMessage(payload) {
 
 // ── Persist generated brief into signals table ─────────────────────────────────
 async function persist({ workspace, brief, intelScore, usage, model }) {
-  // Soft-delete prior brief rows so the screen reads the latest
-  await supabase.update('signals', { is_read: true },
-    { eq: { workspace_id: workspace.id } }
+  // Soft-delete prior BRIEF rows (verdict/action/standard signals) so the
+  // screen reads today's brief. Live-signal rows (kind='live') are kept —
+  // they're an independent append-only feed and shouldn't be invalidated
+  // when a new morning brief lands.
+  const briefKinds = ['verdict', 'action', 'viral', 'gap', 'collab',
+                      'engagement', 'warning', 'audience', 'timing', 'trend'];
+  await supabase.update('signals',
+    { is_read: true },
+    { eq: { workspace_id: workspace.id }, in: { kind: briefKinds } }
   ).catch(() => {});
 
   const rows = [];
@@ -254,6 +338,7 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
       body: s.body || '',
       impact: s.impact || 'Strategic',
       action: s.action || 'Review',
+      is_series: !!s.is_series,
       metadata: baseMeta,
     });
   });

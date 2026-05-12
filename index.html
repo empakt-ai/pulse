@@ -2484,7 +2484,26 @@ const BriefScreen = ({ activePlatform }) => {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
-      <ScreenHeader eyebrow={`Today · ${D.lastSync || '—'}`} title={greeting} sub={sub} right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>} />
+      <ScreenHeader
+        eyebrow={(() => {
+          const v = D.verdict;
+          if (!v?.generated_at) return `Today · ${D.lastSync || '—'}`;
+          // Render in the workspace's own timezone so the label reads as the
+          // user expects ("generated 6:04 AM" matches their wall clock).
+          try {
+            const tz = v.timezone || 'UTC';
+            const dt = new Date(v.generated_at);
+            const day = dt.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' });
+            const time = dt.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+            return `Morning Brief · ${day} · generated ${time}`;
+          } catch {
+            return `Morning Brief · ${new Date(v.generated_at).toLocaleString()}`;
+          }
+        })()}
+        title={greeting}
+        sub={sub}
+        right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>}
+      />
 
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5 sm:mb-6">
         <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">

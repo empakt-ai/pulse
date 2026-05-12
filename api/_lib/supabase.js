@@ -80,6 +80,7 @@ export const supabase = {
   async update(table, patch, q = {}) {
     const params = new URLSearchParams();
     if (q.eq) for (const [k, v] of Object.entries(q.eq)) params.set(k, `eq.${v}`);
+    if (q.in) for (const [k, vals] of Object.entries(q.in)) params.set(k, `in.(${vals.join(',')})`);
     return rest(`/${table}?${params.toString()}`, {
       method: 'PATCH',
       headers: { 'Prefer': 'return=representation' },

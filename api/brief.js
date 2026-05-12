@@ -205,6 +205,9 @@ export default async function handler(req, res) {
         title: v.title, body: v.body,
         generated_at: v.metadata?.generated_at || v.generated_at,
         model: v.metadata?.model,
+        // Workspace timezone is needed by the SPA to render the "generated at"
+        // label in the user's local clock rather than UTC.
+        timezone: ws.timezone || 'UTC',
         score_factors: v.metadata?.score_factors || [],
       };
     })(),
