@@ -2313,7 +2313,13 @@ Object.assign(window, { Auth, Onboarding, sbAuth, checkMagicLinkHash, restoreSes
 <script type="text/babel">
 // Pulse Shell — TopBar, AccountBar, MobileNav
 
-const TopBar = ({ active, setActive, onSignOut, userEmail, theme, toggleTheme }) => {
+const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, theme, toggleTheme }) => {
+  // Convenience: jump to Settings + a named anchor section. Falls back to
+  // setActive when the prop isn't wired (older shells).
+  const goSettings = (anchor) => {
+    if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
+    setActive('Settings');
+  };
   const tabs = ['Brief','Stats','Growth','Content','Intel','Targets','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
@@ -2373,7 +2379,7 @@ const TopBar = ({ active, setActive, onSignOut, userEmail, theme, toggleTheme })
                   );
                 })}
                 <button
-                  onClick={() => { setWsOpen(false); setActive('Settings'); }}
+                  onClick={() => { setWsOpen(false); goSettings('workspaces'); }}
                   className="w-full text-left px-3 py-2.5 text-[12.5px] text-ultra dark:text-lime hover:bg-ink/5 dark:hover:bg-paper/5 border-t border-line dark:border-lineDark flex items-center gap-1.5"
                 >
                   <Icon name="plus" className="w-3.5 h-3.5" /> Manage workspaces
@@ -2406,7 +2412,7 @@ const TopBar = ({ active, setActive, onSignOut, userEmail, theme, toggleTheme })
                   <div className="text-[13px] font-medium truncate">{userEmail || D.user.name}</div>
                 </div>
                 <button
-                  onClick={() => { setMenuOpen(false); setActive('Settings'); }}
+                  onClick={() => { setMenuOpen(false); goSettings('profile'); }}
                   className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center gap-2"
                 >
                   <Icon name="settings" className="w-3.5 h-3.5" /> Settings
@@ -4109,7 +4115,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
 };
 
 // ── Main Settings Screen ──────────────────────────────────────────────────────
-const SettingsScreen = () => {
+const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
   const [accounts, setAccounts]     = React.useState([]);
   const [workspace, setWorkspace]   = React.useState(null);
   const [workspaces, setWorkspaces] = React.useState([]);
@@ -4132,6 +4138,26 @@ const SettingsScreen = () => {
   const [savingName, setSavingName] = React.useState(false);
   // Tracks the in-flight OAuth poll so the postMessage handler can cancel it.
   const pollerRef = React.useRef(null);
+
+  // Scroll-to-anchor on mount when navigation set scrollAnchor.
+  // Two-frame delay so the section actually exists in the DOM before
+  // scrollIntoView fires. Anchors use scrollMarginTop so the sticky header
+  // doesn't cover the title.
+  React.useEffect(() => {
+    if (!scrollAnchor) return;
+    const id = scrollAnchor === 'workspaces' ? 'settings-workspaces'
+            : scrollAnchor === 'profile'    ? 'settings-profile'
+            : null;
+    if (!id) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        onAnchorConsumed?.();
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [scrollAnchor, onAnchorConsumed]);
 
   // Workspace form state
   const [form, setForm] = React.useState({
@@ -4447,7 +4473,7 @@ const SettingsScreen = () => {
         <div className="space-y-6">
 
           {/* Personal profile — first name powers the greeting on Brief */}
-          <div>
+          <div id="settings-profile" style={{ scrollMarginTop: '80px' }}>
             <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Your profile</h3>
             <p className="text-[13px] text-mute dark:text-muteDark mb-4">
               How Pulse greets you across workspaces.
@@ -4608,7 +4634,7 @@ const SettingsScreen = () => {
 
           {/* Workspaces — a user can own multiple workspaces, e.g. one per
               brand or client. Each workspace = its own subscription/quota. */}
-          <div>
+          <div id="settings-workspaces" style={{ scrollMarginTop: '80px' }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-display text-[17px] font-semibold tracking-tight">Your workspaces</h3>
               <span className="text-[11px] font-mono text-mute dark:text-muteDark">
@@ -5007,6 +5033,10 @@ function App() {
   });
 
   const [tab, setTab]                   = React.useState('Brief');
+  // Optional anchor hint for Settings — set when navigating from the
+  // TopBar workspace dropdown ('workspaces'), the avatar menu ('profile'),
+  // etc. Settings reads it on mount and scrolls to the matching section.
+  const [settingsAnchor, setSettingsAnchor] = React.useState(null);
   const [activePlatform, setActivePlatform] = React.useState('all');
   const [range, setRange]               = React.useState('4W');
   const [t, setTweak]                   = useTweaks(DEFAULTS);
@@ -5051,34 +5081,50 @@ function App() {
     refreshBrief();
   }, [route, tab, refreshBrief]);
 
+  // Track whether we've already kicked the on-entry sync for this session
+  // so a subsequent briefData update doesn't retrigger it. (Bug fix: the
+  // previous version depended on briefData.tier and ran every time
+  // briefData changed → agency users hit an infinite refreshBrief loop.)
+  const syncFiredRef = React.useRef(false);
+  const agencyRegenFiredRef = React.useRef(false);
+
   // Silent background sync on app entry. Server-side cooldown (60 min) keeps
   // this cheap — the call returns { ran: false, reason: 'cooldown' } when
   // skipped. When it actually runs, refresh the brief afterwards so the UI
   // reflects the new posts without the user clicking anything.
   //
   // Agency tier: server bypasses the 60-min cooldown entirely, AND the
-  // morning brief regenerates on every login. The auto-regen happens AFTER
-  // the sync resolves so the new posts are visible to the prompt.
+  // morning brief regenerates on every login. Both flags fire AT MOST ONCE
+  // per route→'app' transition so we never feedback-loop.
   React.useEffect(() => {
     if (route !== 'app' || !window.__pulseToken) return;
+    if (syncFiredRef.current) return;
+    syncFiredRef.current = true;
     let cancelled = false;
     (async () => {
       try {
         const r = await api('/sync', { method: 'POST' });
         if (cancelled) return;
-        const isAgency = (briefData?.tier?.key || briefData?.workspace?.tier || '').toLowerCase() === 'agency';
         if (r?.ran) refreshBrief();
-        // Auto-regen brief for agency, even if sync was a no-op — they
-        // explicitly want a fresh brief on every login.
-        if (isAgency) {
-          api('/intelligence/generate', { method: 'POST' })
-            .then(() => { if (!cancelled) refreshBrief(); })
-            .catch(() => {});
-        }
       } catch { /* silent — background work */ }
     })();
     return () => { cancelled = true; };
-  }, [route, refreshBrief, briefData?.tier?.key, briefData?.workspace?.tier]);
+  }, [route, refreshBrief]);
+
+  // Agency-tier brief regen — gated to fire at most once per session, and
+  // only after briefData has hydrated so we know the tier without polling.
+  React.useEffect(() => {
+    if (route !== 'app' || !briefData) return;
+    if (agencyRegenFiredRef.current) return;
+    const isAgency = (briefData?.tier?.key || briefData?.workspace?.tier || '').toLowerCase() === 'agency';
+    if (!isAgency) return;
+    agencyRegenFiredRef.current = true;
+    let cancelled = false;
+    api('/intelligence/generate', { method: 'POST' })
+      .then(() => { if (!cancelled) refreshBrief(); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [route, briefData, refreshBrief]);
 
   // Dismiss the initial splash once we have something real to show.
   // "Ready" means: the user is past the loading state AND either we have
@@ -5207,7 +5253,7 @@ function App() {
     Content:  <ContentScreen activePlatform={activePlatform} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
     Targets:  <TargetsScreen />,
-    Settings: <SettingsScreen />
+    Settings: <SettingsScreen scrollAnchor={settingsAnchor} onAnchorConsumed={() => setSettingsAnchor(null)} />
   };
 
   if (route === 'loading') {
@@ -5254,6 +5300,7 @@ function App() {
           <TopBar
             active={tab}
             setActive={setTab}
+            navigateToSettings={(anchor) => { setSettingsAnchor(anchor || null); setTab('Settings'); }}
             theme={t.theme}
             toggleTheme={() => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark')}
             onSignOut={handleSignOut}
