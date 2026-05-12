@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [PULSE-SPECIFIC] Stays in this repo. PULSE's commercial model (Creator /
-// Brand / Agency tiers, USD/SAR pricing, per-tier caps on accounts, comp-
+// Brand / Agency tiers, USD pricing, per-tier caps on accounts, comp-
 // etitors and AI runs) is a product decision, not a platform primitive.
 // Content Studio will have its own pricing/quota module.
 // ═════════════════════════════════════════════════════════════════════════
@@ -13,7 +13,6 @@ export const TIERS = {
   creator: {
     label: 'Creator',
     price_usd: 29,
-    price_sar: 115,
     platforms: 7,
     accounts_per_platform: 1,
     competitors: 5,
@@ -22,7 +21,6 @@ export const TIERS = {
   brand: {
     label: 'Brand',
     price_usd: 149,
-    price_sar: 560,
     platforms: 7,
     accounts_total: 21,
     competitors: 15,
@@ -31,7 +29,6 @@ export const TIERS = {
   agency: {
     label: 'Agency',
     price_usd: 599,
-    price_sar: 2250,
     platforms: 7,
     accounts_total: -1, // unlimited
     competitors: 50,

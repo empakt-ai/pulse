@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pricing — PULSE | Creator, Brand, Agency plans</title>
-<meta name="description" content="PULSE pricing: Creator at $29/mo, Brand at $149/mo, Agency at $599/mo. 14-day free trial on every plan. USD and SAR pricing. Cancel anytime.">
+<meta name="description" content="PULSE pricing: Creator at $29/mo, Brand at $149/mo, Agency at $599/mo. 14-day free trial on every plan. Cancel anytime.">
 <meta property="og:title" content="PULSE Pricing — Three plans, 14-day free trial">
 <meta property="og:description" content="Creator $29 · Brand $149 · Agency $599. Per workspace, per month. No credit card to start.">
 <meta property="og:type" content="website">
@@ -54,20 +54,6 @@
   details.faq[open] summary::after { content: '−'; }
   details.faq p { margin-top: 10px; color: var(--mute); font-size: 14.5px; line-height: 1.6; max-width: 740px; }
 </style>
-<script>
-  // Toggle USD ↔ SAR pricing inline. Single source-of-truth array; the
-  // buttons just flip a dataset attr that swaps the rendered values.
-  document.addEventListener('DOMContentLoaded', () => {
-    const buttons = document.querySelectorAll('.currency-toggle button');
-    const apply = (cur) => {
-      document.querySelectorAll('[data-usd]').forEach(el => {
-        el.textContent = cur === 'sar' ? el.dataset.sar : el.dataset.usd;
-      });
-      buttons.forEach(b => b.classList.toggle('on', b.dataset.cur === cur));
-    };
-    buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.cur)));
-  });
-</script>
 </head>
 <body>
 
@@ -89,12 +75,6 @@
     <span class="hero-tag">Pricing</span>
     <h1 class="h1">Plans that fit the work.</h1>
     <p class="lead" style="margin: 0 auto;">14-day free trial on every plan. No credit card to start. Cancel anytime from Settings.</p>
-    <div style="margin-top: 28px;">
-      <div class="currency-toggle">
-        <button class="on" data-cur="usd">USD</button>
-        <button data-cur="sar">SAR</button>
-      </div>
-    </div>
   </section>
 
   <section class="wrap">
@@ -102,7 +82,7 @@
       <div class="price-card">
         <div class="price-tier">Creator</div>
         <p class="muted" style="font-size: 13px; margin-top: 4px;">For solo creators tracking one brand presence.</p>
-        <div class="price-num"><span data-usd="$29" data-sar="SAR 115">$29</span><span class="unit"> / month</span></div>
+        <div class="price-num">$29<span class="unit"> / month</span></div>
         <p class="muted" style="font-size: 12px;">Per workspace · billed monthly</p>
         <ul class="price-features">
           <li>7 platforms — IG · TT · YT · LI · FB · X · Snap</li>
@@ -118,7 +98,7 @@
       <div class="price-card featured">
         <div class="price-tier" style="color: var(--paper);">Brand</div>
         <p style="font-size: 13px; margin-top: 4px; color: rgba(245,241,232,0.65);">For in-house teams managing multiple accounts.</p>
-        <div class="price-num"><span data-usd="$149" data-sar="SAR 560">$149</span><span class="unit"> / month</span></div>
+        <div class="price-num">$149<span class="unit"> / month</span></div>
         <p style="font-size: 12px; color: rgba(245,241,232,0.55);">Per workspace · billed monthly</p>
         <ul class="price-features">
           <li>7 platforms — multi-account allowed</li>
@@ -134,7 +114,7 @@
       <div class="price-card">
         <div class="price-tier">Agency</div>
         <p class="muted" style="font-size: 13px; margin-top: 4px;">For agencies running multi-brand intelligence.</p>
-        <div class="price-num"><span data-usd="$599" data-sar="SAR 2,250">$599</span><span class="unit"> / month</span></div>
+        <div class="price-num">$599<span class="unit"> / month</span></div>
         <p class="muted" style="font-size: 12px;">Per workspace · billed monthly</p>
         <ul class="price-features">
           <li>Unlimited connected accounts</li>
@@ -183,7 +163,7 @@
 
     <details class="faq">
       <summary>What payment methods do you accept?</summary>
-      <p>Credit and debit cards (Visa, Mastercard, Amex) through Stripe. For accounts in Saudi Arabia and the GCC we accept mada cards. Agency-plan annual billing via invoice is available — write to <a href="/contact">contact</a>.</p>
+      <p>Credit and debit cards (Visa, Mastercard, Amex) through Stripe. Agency-plan annual billing via invoice is available — write to <a href="/contact">contact</a>.</p>
     </details>
 
     <details class="faq">

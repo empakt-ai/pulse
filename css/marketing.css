@@ -230,19 +230,6 @@ a.nav-cta:hover {
 .btn-outline:hover { border-color: var(--ink); color: var(--ink); }
 .btn-ink:hover { background: #1A1A1F; color: var(--paper); }
 
-/* ─── Currency toggle (pricing) ───────────────────────────────────────── */
-.currency-toggle {
-  display: inline-flex; padding: 4px; border-radius: 12px;
-  background: white; border: 1px solid var(--line);
-}
-.currency-toggle button {
-  border: none; background: transparent; cursor: pointer;
-  font-family: 'Geist Mono', monospace; font-size: 11px;
-  font-weight: 600; letter-spacing: 0.08em;
-  padding: 8px 14px; border-radius: 8px; color: var(--mute);
-}
-.currency-toggle button.on { background: var(--ink); color: var(--paper); }
-
 /* ─── Features grid ───────────────────────────────────────────────────── */
 .feature-grid {
   display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
