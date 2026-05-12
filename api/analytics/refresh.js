@@ -56,22 +56,28 @@ export default async function handler(req, res) {
   const failures = [];
   const snapshots = [];
 
-  // Refresh follower counts up-front. Try the cached metadata first (we
-  // saved the raw Zernio account payload during sync), and fall back to the
-  // /follower-stats endpoint if the deep-walk doesn't find anything.
-  await Promise.all((accounts || []).map(async (acct) => {
-    if (acct.platform === 'youtube' || !acct.zernio_account_id) return;
-    let followers = extractFollowers(acct.metadata);
-    if (followers == null) {
-      followers = await zernio.latestFollowers(acct.zernio_account_id, acct.metadata);
+  // Refresh follower counts via Zernio's batched /accounts/follower-stats.
+  // Requires the Analytics add-on subscription — if unavailable we silently
+  // skip rather than failing the whole refresh.
+  {
+    const ids = (accounts || [])
+      .filter(a => a.platform !== 'youtube' && a.zernio_account_id)
+      .map(a => a.zernio_account_id);
+    if (ids.length) {
+      const fr = await zernio.getFollowerCountsByAccount(ids);
+      await Promise.all((accounts || []).map(async (acct) => {
+        const fromStats = fr.counts[acct.zernio_account_id];
+        const fromMeta  = extractFollowers(acct.metadata);
+        const followers = (fromStats != null ? fromStats : fromMeta) ?? null;
+        if (followers != null && followers !== acct.followers) {
+          acct.followers = followers;
+          await supabase.update('connected_accounts',
+            { followers, last_synced_at: new Date().toISOString() },
+            { eq: { id: acct.id } }).catch(() => {});
+        }
+      }));
     }
-    if (followers != null && followers !== acct.followers) {
-      acct.followers = followers;
-      await supabase.update('connected_accounts',
-        { followers, last_synced_at: new Date().toISOString() },
-        { eq: { id: acct.id } }).catch(() => {});
-    }
-  }));
+  }
 
   for (const acct of accounts) {
     const runLog = {

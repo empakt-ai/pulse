@@ -3690,6 +3690,12 @@ const SettingsScreen = () => {
                       // Account refresh (followers + handles) — fast.
                       const synced = await api('/accounts', { method: 'POST' });
                       setAccounts(synced.accounts || []);
+                      if (synced.analytics_addon_required) {
+                        showToast(
+                          'Follower counts unavailable — your Zernio plan needs the Analytics add-on.',
+                          'warn'
+                        );
+                      }
                       // Full analytics + AI brief — slower, runs in the
                       // background. We don't await it before showing the
                       // toast so the user isn't stuck staring at a spinner.

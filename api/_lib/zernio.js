@@ -139,35 +139,64 @@ export const zernio = {
     return call(`/ads?${params.toString()}`);
   },
 
-  // Follower history. Response shape varies by platform — common fields:
-  //   { current, growth, history: [{ date, count }] }
-  // or just an array of { date, count } entries. Callers should pick the
-  // most recent value defensively.
-  async getFollowerStats(accountId) {
-    return call(`/accounts/${accountId}/follower-stats`);
+  // Follower stats. Collection-style endpoint per the Zernio OpenAPI spec:
+  //   GET /v1/accounts/follower-stats?accountIds=A,B,C
+  // Response shape:
+  //   { accounts: [{ _id, platform, username, currentFollowers, growth,
+  //                  growthPercentage, dataPoints }],
+  //     stats:    { [accountId]: [{ date, followers }] } }
+  //
+  // 403 with `requiresAddon: true` means the user's Zernio subscription
+  // lacks the Analytics add-on — follower history isn't available without it.
+  async getFollowerStats(accountIds = null) {
+    const params = new URLSearchParams();
+    if (accountIds) {
+      params.set('accountIds', Array.isArray(accountIds) ? accountIds.join(',') : String(accountIds));
+    }
+    const qs = params.toString();
+    return call(`/accounts/follower-stats${qs ? `?${qs}` : ''}`);
   },
 
-  // Convenience: just the latest follower count (or null on any failure).
-  // Used during /api/accounts sync and the cron analytics refresh because
-  // Zernio's /accounts endpoint doesn't reliably populate the followers field.
+  // Batched follower count fetch. Takes a list of zernio account IDs and
+  // returns { [accountId]: number | null } plus a diagnostic flag indicating
+  // whether the analytics add-on is required (403 from Zernio).
   //
-  // Strategy: try /follower-stats first (proper history endpoint), and if
-  // that doesn't give us a number, walk the raw /accounts payload looking
-  // for any plausibly-named follower field anywhere in the tree.
-  async latestFollowers(accountId, rawAccount = null) {
-    // 1) follower-stats endpoint
+  // Single batched call >> N parallel single-account calls — both for latency
+  // and because Zernio rate-limits per request, not per account.
+  async getFollowerCountsByAccount(accountIds) {
+    const result = { counts: {}, addonRequired: false, error: null };
+    if (!accountIds || !accountIds.length) return result;
+    let payload;
     try {
-      const stats = await this.getFollowerStats(accountId);
-      const n = extractFollowers(stats);
-      if (n != null) return n;
-    } catch { /* fall through */ }
-
-    // 2) deep-walk the raw account object we already have from listAccounts
-    if (rawAccount) {
-      const n = extractFollowers(rawAccount);
-      if (n != null) return n;
+      payload = await this.getFollowerStats(accountIds);
+    } catch (e) {
+      if (e.status === 402 || e.status === 403 || /analytics add-?on/i.test(e.message || '')) {
+        result.addonRequired = true;
+      }
+      result.error = e.message;
+      return result;
     }
-    return null;
+    // Primary: accounts[].currentFollowers
+    for (const a of (payload?.accounts || [])) {
+      const id = a._id || a.id || a.accountId;
+      if (!id) continue;
+      if (typeof a.currentFollowers === 'number') {
+        result.counts[id] = a.currentFollowers;
+        continue;
+      }
+      // Fallback: pick the newest entry from stats[id] time series.
+      const series = payload?.stats?.[id];
+      if (Array.isArray(series) && series.length) {
+        const latest = [...series].sort((x, y) => String(y.date).localeCompare(String(x.date)))[0];
+        if (typeof latest?.followers === 'number') {
+          result.counts[id] = latest.followers;
+          continue;
+        }
+      }
+      // Last resort: deep walk
+      result.counts[id] = extractFollowers(a);
+    }
+    return result;
   },
 
   // Disconnect an account from the Zernio profile. Mirrors what the user

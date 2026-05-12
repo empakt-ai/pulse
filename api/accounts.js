@@ -37,13 +37,7 @@ export default async function handler(req, res) {
     }
     const list = Array.isArray(remote) ? remote : (remote?.accounts || remote?.data || []);
 
-    // Build the upsert rows. We try three sources for follower counts, in
-    // order of trust:
-    //   1. Deep-walk the raw listAccounts payload (catches whatever nested
-    //      shape Zernio uses for this platform).
-    //   2. /accounts/{id}/follower-stats endpoint.
-    //   3. Fall back to null + leave a diagnostic in metadata so we can see
-    //      exactly what came back.
+    // Build base rows from the listAccounts payload.
     const baseRows = list.map(a => ({
       workspace_id: ws.id,
       platform: a.platform || a.provider,
@@ -55,41 +49,34 @@ export default async function handler(req, res) {
       last_synced_at: new Date().toISOString(),
     })).filter(r => r.platform && r.zernio_account_id);
 
-    // For each account: deep-walk first (free), then call follower-stats
-    // only if the walk didn't find anything (saves N parallel requests on
-    // platforms where Zernio /accounts already returns the count).
-    const enriched = await Promise.all(baseRows.map(async (r) => {
-      const fromList = extractFollowers(r._raw);
-      let followers = fromList;
-      let followerSource = fromList != null ? 'listAccounts' : null;
-      let followerStatsRaw = null;
-      if (followers == null) {
-        try {
-          followerStatsRaw = await zernio.getFollowerStats(r.zernio_account_id);
-          const fromStats = extractFollowers(followerStatsRaw);
-          if (fromStats != null) {
-            followers = fromStats;
-            followerSource = 'follower-stats';
-          }
-        } catch (e) {
-          followerStatsRaw = { error: e.message };
-        }
-      }
+    // Single batched call to /accounts/follower-stats. Zernio gates follower
+    // data behind the Analytics add-on subscription — when it's not active
+    // the call 403s with `requiresAddon: true`.
+    const accountIds = baseRows.map(r => r.zernio_account_id);
+    const followerResult = await zernio.getFollowerCountsByAccount(accountIds);
+
+    const rows = baseRows.map(({ _raw, ...r }) => {
+      const fromList = extractFollowers(_raw);
+      const fromStats = followerResult.counts[r.zernio_account_id];
+      // Prefer the explicit follower-stats value, fall back to deep-walked
+      // listAccounts payload (covers platforms where Zernio embeds the
+      // count directly without needing the add-on).
+      const followers = (fromStats != null ? fromStats : fromList) ?? null;
       return {
         ...r,
         followers,
         metadata: {
-          ...r._raw,
+          ..._raw,
           _diag: {
-            follower_source: followerSource,
-            // When followers is still null, this is what we have to look at
-            // in Supabase to figure out what Zernio actually sent us.
-            follower_stats_raw: followerStatsRaw,
+            follower_source: fromStats != null ? 'follower-stats'
+                            : fromList != null ? 'listAccounts'
+                            : null,
+            analytics_addon_required: followerResult.addonRequired,
+            follower_stats_error: followerResult.error,
           },
         },
       };
-    }));
-    const rows = enriched.map(({ _raw, ...rest }) => rest);
+    });
 
     const existing = await supabase.select('connected_accounts', {
       select: 'zernio_account_id,platform',
@@ -117,7 +104,12 @@ export default async function handler(req, res) {
       .filter(a => !existingIds.has(a.zernio_account_id))
       .map(a => ({ platform: a.platform, handle: a.platform_username, id: a.id }));
 
-    return json(res, 200, { synced: rows.length, accounts: accounts || [], new_accounts });
+    return json(res, 200, {
+      synced: rows.length,
+      accounts: accounts || [],
+      new_accounts,
+      analytics_addon_required: followerResult.addonRequired || false,
+    });
   }
 
   // ── DELETE: disconnect (Zernio + local soft-delete) ───────────────────
