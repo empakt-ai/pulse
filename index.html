@@ -207,6 +207,24 @@ tailwind.config = {
     color: rgba(10,10,11,0.55);
   }
   html.dark #pulse-splash-status { color: rgba(245,241,232,0.55); }
+  /* Reset link — appears after 3 seconds so users have a visible escape
+     hatch if the loader stalls. Hidden by default; the inline script
+     toggles its display after the timeout. */
+  #pulse-splash-reset {
+    margin-top: 14px;
+    font-family: 'Geist', system-ui, sans-serif;
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: #6B5BFF;
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    display: none;
+    opacity: 0.85;
+  }
+  #pulse-splash-reset:hover { opacity: 1; }
   @keyframes pulse-splash-spin { to { transform: rotate(360deg); } }
 </style>
 </head>
@@ -217,6 +235,7 @@ tailwind.config = {
     <div id="pulse-splash-logo">pulse.</div>
     <div id="pulse-splash-spinner"></div>
     <div id="pulse-splash-status">Loading your intelligence</div>
+    <button id="pulse-splash-reset" type="button" onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}location.reload()">Taking too long? Reset session</button>
   </div>
 </div>
 <script>
@@ -229,6 +248,36 @@ tailwind.config = {
       if (t === 'dark') document.documentElement.classList.add('dark');
     } catch (_) {}
   })();
+
+  // Pre-React fail-safe: if anything goes wrong with React / Babel / the
+  // network in a way that prevents the in-app dismiss effect from running,
+  // force the splash to dismiss after 6 seconds. Better to show a possibly-
+  // broken page than to trap the user behind a splash they can't escape.
+  // React's dismiss effect (running with a 4s budget of its own) will fire
+  // earlier on healthy loads so this only ever kicks in as a true fallback.
+  setTimeout(function () {
+    if (!document.documentElement.getAttribute('data-ready')) {
+      document.documentElement.setAttribute('data-ready', '1');
+      console.warn('[pulse] splash dismissed by pre-React fallback — React may have failed to mount');
+    }
+  }, 6000);
+
+  // Reveal the "Reset session" link on the splash after 3 seconds so the
+  // user has a visible escape if React stalls. Hidden during the normal
+  // (sub-1-second) loading window so the loader doesn't feel broken.
+  setTimeout(function () {
+    var btn = document.getElementById('pulse-splash-reset');
+    if (btn) btn.style.display = 'inline-block';
+  }, 3000);
+
+  // Double-click anywhere on the splash to force-dismiss it. Belt + braces.
+  window.addEventListener('DOMContentLoaded', function () {
+    var splash = document.getElementById('pulse-splash');
+    if (!splash) return;
+    splash.addEventListener('dblclick', function () {
+      document.documentElement.setAttribute('data-ready', '1');
+    });
+  });
 </script>
 
 <!-- Order matters: utilities → icons → data → tweaks → screens → app -->
