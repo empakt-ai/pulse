@@ -2477,7 +2477,7 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
     if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
     setActive('Settings');
   };
-  const tabs = ['Brief','Stats','Growth','Content','Intel','Actions','Reports','Targets','Settings'];
+  const tabs = ['Brief','Stats','Content','Intel','Actions','Growth','Targets','Reports','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -2687,8 +2687,8 @@ const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand,
 const MobileNav = React.memo(({ active, setActive }) => {
   const tabs = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
-    { id: 'Growth', icon: 'trending' }, { id: 'Content', icon: 'play' },
-    { id: 'Intel', icon: 'sparkle' }, { id: 'Actions', icon: 'bolt' },
+    { id: 'Content', icon: 'play' }, { id: 'Intel', icon: 'sparkle' },
+    { id: 'Actions', icon: 'bolt' }, { id: 'Growth', icon: 'trending' },
     { id: 'Reports', icon: 'layers' }
   ];
   return (
