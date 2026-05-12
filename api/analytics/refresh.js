@@ -56,6 +56,19 @@ export default async function handler(req, res) {
   const failures = [];
   const snapshots = [];
 
+  // Refresh follower counts up-front (Zernio /accounts doesn't include them
+  // reliably; we always want the latest before the analytics snapshot lands).
+  await Promise.all((accounts || []).map(async (acct) => {
+    if (acct.platform === 'youtube' || !acct.zernio_account_id) return;
+    const followers = await zernio.latestFollowers(acct.zernio_account_id);
+    if (followers != null && followers !== acct.followers) {
+      acct.followers = followers;
+      await supabase.update('connected_accounts',
+        { followers, last_synced_at: new Date().toISOString() },
+        { eq: { id: acct.id } }).catch(() => {});
+    }
+  }));
+
   for (const acct of accounts) {
     const runLog = {
       workspace_id: ws.id,

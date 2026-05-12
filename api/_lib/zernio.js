@@ -74,9 +74,42 @@ export const zernio = {
     return call(`/ads?${params.toString()}`);
   },
 
-  // Follower history
+  // Follower history. Response shape varies by platform — common fields:
+  //   { current, growth, history: [{ date, count }] }
+  // or just an array of { date, count } entries. Callers should pick the
+  // most recent value defensively.
   async getFollowerStats(accountId) {
     return call(`/accounts/${accountId}/follower-stats`);
+  },
+
+  // Convenience: just the latest follower count (or null on any failure).
+  // Used during /api/accounts sync and the cron analytics refresh because
+  // Zernio's /accounts endpoint doesn't reliably populate the followers field.
+  async latestFollowers(accountId) {
+    try {
+      const stats = await this.getFollowerStats(accountId);
+      if (stats == null) return null;
+      if (typeof stats.current === 'number') return stats.current;
+      if (typeof stats.followers === 'number') return stats.followers;
+      if (typeof stats.followerCount === 'number') return stats.followerCount;
+      const arr = Array.isArray(stats) ? stats : (stats.history || stats.data || []);
+      if (Array.isArray(arr) && arr.length) {
+        const sorted = [...arr].sort((a, b) =>
+          String(b.date || b.timestamp || '').localeCompare(String(a.date || a.timestamp || '')));
+        const top = sorted[0];
+        return Number(top?.count ?? top?.followers ?? top?.value) || null;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  },
+
+  // Disconnect an account from the Zernio profile. Mirrors what the user
+  // sees in the Zernio dashboard's "Remove" button. Best-effort — we still
+  // soft-disconnect locally even if this fails.
+  async disconnectAccount(accountId) {
+    return call(`/accounts/${accountId}`, { method: 'DELETE' });
   },
 
   // Instagram-specific account insights

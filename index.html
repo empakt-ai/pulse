@@ -1968,7 +1968,7 @@ const Onboarding = ({ onDone }) => {
   const saveWorkspace = async () => {
     if (!window.__pulseToken) return;
     try {
-      await fetch('/api/workspace/me', {
+      await fetch('/api/workspaces', {
         method: 'PATCH',
         headers: {
           'Content-Type':  'application/json',
@@ -3412,7 +3412,7 @@ const SettingsScreen = () => {
         pollerRef.current = null;
       }
       try {
-        const synced = await api('/accounts/sync', { method: 'POST' });
+        const synced = await api('/accounts', { method: 'POST' });
         setAccounts(synced.accounts || []);
         const justConnected = (synced.new_accounts || []).find(a => a.platform === platform);
         const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
@@ -3449,8 +3449,8 @@ const SettingsScreen = () => {
     const load = async () => {
       try {
         const [wsData, acctData, wsList, comps] = await Promise.all([
-          api('/workspace/me'),
-          api('/accounts/list'),
+          api('/workspaces'),
+          api('/accounts'),
           api('/workspaces').catch(() => ({ workspaces: [] })),
           api('/competitors').catch(() => ({ competitors: [] })),
         ]);
@@ -3502,7 +3502,7 @@ const SettingsScreen = () => {
           clearInterval(poll);
           // Sync accounts from Zernio to confirm
           try {
-            const synced = await api('/accounts/sync', { method: 'POST' });
+            const synced = await api('/accounts', { method: 'POST' });
             setAccounts(synced.accounts || []);
             const connected = synced.accounts?.find(a => a.platform === platformId);
             if (connected) showToast(`${platformId} connected ✓`);
@@ -3514,7 +3514,7 @@ const SettingsScreen = () => {
 
         // Check if account appeared
         try {
-          const synced = await api('/accounts/sync', { method: 'POST' });
+          const synced = await api('/accounts', { method: 'POST' });
           const connected = (synced.accounts || []).find(a => a.platform === platformId);
           const isNewlyConnected = (synced.new_accounts || []).some(a => a.platform === platformId);
           if (connected) {
@@ -3547,8 +3547,8 @@ const SettingsScreen = () => {
     // Optimistic update
     setAccounts(prev => prev.filter(a => a.platform !== platformId));
     try {
-      await api('/disconnect', {
-        method: 'POST',
+      await api('/accounts', {
+        method: 'DELETE',
         body: JSON.stringify(acct?.id ? { id: acct.id } : { platform: platformId }),
       });
       showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label || platformId} disconnected`);
@@ -3563,7 +3563,7 @@ const SettingsScreen = () => {
   const saveWorkspace = async () => {
     setSaving(true);
     try {
-      await api('/workspace/me', {
+      await api('/workspaces', {
         method: 'PATCH',
         body: JSON.stringify(form)
       });
@@ -3684,7 +3684,7 @@ const SettingsScreen = () => {
                   size="sm"
                   onClick={async () => {
                     try {
-                      const synced = await api('/accounts/sync', { method: 'POST' });
+                      const synced = await api('/accounts', { method: 'POST' });
                       setAccounts(synced.accounts || []);
                       showToast(`Synced ${synced.synced} accounts ✓`);
                     } catch (e) { showToast(e.message, 'err'); }

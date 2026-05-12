@@ -66,6 +66,19 @@ async function refreshWorkspace(ws) {
 
   if (!accounts?.length) return { workspace_id: ws.id, accounts: 0, posts: 0 };
 
+  // 1.5) refresh follower counts via /follower-stats (Zernio /accounts
+  // doesn't populate them reliably). Best-effort per account.
+  await Promise.all(accounts.map(async (acct) => {
+    if (acct.platform === 'youtube' || !acct.zernio_account_id) return;
+    const followers = await zernio.latestFollowers(acct.zernio_account_id);
+    if (followers != null && followers !== acct.followers) {
+      acct.followers = followers;
+      await supabase.update('connected_accounts',
+        { followers, last_synced_at: new Date().toISOString() },
+        { eq: { id: acct.id } }).catch(() => {});
+    }
+  }));
+
   // 2) refresh analytics per account
   const fromDate = daysAgo(30);
   const toDate = daysAgo(0);
