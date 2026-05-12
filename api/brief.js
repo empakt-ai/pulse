@@ -84,6 +84,27 @@ export default async function handler(req, res) {
   const avgCtr = ownAds.length
     ? Math.round((ownAds.reduce((s, p) => s + Number(p.engagement_rate || 0), 0) / ownAds.length) * 100) / 100
     : 0;
+  // Per-platform aggregation — drives the platform breakdown cards on
+  // the Ads dashboard. Sum spend/impressions/clicks per platform, then
+  // recompute CTR from the totals (averaging per-ad CTRs would skew
+  // toward tiny ads with anomalous rates).
+  const perPlatformMap = {};
+  for (const a of ownAds) {
+    const pk = platformKey(a.platform);
+    const row = perPlatformMap[pk] || (perPlatformMap[pk] = {
+      platform: pk, count: 0, spend: 0, impressions: 0, clicks: 0,
+    });
+    row.count += 1;
+    row.spend += Number(a.raw_data?.spend || 0);
+    row.impressions += Number(a.views || 0);
+    row.clicks += Number(a.raw_data?.clicks || 0);
+  }
+  const per_platform = Object.values(perPlatformMap).map(r => ({
+    ...r,
+    spend: Math.round(r.spend * 100) / 100,
+    ctr: r.impressions ? Math.round((r.clicks / r.impressions) * 10000) / 100 : 0,
+  })).sort((a, b) => b.spend - a.spend);
+
   const adsSummary = {
     count: ownAds.length,
     total_spend: Math.round(totalSpend * 100) / 100,
@@ -91,6 +112,7 @@ export default async function handler(req, res) {
     total_clicks: totalAdClicks,
     avg_ctr: avgCtr,
     currency: ownAds[0]?.raw_data?.currency || 'USD',
+    per_platform,
     top: [...ownAds]
       .sort((a, b) => Number(b.raw_data?.spend || 0) - Number(a.raw_data?.spend || 0))
       .slice(0, 5)

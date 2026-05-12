@@ -2695,7 +2695,7 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
     if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
     setActive('Settings');
   };
-  const tabs = ['Brief','Stats','Content','Intel','Actions','Growth','Targets','Reports','Settings'];
+  const tabs = ['Brief','Stats','Ads','Content','Intel','Actions','Growth','Targets','Reports','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -2905,8 +2905,8 @@ const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand,
 const MobileNav = React.memo(({ active, setActive }) => {
   const tabs = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
-    { id: 'Content', icon: 'play' }, { id: 'Intel', icon: 'sparkle' },
-    { id: 'Actions', icon: 'bolt' }, { id: 'Growth', icon: 'trending' },
+    { id: 'Ads', icon: 'bolt' }, { id: 'Content', icon: 'play' },
+    { id: 'Intel', icon: 'sparkle' }, { id: 'Growth', icon: 'trending' },
     { id: 'Reports', icon: 'layers' }
   ];
   return (
@@ -3015,14 +3015,6 @@ const BriefScreen = ({ activePlatform, setTab }) => {
   const avgEng = totalReach
     ? Math.round((totalEngActions / totalReach) * 10000) / 100
     : 0;
-  // Ads — when scoped to a platform, filter top ads by that platform.
-  const ads = D.ads || null;
-  const scopedAds = !ads ? null : isAll ? ads : {
-    ...ads,
-    top: (ads.top || []).filter(a => a.platform === activePlatform),
-    count: (ads.top || []).filter(a => a.platform === activePlatform).length,
-  };
-
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader
@@ -3141,41 +3133,10 @@ const BriefScreen = ({ activePlatform, setTab }) => {
         <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-3">
           <ReachCard />
           <EngagementCard />
+          <AdsPreviewCard setTab={setTab} />
           <SignalsCard setTab={setTab} />
         </div>
       </div>
-
-      {/* Ads performance — only renders if Zernio returned ads */}
-      {scopedAds && scopedAds.count > 0 && (
-        <Card className="mb-5 sm:mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <Eyebrow color="text-amber">Ad performance · Last 30d</Eyebrow>
-              <h3 className="font-display text-[18px] font-semibold tracking-tight mt-1">{scopedAds.count} active ad{scopedAds.count === 1 ? '' : 's'}</h3>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Pill color="ink">{scopedAds.currency} {formatNum(scopedAds.total_spend)} spend</Pill>
-              <Pill color="ultraSoft">{formatNum(scopedAds.total_impressions)} impressions</Pill>
-              <Pill color="lime">{scopedAds.avg_ctr}% avg CTR</Pill>
-            </div>
-          </div>
-          <div className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
-            <span>Ad</span><span className="text-right">Spend</span><span className="text-right">Impressions</span><span className="text-right">CTR</span><span className="text-right">Status</span>
-          </div>
-          {scopedAds.top.map(a => (
-            <div key={a.id} className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Plat p={a.platform} className="w-4 h-4 flex-shrink-0" />
-                <span className="truncate">{a.name || 'Untitled ad'}</span>
-              </div>
-              <span className="text-right font-mono text-[12.5px]">{ads.currency} {formatNum(a.spend)}</span>
-              <span className="text-right font-mono text-[12.5px]">{formatNum(a.impressions)}</span>
-              <span className="text-right font-mono text-[12.5px] text-ultra dark:text-lime">{a.ctr}%</span>
-              <span className="text-right text-[11px] text-mute dark:text-muteDark capitalize">{a.status || '—'}</span>
-            </div>
-          ))}
-        </Card>
-      )}
 
       {/* Connected-platform follower cards — rich per-account version
           backed by D.accounts (followers, WoW delta, 7-day history, eng rate). */}
@@ -3681,6 +3642,275 @@ const PerfChart = () => {
 };
 
 Object.assign(window, { OverviewScreen });
+
+</script>
+<script type="text/babel">
+// Screen — Ads
+// ─────────────────────────────────────────────────────────────────────────
+// Paid performance dashboard. Gated to Brand + Agency tiers. Reads
+// briefData.ads (built by api/brief.js from posts where post_type='ad').
+// Renders:
+//   • KPI strip — total spend, impressions, clicks, avg CTR
+//   • Per-platform breakdown (Meta, TikTok, X) — driven by per_platform[]
+//   • Top-spend ads table — driven by ads.top[]
+//   • Organic vs Paid block — eng-rate vs CTR, organic reach vs paid imps
+//
+// Empty states:
+//   • Wrong tier → upgrade prompt
+//   • Right tier but no ads → "Connect a Meta/TikTok/X ad account" CTA
+
+const AdsKpi = ({ label, value, sub, tone }) => (
+  <Card className="!p-4">
+    <Eyebrow color={tone || 'text-mute dark:text-muteDark'}>{label}</Eyebrow>
+    <div className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tightest mt-2">{value}</div>
+    {sub && <div className="text-[11.5px] text-mute dark:text-muteDark font-mono mt-0.5">{sub}</div>}
+  </Card>
+);
+
+const AdsScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const adsAllowed = tierKey === 'brand' || tierKey === 'agency';
+
+  // ── Tier-gate: Creator sees an upgrade prompt ─────────────────────────
+  if (!adsAllowed) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/20 text-amber flex items-center justify-center mb-6">
+          <Icon name="bolt" className="w-6 h-6" />
+        </div>
+        <Eyebrow color="text-amber">Brand & Agency feature</Eyebrow>
+        <h1 className="font-display text-[32px] sm:text-[44px] leading-[1.04] font-semibold tracking-tightest mt-3 mb-3">
+          Ad performance is a paid-tier add-on.
+        </h1>
+        <p className="text-[14.5px] text-mute dark:text-muteDark max-w-xl mx-auto leading-relaxed mb-7">
+          PULSE pulls Meta, TikTok, and X ad accounts alongside your organic posts and reports
+          spend, impressions, clicks, and CTR side-by-side with engagement. Upgrade to Brand
+          to enable it for one workspace, or Agency to enable it across all your clients.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor: 'billing' } }))}>
+            Upgrade workspace
+          </Btn>
+          <a href="/pricing" className="text-[13px] text-mute dark:text-muteDark hover:underline px-2 py-2">
+            See pricing →
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const ads = D.ads || null;
+
+  // ── No ads yet (right tier, but no Zernio /ads payloads landed) ────
+  if (!ads || ads.count === 0) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <ScreenHeader
+          eyebrow="Paid · Last 30d"
+          title="Ad performance"
+          sub="Spend, impressions, clicks and CTR pulled from your connected ad accounts."
+        />
+        <Card className="!p-10 text-center">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-5">
+            <Icon name="sparkle" className="w-6 h-6" />
+          </div>
+          <h2 className="font-display text-[22px] font-semibold tracking-tight mb-2">No ad data yet.</h2>
+          <p className="text-[13.5px] text-mute dark:text-muteDark max-w-md mx-auto leading-relaxed mb-5">
+            Connect a Meta, TikTok, or X account that has active ads. PULSE pulls spend and
+            performance hourly once an ad account is linked.
+          </p>
+          <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor: 'accounts' } }))}>
+            Connect ad account
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
+
+  // Scope by active platform if not "all".
+  const scopedTop = isAll ? (ads.top || []) : (ads.top || []).filter(a => a.platform === activePlatform);
+  const scopedPerPlatform = isAll
+    ? (ads.per_platform || [])
+    : (ads.per_platform || []).filter(r => r.platform === activePlatform);
+  const scopedTotals = isAll
+    ? { spend: ads.total_spend, impressions: ads.total_impressions, clicks: ads.total_clicks, ctr: ads.avg_ctr, count: ads.count }
+    : (() => {
+        const row = scopedPerPlatform[0];
+        return row
+          ? { spend: row.spend, impressions: row.impressions, clicks: row.clicks, ctr: row.ctr, count: row.count }
+          : { spend: 0, impressions: 0, clicks: 0, ctr: 0, count: 0 };
+      })();
+
+  // Organic vs Paid — pulled from the same D.posts feed so the comparison
+  // is honest (same window, same workspace). Organic = posts.source='own'
+  // with post_type !== 'ad'. We compute totals client-side instead of
+  // asking the backend for yet another aggregate.
+  const organicPosts = (D.posts || []).filter(p => p.source === 'own' && p.post_type !== 'ad' && (isAll || p.platform === activePlatform));
+  const orgReach = organicPosts.reduce((s, p) => s + Number(p.views || 0), 0);
+  const orgEngActs = organicPosts.reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const orgEngRate = orgReach ? Math.round((orgEngActs / orgReach) * 10000) / 100 : 0;
+
+  const cur = ads.currency || 'USD';
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={isAll ? 'Paid · Last 30d' : `${platformLabel[activePlatform] || activePlatform} · Last 30d`}
+        title="Ad performance"
+        sub={`${scopedTotals.count} active ad${scopedTotals.count === 1 ? '' : 's'} across ${isAll ? (ads.per_platform || []).length : 1} platform${(isAll ? (ads.per_platform || []).length : 1) === 1 ? '' : 's'}.`}
+      />
+
+      {/* KPI strip — 4 cards across the top */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+        <AdsKpi label="Total spend"  value={`${cur} ${formatNum(scopedTotals.spend)}`} tone="text-ultra dark:text-lime" />
+        <AdsKpi label="Impressions"  value={formatNum(scopedTotals.impressions)} />
+        <AdsKpi label="Clicks"       value={formatNum(scopedTotals.clicks)} />
+        <AdsKpi label="Avg CTR"      value={`${scopedTotals.ctr}%`}
+                sub={scopedTotals.impressions ? `${formatNum(scopedTotals.clicks)} / ${formatNum(scopedTotals.impressions)}` : null}
+                tone="text-emerald-600 dark:text-lime" />
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        {/* Per-platform breakdown */}
+        <div className="lg:col-span-7">
+          <SectionHead eyebrow="Per platform" title="Where the spend lives" />
+          {scopedPerPlatform.length === 0 ? (
+            <Card><div className="py-6 text-center text-[13px] text-mute dark:text-muteDark">No platform data in this scope.</div></Card>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+              {scopedPerPlatform.map(row => (
+                <Card key={row.platform} className="!p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Plat p={row.platform} className="w-5 h-5" />
+                      <span className="font-display text-[15px] font-semibold tracking-tight">{platformLabel[row.platform] || row.platform.toUpperCase()}</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-mute dark:text-muteDark">{row.count} ad{row.count === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Spend</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1">{cur} {formatNum(row.spend)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Impr.</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1">{formatNum(row.impressions)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">CTR</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1 text-emerald-600 dark:text-lime">{row.ctr}%</div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Organic vs Paid */}
+        <div className="lg:col-span-5">
+          <SectionHead eyebrow="Organic vs Paid" title="How they stack up" />
+          <Card>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Organic</div>
+                <div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(orgReach)}</div>
+                <div className="text-[11.5px] text-mute dark:text-muteDark">reach (30d)</div>
+                <div className="mt-3 font-mono text-[12.5px]">
+                  <span className="text-emerald-600 dark:text-lime">{orgEngRate}%</span>
+                  <span className="text-mute dark:text-muteDark ml-1">eng. rate</span>
+                </div>
+              </div>
+              <div className="border-l border-line dark:border-lineDark pl-4">
+                <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Paid</div>
+                <div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(scopedTotals.impressions)}</div>
+                <div className="text-[11.5px] text-mute dark:text-muteDark">impressions (30d)</div>
+                <div className="mt-3 font-mono text-[12.5px]">
+                  <span className="text-emerald-600 dark:text-lime">{scopedTotals.ctr}%</span>
+                  <span className="text-mute dark:text-muteDark ml-1">CTR</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-line dark:border-lineDark text-[12px] text-mute dark:text-muteDark leading-relaxed">
+              {orgReach && scopedTotals.impressions
+                ? `Paid impressions are ${(scopedTotals.impressions / Math.max(orgReach, 1)).toFixed(1)}× organic reach. ${
+                    orgEngRate > scopedTotals.ctr
+                      ? `Organic engages at a higher rate than paid clicks-through.`
+                      : `Paid clicks-through outperforms organic engagement.`
+                  }`
+                : 'Connect both organic and ad accounts to see the comparison.'}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Top ads table */}
+      <div className="mt-5 sm:mt-7">
+        <SectionHead eyebrow="Top spend" title="Highest-investment ads" />
+        <Card>
+          {scopedTop.length === 0 ? (
+            <div className="py-6 text-center text-[13px] text-mute dark:text-muteDark">No ads in this scope.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1fr_80px_90px_60px_70px] sm:grid-cols-[1fr_110px_120px_80px_90px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
+                <span>Ad</span><span className="text-right">Spend</span><span className="text-right">Impressions</span><span className="text-right">CTR</span><span className="text-right">Status</span>
+              </div>
+              {scopedTop.map(a => (
+                <div key={a.id} className="grid grid-cols-[1fr_80px_90px_60px_70px] sm:grid-cols-[1fr_110px_120px_80px_90px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Plat p={a.platform} className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{a.name || 'Untitled ad'}</span>
+                  </div>
+                  <span className="text-right font-mono text-[12.5px]">{cur} {formatNum(a.spend)}</span>
+                  <span className="text-right font-mono text-[12.5px]">{formatNum(a.impressions)}</span>
+                  <span className="text-right font-mono text-[12.5px] text-emerald-600 dark:text-lime">{a.ctr}%</span>
+                  <span className="text-right text-[11px] text-mute dark:text-muteDark capitalize">{a.status || '—'}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// Compact Brief right-rail preview — single card summarising paid
+// performance with a CTA into the full Ads tab. Hidden when the
+// workspace isn't on a tier with ads enabled or has no ad data yet.
+const AdsPreviewCard = ({ setTab }) => {
+  const ads = D.ads || null;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  if (tierKey !== 'brand' && tierKey !== 'agency') return null;
+  if (!ads || ads.count === 0) return null;
+  const cur = ads.currency || 'USD';
+  return (
+    <Card className="!p-4">
+      <div className="flex items-center justify-between mb-3">
+        <Eyebrow color="text-amber">Ad spend · 30d</Eyebrow>
+        <button
+          type="button"
+          onClick={() => setTab && setTab('Ads')}
+          className="text-[11px] font-mono text-ultra dark:text-lime hover:underline"
+        >
+          View →
+        </button>
+      </div>
+      <div className="font-display text-[26px] font-semibold tracking-tightest leading-none">
+        {cur} {formatNum(ads.total_spend)}
+      </div>
+      <div className="text-[11.5px] text-mute dark:text-muteDark mt-1">{ads.count} active · {formatNum(ads.total_impressions)} impressions</div>
+      <div className="mt-3 pt-3 border-t border-line dark:border-lineDark flex items-baseline gap-2">
+        <span className="font-mono text-[13px] text-emerald-600 dark:text-lime">{ads.avg_ctr}%</span>
+        <span className="text-[11.5px] text-mute dark:text-muteDark">avg CTR</span>
+      </div>
+    </Card>
+  );
+};
+
+Object.assign(window, { AdsScreen, AdsPreviewCard });
 
 </script>
 <script type="text/babel">
@@ -7043,6 +7273,19 @@ function App() {
   // TopBar workspace dropdown ('workspaces'), the avatar menu ('profile'),
   // etc. Settings reads it on mount and scrolls to the matching section.
   const [settingsAnchor, setSettingsAnchor] = React.useState(null);
+
+  // Global listener so any component (including ones rendered via the
+  // screen registry, which don't have direct access to setTab) can
+  // navigate to Settings with an optional anchor by dispatching
+  // window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor } })).
+  React.useEffect(() => {
+    const onGo = (e) => {
+      setSettingsAnchor(e?.detail?.anchor || null);
+      setTab('Settings');
+    };
+    window.addEventListener('pulse:gotoSettings', onGo);
+    return () => window.removeEventListener('pulse:gotoSettings', onGo);
+  }, [setTab]);
   const [activePlatform, setActivePlatform] = React.useState('all');
   // activeBrand: null = all brands; or a competitor id (string). Drives the
   // "filter to one brand" mode on competitor-aware screens (Content tab's
@@ -7416,6 +7659,7 @@ function App() {
   const screens = {
     Brief:    <BriefScreen activePlatform={activePlatform} setTab={setTab} />,
     Stats:    <OverviewScreen activePlatform={activePlatform} />,
+    Ads:      <AdsScreen activePlatform={activePlatform} />,
     Growth:   <GrowthScreen activePlatform={activePlatform} />,
     Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
