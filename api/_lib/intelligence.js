@@ -20,6 +20,7 @@
 import { supabase } from './supabase.js';
 import { parseJsonResponse } from './anthropic.js';
 import { generateIntelligence } from './ai-router.js';
+import { allRulesAsPromptText } from './platform-rules.js';
 
 // ── Deterministic intel score (don't trust the LLM for math) ───────────────────
 // Inputs: per-platform avg engagement vs category baselines, growth velocity,
@@ -122,7 +123,7 @@ function detectSeries(posts) {
   return result;
 }
 
-function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
+function buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces = [], seriesRows = [] }) {
   const ownPosts = posts.filter(p => p.source === 'own');
   const byPlatform = {};
 
@@ -157,9 +158,93 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
       signal: p.signal,
     }));
 
-  // Series with 3+ entries — fed to the prompt so it generates performance
-  // comparison signals instead of "do Part N+1" recommendations.
-  const series = detectSeries(ownPosts);
+  // Series from the DB — every series with 2+ entries. The prompt uses
+  // these to suppress continuation recommendations and to generate
+  // series_arc signals on declining trends. (The old in-prompt heuristic
+  // is still defined below for compatibility but no longer in the payload.)
+  const series = (seriesRows || []).map(s => {
+    const entries = ownPosts
+      .filter(p => p.series_id === s.id)
+      .sort((a, b) => String(a.posted_at).localeCompare(String(b.posted_at)));
+    return {
+      id: s.id,
+      detected_name: s.detected_name,
+      name: s.name,
+      post_count: s.post_count,
+      avg_views: s.avg_views,
+      peak_views: s.peak_views,
+      latest_number: s.latest_number,
+      trend: s.trend,
+      last_entry_at: s.last_entry_at,
+      entries: entries.slice(-8).map(p => ({
+        platform: p.platform,
+        caption: (p.caption || '').slice(0, 80),
+        posted_at: p.posted_at,
+        views: p.views || 0,
+        engagement_rate: p.engagement_rate || 0,
+      })),
+    };
+  });
+
+  // Cross-platform content groups — pieces published to 2+ platforms.
+  // Drives cross_platform_gap and missed_crosspost signals. Single-platform
+  // pieces are surfaced via the missed_crosspost lens (top performers that
+  // never made it elsewhere).
+  const piecePosts = new Map();
+  for (const p of ownPosts) {
+    if (!p.content_piece_id) continue;
+    if (!piecePosts.has(p.content_piece_id)) piecePosts.set(p.content_piece_id, []);
+    piecePosts.get(p.content_piece_id).push(p);
+  }
+  const groups = (contentPieces || []).map(cp => {
+    const ps = piecePosts.get(cp.id) || [];
+    const perPlatform = ps.map(p => ({
+      platform: p.platform,
+      caption: (p.caption || '').slice(0, 80),
+      views: p.views || 0,
+      likes: p.likes || 0,
+      comments: p.comments || 0,
+      shares: p.shares || 0,
+      saves: p.saves || 0,
+      engagement_rate: p.engagement_rate || 0,
+      posted_at: p.posted_at,
+    }));
+    return {
+      id: cp.id,
+      title: cp.title,
+      first_posted_at: cp.first_posted_at,
+      platforms: cp.detected_platforms || [],
+      best_platform: cp.best_platform,
+      best_views: cp.best_views,
+      worst_views: cp.worst_views,
+      per_platform: perPlatform,
+    };
+  });
+  const cross_platform = groups.filter(g => (g.platforms || []).length >= 2).slice(0, 15);
+  // Top single-platform pieces that didn't cross-post — candidates for the
+  // missed_crosspost signal. Sorted by views so the prompt sees the best
+  // misses first.
+  const single_platform_top = groups
+    .filter(g => (g.platforms || []).length === 1 && g.best_views > 0)
+    .sort((a, b) => (b.best_views || 0) - (a.best_views || 0))
+    .slice(0, 8);
+
+  // Engagement velocity context — posts under 24h old. Lets the prompt
+  // emit engagement_velocity signals on posts that are accelerating fast.
+  const dayAgo = Date.now() - 86400000;
+  const recent = ownPosts
+    .filter(p => p.posted_at && new Date(p.posted_at).getTime() >= dayAgo)
+    .map(p => ({
+      platform: p.platform,
+      caption: (p.caption || '').slice(0, 80),
+      posted_at: p.posted_at,
+      hours_old: Math.max(0.1, (Date.now() - new Date(p.posted_at).getTime()) / 3600000),
+      views: p.views || 0,
+      engagement_rate: p.engagement_rate || 0,
+      views_per_hour: Math.round((p.views || 0) / Math.max(0.5, (Date.now() - new Date(p.posted_at).getTime()) / 3600000)),
+    }))
+    .sort((a, b) => b.views_per_hour - a.views_per_hour)
+    .slice(0, 6);
 
   return {
     workspace: {
@@ -172,6 +257,9 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors }) {
     platforms: byPlatform,
     top_posts: topPosts,
     series,
+    cross_platform_groups: cross_platform,
+    single_platform_top,
+    recent_24h: recent,
     competitors: (competitors || []).slice(0, 10).map(c => ({
       platform: c.platform, handle: c.handle, followers: c.followers || 0,
     })),
@@ -228,13 +316,34 @@ Exactly 3. Ordered by urgency (Now → Today → This week). Each action must:
   • Move ONE metric the reader cares about
   • Avoid generic copy ("engage with your audience" → no, "reply to the top 8 comments on the 'Khasara' reel within the next hour" → yes)
 
+═══ CROSS-PLATFORM REASONING ═══
+
+The payload contains \`cross_platform_groups\` — content pieces published to 2+ platforms (same caption fingerprint, within 48 hours). NEVER analyze a post in isolation. Always check whether a piece appears on multiple platforms before drawing conclusions.
+
+When the same content performs significantly differently across platforms (>= 3× delta in views or eng rate), emit a \`cross_platform_gap\` signal. Reference the BEST platform and the WORST platform by name, the actual delta, AND a SPECIFIC fix using the platform best-practice rules below. Generic advice ("post more often") is forbidden — reference the specific rule (hook window, caption length, hashtag count, audio strategy, cross-post adaptation).
+
+The payload also contains \`single_platform_top\` — pieces that performed well on one platform but never crossed to others. For the top 1–2 (by views), emit a \`missed_crosspost\` signal explaining which platform(s) the format would work on, citing the platform rule that supports it.
+
 ═══ SERIES HANDLING ═══
 
-If \`series\` is present in the payload, the user has already published 3+ entries in a numbered series (Part N / Episode N / #N). For each series:
-  • DO NOT recommend "make Part N+1" as an action. Continuation is the obvious move and they're already doing it.
-  • INSTEAD, generate one \`engagement\` or \`trend\` signal that compares the series' performance: which entry peaked, what the trajectory is (growing / flat / declining), and what that tells them about the format.
-  • Use is_series: true on that signal (the field is optional and only valid here).
-  • Cite the actual entry numbers and view counts from the data.
+The payload's \`series\` field is the source of truth — pulled from the workspace's \`series\` table. Each entry has a \`trend\`: growing / stable / declining / stale. For each series with 2+ entries:
+  • NEVER recommend "make Part N+1" as an action. The user is already producing the series — continuation is obvious and offensive to recommend.
+  • INSTEAD emit a \`series_arc\` signal that names the trend, identifies the peak entry, and:
+      - if \`trend = declining\`: recommend a format reset (cite specific changes: new hook style, different platform-rules audio strategy, etc).
+      - if \`trend = growing\`: identify what's making it work and recommend doubling pace.
+      - if \`trend = stale\` (no new entry in 14+ days): recommend a revival angle.
+  • Use \`is_series: true\` on series_arc signals.
+  • Cite the actual entry numbers, view counts, and trend from the payload.
+
+═══ ENGAGEMENT VELOCITY ═══
+
+The payload's \`recent_24h\` array contains posts under 24 hours old with a \`views_per_hour\` rate. When a post's views_per_hour is meaningfully higher than the user's typical platform average (compare to \`platforms.{platform}.total_views_30d / 30 / 24\`), emit an \`engagement_velocity\` signal with the actual ratio and a "what to do in the next 6 hours" action (reply to comments, cross-post, boost). Only emit when the lead is real — if the post is brand new (< 2 hours) the signal is noise unless the rate is exceptional.
+
+═══ PLATFORM BEST-PRACTICE RULES ═══
+
+Use these when generating cross_platform_gap, missed_crosspost, or series_arc fixes. Quote the specific rule you're applying — the user should be able to verify the recommendation against the rule.
+
+${allRulesAsPromptText()}
 
 ═══ SIGNALS ═══
 
@@ -264,13 +373,16 @@ Return STRICT JSON only. No prose before or after. No code fences.
   ],
   "signals": [
     {
-      "kind": "viral" | "gap" | "collab" | "engagement" | "warning" | "timing" | "trend",
+      "kind": "viral" | "gap" | "collab" | "engagement" | "warning" | "timing" | "trend"
+            | "cross_platform_gap" | "missed_crosspost" | "series_arc"
+            | "hook_pattern" | "collaboration_multiplier" | "engagement_velocity"
+            | "caption_language_split",
       "platform": "instagram" | "tiktok" | "youtube" | "facebook" | "linkedin" | "x" | "snapchat" | "all",
       "title": "string, 6-14 words, the signal headline with a number or specific in it",
-      "body": "string, 1-2 sentences with specific numbers AND the strategic implication",
+      "body": "string, 1-2 sentences with specific numbers AND the strategic implication. For cross_platform_gap / missed_crosspost / series_arc, cite the specific platform-rule that supports the fix.",
       "impact": "High Impact" | "Strategic" | "Core Identity" | "Strategic Warning",
       "action": "string, 2-5 words describing the next move",
-      "is_series": "boolean, optional — true only on series-comparison signals"
+      "is_series": "boolean, optional — true on series_arc signals"
     }
   ],
   "score_factors": [
@@ -297,8 +409,15 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
   // screen reads today's brief. Live-signal rows (kind='live') are kept —
   // they're an independent append-only feed and shouldn't be invalidated
   // when a new morning brief lands.
-  const briefKinds = ['verdict', 'action', 'viral', 'gap', 'collab',
-                      'engagement', 'warning', 'audience', 'timing', 'trend'];
+  const briefKinds = [
+    'verdict', 'action',
+    // Original kinds
+    'viral', 'gap', 'collab', 'engagement', 'warning', 'audience', 'timing', 'trend',
+    // Cross-platform content-intelligence kinds (migration 005)
+    'cross_platform_gap', 'missed_crosspost', 'series_arc',
+    'hook_pattern', 'collaboration_multiplier', 'engagement_velocity',
+    'caption_language_split',
+  ];
   await supabase.update('signals',
     { is_read: true },
     { eq: { workspace_id: workspace.id }, in: { kind: briefKinds } }
@@ -506,12 +625,16 @@ export async function generateLiveSignals(workspace) {
 }
 
 export async function generateBrief(workspace) {
-  // 1) Gather data
-  const [accounts, posts, snapshots, competitors] = await Promise.all([
+  // 1) Gather data — including content_pieces + series so the prompt can
+  //    reason about cross-platform groupings and ongoing numbered series
+  //    rather than treating each post as an isolated row.
+  const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
     supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
     supabase.select('posts', { select: '*', eq: { workspace_id: workspace.id }, order: 'posted_at.desc', limit: 200 }).catch(() => []),
     supabase.select('account_snapshots', { select: '*', eq: { workspace_id: workspace.id }, order: 'snapshot_date.desc', limit: 30 }).catch(() => []),
     supabase.select('competitors', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
+    supabase.select('content_pieces', { select: '*', eq: { workspace_id: workspace.id }, order: 'first_posted_at.desc', limit: 60 }).catch(() => []),
+    supabase.select('series', { select: '*', eq: { workspace_id: workspace.id }, order: 'last_entry_at.desc' }).catch(() => []),
   ]);
 
   if (!accounts?.length || !posts?.length) {
@@ -522,7 +645,7 @@ export async function generateBrief(workspace) {
   const intelScore = computeIntelScore({ accounts, posts, snapshots });
 
   // 3) Build prompt
-  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
+  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
 
   // 4) Call the AI router — picks Claude or Gemini per workspace.ai_model
   //    with automatic fallback on provider failure.

@@ -23,6 +23,7 @@ import { zernio, extractFollowers } from './zernio.js';
 import { scrapeChannel as scrapeYouTubeChannel } from './youtube.js';
 import { pullAds } from './ads.js';
 import { scrapeProfile as apifyScrapeProfile, ACTORS as APIFY_ACTORS } from './apify.js';
+import { detectContent } from './content-detection.js';
 
 // ─── Depth selection for the first-connect backfill ──────────────────────
 // Keyed by workspace.account_age (set during onboarding). For 3+ years
@@ -272,6 +273,16 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
     ads = { error: e.message };
   }
 
+  // Content-piece + series detection. Runs after posts are persisted so
+  // the detector sees every new row. Best-effort — if the migration hasn't
+  // been applied yet, the inserts just fail silently and we return zeros.
+  let detection = null;
+  try {
+    detection = await detectContent(workspace);
+  } catch (e) {
+    detection = { error: e.message };
+  }
+
   return {
     mode,
     refreshed: results.filter(r => !r.error).length,
@@ -280,5 +291,6 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
     accounts: results.map(({ rows, ...rest }) => rest),
     snapshots: snapshots.length,
     ads,
+    detection,
   };
 }
