@@ -120,6 +120,57 @@ export default async function handler(req, res) {
     if (p) postId = p.id;
   }
 
+  // ─── Lifecycle events: side-effects, no inbox row ─────────────────────
+  // These events drive state changes (posts.status, connected_accounts.status,
+  // posts.published_at) rather than the comment/dm inbox feed. ACK on
+  // success so Zernio doesn't retry. Unknown post / account refs are
+  // tolerated — we just no-op the side-effect.
+  const k = String(kind).toLowerCase();
+
+  if (k === 'post.published') {
+    if (postId) {
+      await supabase.update('posts',
+        { status: 'published', published_at: new Date().toISOString() },
+        { eq: { id: postId } }
+      ).catch(() => {});
+    }
+    return json(res, 200, { ok: true, kind: k, applied: !!postId });
+  }
+
+  if (k === 'post.failed' || k === 'post.cancelled' || k === 'post.partial' || k === 'post.recycled') {
+    const status = k.split('.')[1]; // 'failed' | 'cancelled' | 'partial' | 'recycled'
+    if (postId) {
+      await supabase.update('posts', { status }, { eq: { id: postId } }).catch(() => {});
+    }
+    // post.failed deserves a row in inbox_events too — the user wants to
+    // see "your scheduled post broke". The other lifecycle states are
+    // silent state changes.
+    if (k === 'post.failed' && workspaceId) {
+      await supabase.insert('inbox_events', {
+        workspace_id: workspaceId, account_id: accountId, zernio_account_id: zernioAccountId,
+        platform, kind: 'post_failed',
+        post_id: postId, platform_post_id: platformPostId ? String(platformPostId) : null,
+        author_handle: null, body: pick(body, 'error', 'reason', 'message') || 'Post failed to publish',
+        payload: { ...body, _signature_verified: verify.verified },
+        delivery_id: deliveryId,
+      }).catch(() => {});
+    }
+    return json(res, 200, { ok: true, kind: k, applied: !!postId });
+  }
+
+  if (k === 'account.disconnected') {
+    if (accountId) {
+      await supabase.update('connected_accounts',
+        { status: 'disconnected', disconnected_at: new Date().toISOString() },
+        { eq: { id: accountId } }
+      ).catch(() => {});
+    }
+    return json(res, 200, { ok: true, kind: k, applied: !!accountId });
+  }
+
+  // ─── Inbox/feed events: comment.received, message.received, review.new ──
+  // Everything else falls through to the generic inbox_events insert. The
+  // live-signals cron picks pending rows up and runs pattern detection.
   const row = {
     workspace_id: workspaceId,
     account_id: accountId,
