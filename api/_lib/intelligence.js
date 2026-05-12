@@ -397,7 +397,24 @@ Return STRICT JSON only. No prose before or after. No code fences.
     "hook": "string, 1 sentence — the opening device that works for this workspace's audience right now. Cite the post + metric that proves it.",
     "differentiator": "string, 1 sentence — the angle this workspace owns that competitors can't copy (cultural, format, niche, identity).",
     "caption": "string, 1 sentence — caption structure that's outperforming. Language + length + ingredients.",
-    "niche": "string, 1 sentence — the content territory this workspace should claim and why it's defensible."
+    "niche": "string, 1 sentence — the content territory this workspace should claim and why it's defensible.",
+    "positioning": "string, 1 sentence — the brand's one-line positioning statement, written as if it would appear on their About page. Specific to who they serve and how they win.",
+    "whats_working": [
+      "string, ≤16 words — a specific thing in their current content that's earning reach"
+    ],
+    "whats_missing": [
+      "string, ≤16 words — a specific thing their top competitors do that they don't"
+    ],
+    "unlock": "string, 1 sentence — the single highest-leverage change in their current content (cite the existing post/line/asset that proves they could)."
+  },
+  "rewrite": {
+    "competitor_handle": "string — handle whose top post we're using as the model",
+    "competitor_quote":  "string — the actual opening line of that competitor's top post (verbatim, ≤30 words)",
+    "competitor_metric": "string — what made it work (e.g. '38 likes · top LI post', '32M plays · top TT video')",
+    "your_quote":        "string — the actual opening line of one of this workspace's recent posts (verbatim, ≤30 words). Pick a post whose subject is comparable.",
+    "your_metric":       "string — current performance of that post (e.g. '4 likes', '12 views')",
+    "suggested_rewrite": "string — a rewritten opening line for the user's post, applying the competitor's hook structure but keeping the user's voice + topic.",
+    "why":               "string, 1 sentence — why this rewrite would outperform the original."
   }
 }
 
@@ -405,6 +422,11 @@ The "formula" object is a distilled playbook a creator can act on immediately.
 Each field must reference a concrete pattern visible in this workspace's data
 — not generic advice. If the data is too thin to derive a formula (fewer than
 5 posts), return null instead of inventing one.
+
+The "rewrite" object pairs a top competitor post with one of the user's
+posts and shows what their post would look like in the competitor's winning
+structure. Both quotes must be VERBATIM from the actual data — never invent
+text. If no clean comparison exists, return null instead of fabricating one.
 
 Final reminder: this brief lands in someone's inbox at 6 AM. They have coffee in one hand and 90 seconds. Earn that 90 seconds. If your verdict could have been written without seeing their data, it's wrong. Rewrite it.`;
 
@@ -470,6 +492,7 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
       ...baseMeta,
       score_factors: brief.score_factors || [],
       formula: brief.formula || null,
+      rewrite: brief.rewrite || null,
     },
   });
 

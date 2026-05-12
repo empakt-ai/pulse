@@ -220,6 +220,13 @@ export default async function handler(req, res) {
       const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
       return v?.metadata?.formula || null;
     })(),
+    // Strategic rewrite — pairs a competitor's top post with one of the
+    // user's posts, plus an AI rewrite in the winning structure. Null
+    // until the next brief regenerates with the extended schema.
+    rewrite: (() => {
+      const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
+      return v?.metadata?.rewrite || null;
+    })(),
     // Market context — TAM + platform usage signals for the workspace's
     // country. Null when country isn't set or isn't in our reference set.
     marketContext: getMarketContext(ws.country),

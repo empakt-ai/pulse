@@ -479,6 +479,7 @@ const D = {
   todayActions: [],
   actionPlan: [],
   formula: null,
+  rewrite: null,
   marketContext: null,
   competitors: [],
   // 6 rows × 7 cols, all zero. Real values come from /api/brief.heatmap.
@@ -3142,6 +3143,12 @@ const OverviewScreen = ({ activePlatform }) => {
           </Card>
         </div>
       </div>
+
+      {/* Channel priority + all-platforms scorecard — multi-channel views */}
+      <div className="mt-6">
+        <ChannelPriorityMatrix />
+        <AllPlatformsScorecard />
+      </div>
     </div>
   );
 };
@@ -4220,6 +4227,12 @@ const IntelScreen = ({ activePlatform }) => {
           {/* Content Formula — the AI-derived "do this exact thing" playbook */}
           <ContentFormulaCard />
 
+          {/* What's working · missing · unlock — triage panel from the brief */}
+          <WhatsWorkingMissingCard />
+
+          {/* Strategic Rewrite — competitor's hook + yours + suggested rewrite */}
+          <StrategicRewriteCard />
+
           {/* Market context — country-level TAM + platform reference */}
           <MarketContextCard />
 
@@ -4244,8 +4257,8 @@ const IntelScreen = ({ activePlatform }) => {
 
 // ContentFormulaCard — distilled "do this exact thing" playbook from the
 // latest brief. Renders the 4 ingredients (hook, differentiator, caption,
-// niche) in their own colored panels. Hides itself if the brief didn't
-// produce a formula (workspace has too little data, or pre-formula brief).
+// niche) plus a brand-positioning one-liner footer. Hides itself if the
+// brief didn't produce a formula.
 const ContentFormulaCard = () => {
   const f = D.formula;
   if (!f || (!f.hook && !f.differentiator && !f.caption && !f.niche)) return null;
@@ -4286,6 +4299,367 @@ const ContentFormulaCard = () => {
             <p className="text-[13px] leading-relaxed">{i.body}</p>
           </div>
         ))}
+      </div>
+      {f.positioning && (
+        <div className="mt-4 rounded-xl bg-ink dark:bg-coalsoft text-paper p-4">
+          <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-paper/60 font-semibold mb-1.5">Positioning · in one sentence</div>
+          <p className="font-display text-[15px] leading-snug italic">"{f.positioning}"</p>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// WhatsWorkingMissingCard — three-panel triage from the AI brief: what's
+// earning reach today, what competitors do that you don't, and the single
+// highest-leverage unlock. Reads formula.whats_working / whats_missing /
+// unlock; hides itself when those fields are empty.
+const WhatsWorkingMissingCard = () => {
+  const f = D.formula;
+  const working = (f?.whats_working || []).filter(Boolean);
+  const missing = (f?.whats_missing || []).filter(Boolean);
+  const unlock = f?.unlock || null;
+  if (working.length === 0 && missing.length === 0 && !unlock) return null;
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="target" className="w-4 h-4 text-magenta" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">What's working · missing · unlock</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Triage from the latest brief — keep doing the wins, close the gaps, ship the unlock.
+      </p>
+      <div className="grid md:grid-cols-3 gap-3">
+        {working.length > 0 && (
+          <div className="rounded-xl border border-lime/30 bg-lime/12 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-limeDeep dark:text-lime font-semibold mb-2">✓ Working</div>
+            <ul className="space-y-1.5 text-[12.5px] leading-snug">
+              {working.map((w, i) => <li key={i} className="flex gap-1.5"><span className="text-limeDeep dark:text-lime flex-shrink-0">•</span><span>{w}</span></li>)}
+            </ul>
+          </div>
+        )}
+        {missing.length > 0 && (
+          <div className="rounded-xl border border-magenta/30 bg-magenta/10 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-magenta font-semibold mb-2">✗ Missing</div>
+            <ul className="space-y-1.5 text-[12.5px] leading-snug">
+              {missing.map((m, i) => <li key={i} className="flex gap-1.5"><span className="text-magenta flex-shrink-0">•</span><span>{m}</span></li>)}
+            </ul>
+          </div>
+        )}
+        {unlock && (
+          <div className="rounded-xl border border-ultra/30 bg-ultra/10 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-2">→ The unlock</div>
+            <p className="text-[12.5px] leading-relaxed">{unlock}</p>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+// StrategicRewriteCard — competitor's top post next to one of the user's
+// posts, with an AI-suggested rewrite in the winning structure. The single
+// most actionable artifact in the brief. Hides itself when no clean
+// comparison exists.
+const StrategicRewriteCard = () => {
+  const r = D.rewrite;
+  if (!r || (!r.competitor_quote && !r.your_quote && !r.suggested_rewrite)) return null;
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="sparkle" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Strategic rewrite</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        A top competitor's hook + one of your posts + how yours would read in their structure.
+      </p>
+      <div className="grid md:grid-cols-2 gap-3 mb-3">
+        {r.competitor_quote && (
+          <div className="rounded-xl border border-magenta/30 bg-magenta/8 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-magenta font-semibold mb-1.5">
+              What works · {r.competitor_handle ? `@${String(r.competitor_handle).replace(/^@/, '')}` : 'top competitor'}
+            </div>
+            <p className="text-[13px] leading-relaxed italic mb-2">"{r.competitor_quote}"</p>
+            {r.competitor_metric && (
+              <div className="text-[10.5px] font-mono text-magenta">{r.competitor_metric}</div>
+            )}
+          </div>
+        )}
+        {r.your_quote && (
+          <div className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark font-semibold mb-1.5">
+              Your post today
+            </div>
+            <p className="text-[13px] leading-relaxed italic mb-2">"{r.your_quote}"</p>
+            {r.your_metric && (
+              <div className="text-[10.5px] font-mono text-mute dark:text-muteDark">{r.your_metric}</div>
+            )}
+          </div>
+        )}
+      </div>
+      {r.suggested_rewrite && (
+        <div className="rounded-xl border border-ultra/30 bg-ultra/10 p-3.5">
+          <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-1.5">→ Suggested rewrite · your voice, their structure</div>
+          <p className="text-[14px] leading-relaxed font-medium mb-2">"{r.suggested_rewrite}"</p>
+          {r.why && (
+            <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed">{r.why}</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// ChannelPriorityMatrix — derived from current data (no AI). One row per
+// connected platform showing user position vs the leader of the tracked
+// competitor set, plus a tactical verdict (Maintain+Grow / Urgent Fix /
+// Minimum Viable). Hides itself when nothing's connected.
+const ChannelPriorityMatrix = () => {
+  const ownByPlatform = D.accounts || {};
+  const competitors = D.competitors || [];
+
+  // Group competitors by platform for ranking math.
+  const compsByPlatform = {};
+  competitors.forEach(c => {
+    const p = c.platform;
+    if (!p) return;
+    if (!compsByPlatform[p]) compsByPlatform[p] = [];
+    compsByPlatform[p].push(c);
+  });
+
+  // Build rows from the platforms we actually have data for.
+  const rows = Object.entries(ownByPlatform)
+    .map(([key, a]) => {
+      const yourFollowers = a?.followers || a?.subs || a?.connections || 0;
+      const comps = compsByPlatform[key === 'ig' ? 'instagram'
+                              : key === 'tt' ? 'tiktok'
+                              : key === 'yt' ? 'youtube'
+                              : key === 'li' ? 'linkedin'
+                              : key === 'fb' ? 'facebook'
+                              : key === 'sc' ? 'snapchat'
+                              : key] || [];
+      const leader = comps.reduce((max, c) => Math.max(max, c.followers || 0), yourFollowers);
+      const rankList = [
+        { name: 'you', followers: yourFollowers, own: true },
+        ...comps.map(c => ({ name: c.handle, followers: c.followers || 0, own: false })),
+      ].sort((a, b) => b.followers - a.followers);
+      const yourRank = rankList.findIndex(r => r.own) + 1;
+      const totalCount = rankList.length;
+      const pct = leader > 0 ? (yourFollowers / leader) * 100 : 0;
+
+      // Tactical verdict heuristic — same as the prototype's labels.
+      let verdict, tone;
+      if (yourRank === 1 || pct >= 80) { verdict = 'Maintain + Grow'; tone = 'lime'; }
+      else if (pct >= 30)              { verdict = 'Strong · Push';   tone = 'ultra'; }
+      else if (pct >= 10)              { verdict = 'Build · Activate'; tone = 'amber'; }
+      else                              { verdict = 'Urgent Fix';      tone = 'magenta'; }
+
+      return {
+        key, yourFollowers, yourRank, totalCount, pct, leader, verdict, tone,
+        hasComp: comps.length > 0,
+      };
+    })
+    .filter(r => r.yourFollowers > 0)
+    .sort((a, b) => b.pct - a.pct);
+
+  if (rows.length === 0) return null;
+
+  const toneClass = {
+    lime:    'bg-lime/20 text-limeDeep dark:text-lime border-lime/30',
+    ultra:   'bg-ultra/12 text-ultra border-ultra/25',
+    amber:   'bg-amber/15 text-amber border-amber/25',
+    magenta: 'bg-magenta/12 text-magenta border-magenta/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="grid" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Channel priority matrix</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Where you stand on each channel + where to spend your next hour.
+      </p>
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark border-b border-line dark:border-lineDark">
+              <th className="px-2 py-2 font-medium">Channel</th>
+              <th className="px-2 py-2 font-medium">Your position</th>
+              <th className="px-2 py-2 font-medium text-right">Of leader</th>
+              <th className="px-2 py-2 font-medium">Priority</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.key} className="border-b border-line/60 dark:border-lineDark/60 last:border-b-0">
+                <td className="px-2 py-3 align-middle">
+                  <div className="flex items-center gap-2">
+                    <Plat p={r.key} className="w-4 h-4 flex-shrink-0" />
+                    <span className="font-semibold">{platformLabel[r.key] || r.key}</span>
+                  </div>
+                </td>
+                <td className="px-2 py-3 align-middle text-[12.5px] text-mute dark:text-muteDark">
+                  <span className="font-mono">{formatNum(r.yourFollowers)}</span> followers
+                  {r.hasComp && (
+                    <span className="ml-1.5 font-mono text-[11px]">
+                      · #{r.yourRank} of {r.totalCount}
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-3 align-middle text-right font-mono text-[12px]">
+                  {r.hasComp ? `${r.pct < 10 ? r.pct.toFixed(1) : Math.round(r.pct)}%` : '—'}
+                </td>
+                <td className="px-2 py-3 align-middle">
+                  <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10.5px] font-mono', toneClass[r.tone])}>
+                    {r.verdict}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+};
+
+// AllPlatformsScorecard — single landscape table showing every brand
+// (you + competitors) across every connected platform. Derived from current
+// data; no AI. Adds a per-row "position" verdict so agencies can scan
+// who's dominant where.
+const AllPlatformsScorecard = () => {
+  const competitors = D.competitors || [];
+  const accounts = D.accounts || {};
+
+  // Platform key set — union of connected accounts + competitor platforms.
+  const platformSet = new Set();
+  Object.keys(accounts).forEach(k => platformSet.add(k));
+  competitors.forEach(c => {
+    if (!c.platform) return;
+    platformSet.add(
+      c.platform === 'instagram' ? 'ig' :
+      c.platform === 'tiktok'    ? 'tt' :
+      c.platform === 'youtube'   ? 'yt' :
+      c.platform === 'linkedin'  ? 'li' :
+      c.platform === 'facebook'  ? 'fb' :
+      c.platform === 'snapchat'  ? 'sc' :
+      c.platform
+    );
+  });
+  const platforms = [...platformSet];
+  if (platforms.length === 0) return null;
+
+  // Helper to look up a competitor's follower count on a given platform key.
+  const platformLong = (k) => k === 'ig' ? 'instagram' : k === 'tt' ? 'tiktok'
+                              : k === 'yt' ? 'youtube' : k === 'li' ? 'linkedin'
+                              : k === 'fb' ? 'facebook' : k === 'sc' ? 'snapchat'
+                              : k;
+  const compFollowers = (c, key) => {
+    if (c.platform === platformLong(key)) return c.followers || 0;
+    return null;
+  };
+
+  // Build rows — user first, then competitors in follower-rank order.
+  const userRow = {
+    name: 'You',
+    handle: '',
+    own: true,
+    cells: Object.fromEntries(platforms.map(k => {
+      const a = accounts[k] || {};
+      return [k, a.followers || a.subs || a.connections || 0];
+    })),
+  };
+  const compRows = competitors.map(c => ({
+    name: c.display_name || c.handle,
+    handle: c.handle,
+    own: false,
+    cells: Object.fromEntries(platforms.map(k => [k, compFollowers(c, k) ?? null])),
+  }));
+  const rows = [userRow, ...compRows];
+
+  // Derive a single-word position verdict per row from where they lead.
+  const leaderPerPlatform = {};
+  platforms.forEach(k => {
+    let max = 0;
+    rows.forEach(r => { const v = r.cells[k] || 0; if (v > max) max = v; });
+    leaderPerPlatform[k] = max;
+  });
+  const verdictFor = (row) => {
+    const leads = platforms.filter(k => (row.cells[k] || 0) > 0 && row.cells[k] === leaderPerPlatform[k]);
+    if (leads.length >= 2) return { txt: 'Multi-platform', tone: 'lime' };
+    if (leads.length === 1) {
+      const p = platformLabel[leads[0]] || leads[0];
+      return { txt: `${p} dominant`, tone: 'lime' };
+    }
+    // Closest to leader on any platform → "Strong"
+    const bestPct = Math.max(0, ...platforms.map(k =>
+      leaderPerPlatform[k] ? (row.cells[k] || 0) / leaderPerPlatform[k] : 0
+    ));
+    if (bestPct >= 0.3) return { txt: 'Strong', tone: 'ultra' };
+    if (bestPct >= 0.05) return { txt: 'Building', tone: 'amber' };
+    return { txt: 'Behind', tone: 'magenta' };
+  };
+
+  const toneClass = {
+    lime:    'bg-lime/20 text-limeDeep dark:text-lime border-lime/30',
+    ultra:   'bg-ultra/12 text-ultra border-ultra/25',
+    amber:   'bg-amber/15 text-amber border-amber/25',
+    magenta: 'bg-magenta/12 text-magenta border-magenta/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="grid" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">All-platforms scorecard</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Followers across every connected platform. Empty cells = not present on that channel.
+      </p>
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark border-b border-line dark:border-lineDark">
+              <th className="px-2 py-2 font-medium">Brand</th>
+              {platforms.map(k => (
+                <th key={k} className="px-2 py-2 font-medium text-right whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1.5"><Plat p={k} className="w-3.5 h-3.5" /> {platformLabel[k] || k}</span>
+                </th>
+              ))}
+              <th className="px-2 py-2 font-medium">Position</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const v = verdictFor(r);
+              return (
+                <tr key={i} className={cls('border-b border-line/60 dark:border-lineDark/60 last:border-b-0', r.own && 'bg-ultra/5')}>
+                  <td className="px-2 py-3 align-middle">
+                    <div className={cls('font-semibold text-[12.5px]', r.own && 'text-ultra')}>
+                      {r.own ? 'You' : r.name}
+                    </div>
+                    {!r.own && r.handle && (
+                      <div className="text-[10.5px] font-mono text-mute dark:text-muteDark">@{String(r.handle).replace(/^@/, '')}</div>
+                    )}
+                  </td>
+                  {platforms.map(k => (
+                    <td key={k} className="px-2 py-3 align-middle text-right font-mono text-[12px] whitespace-nowrap">
+                      {r.cells[k] ? formatNum(r.cells[k]) : <span className="text-mute/40">—</span>}
+                    </td>
+                  ))}
+                  <td className="px-2 py-3 align-middle">
+                    <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10.5px] font-mono', toneClass[v.tone])}>
+                      {v.txt}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </Card>
   );
@@ -5968,6 +6342,8 @@ const hydrateD = (brief) => {
   }
   // Distilled content formula — null until brief regenerates with the new schema.
   D.formula = brief.formula || null;
+  // Strategic rewrite — competitor's top post + user's post + suggested rewrite.
+  D.rewrite = brief.rewrite || null;
   // Market context — country-level TAM + platform usage reference.
   D.marketContext = brief.marketContext || null;
   // Which platforms are actually connected (keys of accountSummary).
