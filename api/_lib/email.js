@@ -6,7 +6,7 @@
 
 const RESEND_API = 'https://api.resend.com/emails';
 const KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.PULSE_FROM_EMAIL || 'PULSE <reports@karvan-pulse.vercel.app>';
+const FROM = process.env.PULSE_FROM_EMAIL || 'PULSE <reports@karvan.io>';
 
 // Send an email. attachments is an optional array of
 //   { filename: string, content: Buffer | base64 string }

@@ -29,8 +29,36 @@ html, body {
 a { color: inherit; text-decoration: none; }
 a:hover { color: var(--ultra); }
 
-.wrap   { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-.wrap-sm{ max-width: 760px;  margin: 0 auto; padding: 0 24px; }
+/* Page container — responsive horizontal padding that scales with the
+   viewport. Earlier we used a flat 24px which clipped letters on
+   display-weight headlines with negative tracking (the "P" in "Privacy"
+   was getting trimmed at the viewport edge). Three breakpoints match
+   the rest of the site: 24 / 48 / 80. */
+.wrap, .wrap-sm, .page-container {
+  margin: 0 auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+.wrap            { max-width: 1120px; }
+.wrap-sm,
+.page-container  { max-width: 800px; }
+.wrap--wide      { max-width: 1100px; }
+
+@media (min-width: 640px) {
+  .wrap, .wrap-sm, .page-container, .wrap--wide {
+    padding-left: 48px;
+    padding-right: 48px;
+  }
+}
+@media (min-width: 1024px) {
+  .wrap, .wrap-sm, .page-container, .wrap--wide {
+    padding-left: 80px;
+    padding-right: 80px;
+  }
+}
+
+/* Bottom safety: every page leaves room above the footer. */
+main { padding-bottom: 96px; }
 
 /* ─── Header ───────────────────────────────────────────────────────────── */
 .site-header {
@@ -65,46 +93,61 @@ a:hover { color: var(--ultra); }
 }
 
 /* ─── Page typography ──────────────────────────────────────────────────── */
-.eyebrow {
-  display: inline-block;
+/* Eyebrow pill — used at the top of every page hero. Same pill style
+   across all marketing pages for visual consistency. */
+.eyebrow,
+.hero-tag {
+  display: inline-flex; align-items: center; gap: 6px;
   font-family: 'Geist Mono', monospace;
   font-size: 11px; font-weight: 600; letter-spacing: 0.14em;
   text-transform: uppercase; color: var(--ultra);
+  padding: 6px 12px; border-radius: 99px;
+  background: var(--ultraSoft); border: 1px solid rgba(107, 91, 255, 0.2);
+  margin-bottom: 16px;
 }
+
+/* Display + heading scale. tracking-tight stops at -0.02em so even big
+   sizes don't overhang the container edge. */
 .h1 {
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: clamp(36px, 6vw, 64px); line-height: 1.02;
-  font-weight: 600; letter-spacing: -0.035em;
+  font-size: clamp(40px, 5.5vw, 56px);
+  line-height: 1.04; font-weight: 700; letter-spacing: -0.02em;
   margin: 12px 0 16px;
+  /* Optical fix: nudge slightly right so glyph overhang from heavy
+     weights doesn't clip on the left edge. */
+  text-indent: 0.005em;
 }
 .h2 {
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: clamp(24px, 3.5vw, 32px); line-height: 1.15;
-  font-weight: 600; letter-spacing: -0.02em;
-  margin: 36px 0 16px;
+  font-size: 24px; line-height: 1.2; font-weight: 700;
+  letter-spacing: -0.015em;
+  margin: 48px 0 12px;
 }
 .h3 {
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-size: 19px; font-weight: 600; letter-spacing: -0.015em;
+  font-size: 18px; font-weight: 600; letter-spacing: -0.01em;
   margin: 28px 0 10px;
 }
-.lead { font-size: 18px; color: var(--mute); max-width: 640px; line-height: 1.6; }
-.prose p, .prose ul, .prose ol { margin: 0 0 14px; color: #2E2E33; max-width: 740px; }
+
+/* Body copy — 17px, relaxed leading, soft ink for prose readability. */
+.lead {
+  font-size: 18px; color: rgba(10, 10, 11, 0.7);
+  max-width: 720px; line-height: 1.55;
+}
+.prose p, .prose ul, .prose ol {
+  margin: 0 0 14px;
+  font-size: 17px; line-height: 1.65;
+  color: rgba(10, 10, 11, 0.8);
+  max-width: 740px;
+}
 .prose strong { color: var(--ink); font-weight: 600; }
 .prose ul, .prose ol { padding-left: 22px; }
 .prose ul li, .prose ol li { margin: 0 0 6px; }
 .prose a { color: var(--ultra); text-decoration: underline; text-underline-offset: 3px; }
 
-/* ─── Hero band (used by Features / Pricing / About) ──────────────────── */
-.hero { padding: 64px 0 32px; }
-.hero-tag {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-family: 'Geist Mono', monospace;
-  font-size: 11px; letter-spacing: 0.14em;
-  text-transform: uppercase; color: var(--ultra);
-  padding: 6px 12px; border-radius: 99px;
-  background: var(--ultraSoft); border: 1px solid rgba(107, 91, 255, 0.2);
-}
+/* ─── Hero band — standard top spacing under the nav across all pages */
+.hero { padding-top: 64px; padding-bottom: 32px; }
+@media (min-width: 640px) { .hero { padding-top: 96px; padding-bottom: 32px; } }
 
 /* ─── Cards ───────────────────────────────────────────────────────────── */
 .card {
