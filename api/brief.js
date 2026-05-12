@@ -107,10 +107,46 @@ export default async function handler(req, res) {
   };
 
   // Build per-platform account summary keyed the way the prototype expects.
+  // Adds engRate30d (derived from posts) and follower_history (last 7 daily
+  // snapshots) so the Brief stat cards can render sparklines + deltas
+  // without an extra round-trip.
+  const NOW_MS = Date.now();
+  const D30  = 30 * 86400000;
   const accountSummary = {};
   for (const a of (accounts || [])) {
     const key = platformKey(a.platform);
     const latestSnap = (snapshots || []).find(s => s.platform === a.platform && s.account_type === 'own');
+
+    // Last 7 own-account snapshots for the sparkline (oldest → newest).
+    const ownSnaps = (snapshots || [])
+      .filter(s => s.platform === a.platform && s.account_type === 'own')
+      .sort((x, y) => String(x.snapshot_date).localeCompare(String(y.snapshot_date)));
+    const history7 = ownSnaps.slice(-7).map(s => ({
+      date: s.snapshot_date,
+      followers: s.followers || 0,
+    }));
+    // Week-over-week delta from the snapshot series (current vs ~7d ago).
+    let wow_followers = 0;
+    if (ownSnaps.length >= 2) {
+      const latest = ownSnaps[ownSnaps.length - 1];
+      const targetTs = new Date(latest.snapshot_date).getTime() - 7 * 86400000;
+      const baseline = [...ownSnaps].reverse().find(s => new Date(s.snapshot_date).getTime() <= targetTs)
+        || ownSnaps[0];
+      wow_followers = (latest.followers || 0) - (baseline.followers || 0);
+    }
+
+    // Per-platform engagement rate over the last 30 days, computed from
+    // actual posts (more accurate than the cached snapshot value when the
+    // last sync didn't fully refresh).
+    const platPosts30 = ownPosts.filter(p =>
+      p.platform === a.platform && p.posted_at &&
+      (NOW_MS - new Date(p.posted_at).getTime()) <= D30 && Number(p.views || 0) > 0
+    );
+    const sumViews30 = platPosts30.reduce((s, p) => s + Number(p.views || 0), 0);
+    const sumEng30 = platPosts30.reduce((s, p) =>
+      s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+    const engRate30 = sumViews30 ? Math.round((sumEng30 / sumViews30) * 10000) / 100 : 0;
+
     accountSummary[key] = {
       platform: a.platform,
       handle: a.platform_username ? `@${a.platform_username.replace(/^@/, '')}` : null,
@@ -119,11 +155,92 @@ export default async function handler(req, res) {
       verified: a.verified,
       avgViews: latestSnap?.avg_views_30d || 0,
       avgEngRate: latestSnap?.avg_eng_rate_30d || 0,
+      engRate30d: engRate30,
+      reach30d: sumViews30,
       totalViews4W: latestSnap?.total_views_30d || 0,
       posts: ownPosts.filter(p => p.platform === a.platform).length,
+      posts30d: platPosts30.length,
+      followerHistory7d: history7,
+      wowFollowers: wow_followers,
       lastSyncedAt: a.last_synced_at,
     };
   }
+
+  // ── Aggregated brief metrics — drives the Brief screen stat cards ───────
+  // All windows are inclusive: 30d = last 30 days; prev30d = the 30 days
+  // before that. We compute these once on the server so the front-end
+  // doesn't need access to the full posts/snapshots history.
+  const briefMetrics = (() => {
+    const inWindow = (p, fromMs, toMs) => {
+      if (!p.posted_at) return false;
+      const ts = new Date(p.posted_at).getTime();
+      return ts >= fromMs && ts < toMs;
+    };
+    const now = NOW_MS;
+    const win30  = [now - D30, now];
+    const winPrev = [now - 2 * D30, now - D30];
+
+    const posts30  = ownPosts.filter(p => inWindow(p, ...win30));
+    const postsPrev = ownPosts.filter(p => inWindow(p, ...winPrev));
+
+    const sumViews = (arr) => arr.reduce((s, p) => s + Number(p.views || 0), 0);
+    const sumEng = (arr) => arr.reduce((s, p) =>
+      s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+    const rate = (a, v) => v ? Math.round((a / v) * 10000) / 100 : 0;
+
+    const reach30 = sumViews(posts30);
+    const reachPrev = sumViews(postsPrev);
+    const reachDelta = reachPrev ? Math.round(((reach30 - reachPrev) / reachPrev) * 1000) / 10 : null;
+
+    const eng30 = rate(sumEng(posts30), reach30);
+    const engPrev = rate(sumEng(postsPrev), reachPrev);
+    const engDelta = engPrev ? Math.round(((eng30 - engPrev) / engPrev) * 1000) / 10 : null;
+
+    // Per-platform reach (30d) and engagement rate (30d). Map keyed by the
+    // platform short keys the UI uses (ig / tt / yt / li / fb / x / sc).
+    const reachByPlat = {};
+    const engRateByPlat = {};
+    for (const p of posts30) {
+      const k = platformKey(p.platform);
+      reachByPlat[k] = (reachByPlat[k] || 0) + Number(p.views || 0);
+    }
+    for (const [k, _] of Object.entries(reachByPlat)) {
+      const platPosts = posts30.filter(p => platformKey(p.platform) === k);
+      engRateByPlat[k] = rate(sumEng(platPosts), sumViews(platPosts));
+    }
+
+    // Signals: count by severity and surface the highest-priority unread title.
+    const unread = (signals || []).filter(s => !s.is_read && s.kind !== 'verdict' && s.kind !== 'action');
+    const sevOf = (s) => {
+      const i = String(s.impact || '').toLowerCase();
+      if (/warning|critical|risk/.test(i)) return 'critical';
+      if (/high/.test(i)) return 'high';
+      if (/strategic|core/.test(i)) return 'strategic';
+      return 'other';
+    };
+    const sigBreakdown = { critical: 0, high: 0, strategic: 0, other: 0 };
+    for (const s of unread) sigBreakdown[sevOf(s)] = (sigBreakdown[sevOf(s)] || 0) + 1;
+    // Priority order: critical > high > strategic > other
+    const priorityOrder = { critical: 0, high: 1, strategic: 2, other: 3 };
+    const topSignal = [...unread].sort((a, b) =>
+      priorityOrder[sevOf(a)] - priorityOrder[sevOf(b)]
+    )[0] || null;
+
+    // Category-level engagement benchmarks (rough, public-data-derived).
+    // Used as a "your category averages X%" context line under the eng card.
+    const CATEGORY_BENCHMARK = {
+      music: 1.6, fashion: 1.4, food: 1.2, ecommerce: 0.8, tech: 0.7,
+      gaming: 2.0, fitness: 1.8, education: 1.1, finance: 0.6, comedy: 2.5,
+      sports: 1.5, beauty: 1.6, parenting: 1.4, travel: 1.3, art: 1.7,
+    };
+    const benchmark = CATEGORY_BENCHMARK[ws.category] || 1.0;
+
+    return {
+      reach:      { total_30d: reach30, total_prev_30d: reachPrev, delta_pct: reachDelta, by_platform: reachByPlat },
+      engagement: { avg_rate_30d: eng30, avg_rate_prev_30d: engPrev, delta_pct: engDelta, by_platform: engRateByPlat, benchmark_pct: benchmark },
+      signals:    { total: unread.length, breakdown: sigBreakdown, top_unread: topSignal ? { kind: topSignal.kind, title: topSignal.title, platform: platformKey(topSignal.platform) } : null },
+    };
+  })();
 
   // Top posts for Content / Stats screens (last 30 days, sorted by views).
   const topPosts = [...ownPosts]
@@ -170,6 +287,7 @@ export default async function handler(req, res) {
     usage: { used: usage.used, limit: tier.runs_per_month },
     accounts: accounts || [],
     accountSummary,
+    briefMetrics,
     ads: adsSummary,
     competitors: (competitors || []).map(c => {
       // 7-day delta from account_snapshots (account_type='competitor')
