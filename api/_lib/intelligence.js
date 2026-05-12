@@ -480,9 +480,19 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
   });
 
   if (rows.length) {
-    await supabase.insert('signals', rows).catch(e => {
-      console.error('[intelligence] failed to insert signals:', e.message);
-    });
+    try {
+      await supabase.insert('signals', rows);
+    } catch (e) {
+      // Bubble up so the generate endpoint can surface "we generated a brief
+      // but couldn't persist it" instead of returning success and leaving
+      // the dashboard empty. The most common cause is a schema CHECK
+      // constraint on signals.kind that doesn't know about new kinds —
+      // run the latest migrations.
+      const err = new Error(`Brief insert failed: ${e.message}`);
+      err.persist_failed = true;
+      err.body = e.body;
+      throw err;
+    }
   }
 }
 
@@ -663,14 +673,24 @@ export async function generateBrief(workspace) {
   }
 
   // 5) Persist (with per-row provenance: model_used / latency_ms / tokens_used)
-  await persist({
-    workspace, brief, intelScore,
-    usage: result.usage,
-    model: result.raw_model,
-    modelUsed: result.model_used,
-    latencyMs: result.latency_ms,
-    tokensUsed: result.tokens_used,
-  });
+  try {
+    await persist({
+      workspace, brief, intelScore,
+      usage: result.usage,
+      model: result.raw_model,
+      modelUsed: result.model_used,
+      latencyMs: result.latency_ms,
+      tokensUsed: result.tokens_used,
+    });
+  } catch (e) {
+    return {
+      error: 'persist_failed',
+      message: e.message,
+      details: e.body,
+      model_used: result.model_used,
+      brief_preview: { verdict: brief.verdict?.title, signals: brief.signals?.length || 0 },
+    };
+  }
 
   // 6) Log usage
   await supabase.insert('usage_log', {

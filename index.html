@@ -4028,7 +4028,24 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         body: JSON.stringify({ ai_model: model }),
       });
       setActive(r.ai_model || model);
-      onSwitched?.(r.ai_model || model);
+      // The PATCH only changes which provider is used on the NEXT brief.
+      // Trigger one immediately so the user sees the new model's output
+      // reflected on the dashboard right away. Best-effort — surfaces
+      // generation failures (persist errors, parse failures, etc.) as
+      // an error toast so we know if something's broken.
+      onSwitched?.(`Switched to ${model === 'gemini' ? 'Gemini (Google)' : 'Claude (Anthropic)'} — regenerating brief…`);
+      try {
+        const gen = await api('/intelligence/generate', { method: 'POST' });
+        if (gen?.error) {
+          onError?.(`Brief failed: ${gen.message || gen.error}`);
+        } else if (gen?.skipped) {
+          onError?.(`Brief skipped: ${gen.skipped} (need ${gen.accounts ? 'posts' : 'accounts'})`);
+        } else {
+          onSwitched?.(`Brief regenerated with ${gen?.model_used || model} (${gen?.signals || 0} signals)`);
+        }
+      } catch (e) {
+        onError?.(`Regenerate failed: ${e.message}`);
+      }
     } catch (e) {
       onError?.(e.message);
     } finally {
