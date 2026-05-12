@@ -80,13 +80,22 @@ main { padding-bottom: 96px; }
 .nav-links { display: flex; align-items: center; gap: 28px; font-size: 14px; }
 .nav-links a { color: var(--mute); font-weight: 500; }
 .nav-links a:hover { color: var(--ink); }
-.nav-cta {
+/* CTA pill — selector specificity bumped to .nav-links a.nav-cta so it
+   wins over the .nav-links a { color: var(--mute) } rule above. Without
+   that, the button rendered black-on-grey instead of black-on-paper. */
+.nav-links a.nav-cta,
+a.nav-cta {
   display: inline-flex; align-items: center; gap: 6px;
   height: 36px; padding: 0 16px; border-radius: 10px;
-  background: var(--ink); color: var(--paper);
+  background: var(--ink);
+  color: var(--paper);
   font-size: 13px; font-weight: 500;
 }
-.nav-cta:hover { background: var(--ultra); color: var(--paper); }
+.nav-links a.nav-cta:hover,
+a.nav-cta:hover {
+  background: var(--ultra);
+  color: var(--paper);
+}
 
 @media (max-width: 640px) {
   .nav-links a:not(.nav-cta) { display: none; }
