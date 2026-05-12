@@ -2427,9 +2427,15 @@ Object.assign(window, { TopBar, AccountBar, MobileNav, ScreenHeader });
 const BriefScreen = ({ activePlatform }) => {
   const greeting = `Good morning, ${(D.user.name || 'there').split(' ')[0]}.`;
   const connected = D.connectedPlatforms || [];
-  const signalCount = (D.signals || []).length;
+  const isAll = activePlatform === 'all' || !activePlatform;
+
+  // Platform-scoped slices. When a specific tab is active, everything narrows
+  // to just that platform's data: posts, signals, ads, follower stat card.
+  const scopedPosts   = isAll ? (D.posts   || []) : (D.posts   || []).filter(p => p.platform === activePlatform);
+  const scopedSignals = isAll ? (D.signals || []) : (D.signals || []).filter(s => s.platform === activePlatform || s.platform === 'all');
+  const signalCount   = scopedSignals.length;
   const sub = signalCount
-    ? `${signalCount} signal${signalCount === 1 ? '' : 's'} from your last 30 days.`
+    ? `${signalCount} signal${signalCount === 1 ? '' : 's'} from your last 30 days${isAll ? '' : ` on ${platformLabel[activePlatform] || activePlatform}`}.`
     : 'Your command center.';
 
   // Map platforms to display stat cards using real numbers from the hydrated D.
@@ -2441,16 +2447,25 @@ const BriefScreen = ({ activePlatform }) => {
     fb: { label: 'Facebook',        value: D.accounts?.fb?.followers, icon: 'users', color: '#1877F2' },
     x:  { label: 'X / Twitter',     value: 0,                          icon: 'users', color: '#0A0A0B' },
   };
-  const statCards = connected.map(p => PLATFORM_STAT[p]).filter(Boolean).slice(0, 4);
+  const statCards = isAll
+    ? connected.map(p => PLATFORM_STAT[p]).filter(Boolean).slice(0, 4)
+    : (PLATFORM_STAT[activePlatform] ? [PLATFORM_STAT[activePlatform]] : []);
 
-  // Real aggregates for the right-side panel (no fake numbers).
-  const totalReach = (D.posts || []).reduce((s, p) => s + Number(p.views || 0), 0);
-  const totalEngActions = (D.posts || []).reduce((s, p) =>
+  // Real aggregates for the right-side panel (no fake numbers). Scoped to
+  // the active tab so individual platform views show that platform's numbers.
+  const totalReach = scopedPosts.reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalEngActions = scopedPosts.reduce((s, p) =>
     s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
   const avgEng = totalReach
     ? Math.round((totalEngActions / totalReach) * 10000) / 100
     : 0;
+  // Ads — when scoped to a platform, filter top ads by that platform.
   const ads = D.ads || null;
+  const scopedAds = !ads ? null : isAll ? ads : {
+    ...ads,
+    top: (ads.top || []).filter(a => a.platform === activePlatform),
+    count: (ads.top || []).filter(a => a.platform === activePlatform).length,
+  };
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
@@ -2486,7 +2501,7 @@ const BriefScreen = ({ activePlatform }) => {
           <Card className="!p-4">
             <Eyebrow>Total reach 30d</Eyebrow>
             <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{formatNum(totalReach)}</div>
-            <div className="text-[11px] text-mute dark:text-muteDark mt-1">Across all platforms</div>
+            <div className="text-[11px] text-mute dark:text-muteDark mt-1">{isAll ? 'Across all platforms' : (platformLabel[activePlatform] || activePlatform)}</div>
           </Card>
           <Card className="!p-4">
             <Eyebrow>Avg eng. rate</Eyebrow>
@@ -2502,23 +2517,23 @@ const BriefScreen = ({ activePlatform }) => {
       </div>
 
       {/* Ads performance — only renders if Zernio returned ads */}
-      {ads && ads.count > 0 && (
+      {scopedAds && scopedAds.count > 0 && (
         <Card className="mb-5 sm:mb-6">
           <div className="flex items-center justify-between mb-4">
             <div>
               <Eyebrow color="text-amber">Ad performance · Last 30d</Eyebrow>
-              <h3 className="font-display text-[18px] font-semibold tracking-tight mt-1">{ads.count} active ad{ads.count === 1 ? '' : 's'}</h3>
+              <h3 className="font-display text-[18px] font-semibold tracking-tight mt-1">{scopedAds.count} active ad{scopedAds.count === 1 ? '' : 's'}</h3>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Pill color="ink">{ads.currency} {formatNum(ads.total_spend)} spend</Pill>
-              <Pill color="ultraSoft">{formatNum(ads.total_impressions)} impressions</Pill>
-              <Pill color="lime">{ads.avg_ctr}% avg CTR</Pill>
+              <Pill color="ink">{scopedAds.currency} {formatNum(scopedAds.total_spend)} spend</Pill>
+              <Pill color="ultraSoft">{formatNum(scopedAds.total_impressions)} impressions</Pill>
+              <Pill color="lime">{scopedAds.avg_ctr}% avg CTR</Pill>
             </div>
           </div>
           <div className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
             <span>Ad</span><span className="text-right">Spend</span><span className="text-right">Impressions</span><span className="text-right">CTR</span><span className="text-right">Status</span>
           </div>
-          {ads.top.map(a => (
+          {scopedAds.top.map(a => (
             <div key={a.id} className="grid grid-cols-[1fr_70px_80px_60px_60px] sm:grid-cols-[1fr_90px_100px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
               <div className="flex items-center gap-2.5 min-w-0">
                 <Plat p={a.platform} className="w-4 h-4 flex-shrink-0" />
@@ -2544,10 +2559,10 @@ const BriefScreen = ({ activePlatform }) => {
 
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
         <div className="lg:col-span-8">
-          <SectionHead eyebrow="Emerging signals" title="What's moving today" />
+          <SectionHead eyebrow="Emerging signals" title={isAll ? "What's moving today" : `What's moving on ${platformLabel[activePlatform] || activePlatform}`} />
           <div className="space-y-2.5">
-            {(D.signals || []).slice(0, 6).map(s => <SignalRow key={s.id} signal={s} />)}
-            {(D.signals || []).length === 0 && (
+            {scopedSignals.slice(0, 6).map(s => <SignalRow key={s.id} signal={s} />)}
+            {scopedSignals.length === 0 && (
               <div className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-6 text-center">
                 <p className="text-[13px] text-mute dark:text-muteDark">No signals yet — they'll appear after your first AI brief generates.</p>
               </div>
@@ -2626,7 +2641,51 @@ Object.assign(window, { BriefScreen, SignalRow });
 <script type="text/babel">
 // Screen 2 — Overview / Stats
 const OverviewScreen = ({ activePlatform }) => {
-  const filtered = activePlatform === 'all' ? D.posts : D.posts.filter(p => p.platform === activePlatform);
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const filtered = isAll ? (D.posts || []) : (D.posts || []).filter(p => p.platform === activePlatform);
+
+  // Pick the right accounts entry for the stat cards. When 'all' is selected
+  // we sum across what's connected; otherwise we use the per-platform record.
+  const ACCT_FIELDS = {
+    ig: { reach: 'totalViews4W', eng: 'engRate4W', label: 'Instagram' },
+    tt: { reach: 'totalPlays',   eng: 'engRate4W', label: 'TikTok' },
+    yt: { reach: 'totalViews',   eng: 'engRate4W', label: 'YouTube' },
+    fb: { reach: 'totalViews4W', eng: 'engRate4W', label: 'Facebook' },
+    li: { reach: 'totalViews4W', eng: 'engRate4W', label: 'LinkedIn' },
+  };
+  const totalReach = filtered.reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalEngActs = filtered.reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const avgEngRate = totalReach ? Math.round((totalEngActs / totalReach) * 10000) / 100 : 0;
+
+  // Engagement mix — likes / comments / saves / shares as a % of the total
+  // engagement actions for the active scope.
+  const totalActs = totalEngActs || 1;
+  const engMix = [
+    { l: 'Likes',    pct: Math.round((filtered.reduce((s, p) => s + Number(p.likes || 0),    0) / totalActs) * 100), c: '#FF2D6A' },
+    { l: 'Comments', pct: Math.round((filtered.reduce((s, p) => s + Number(p.comments || 0), 0) / totalActs) * 100), c: '#6B5BFF' },
+    { l: 'Saves',    pct: Math.round((filtered.reduce((s, p) => s + Number(p.saves || 0),    0) / totalActs) * 100), c: '#D6FF3E' },
+    { l: 'Shares',   pct: Math.round((filtered.reduce((s, p) => s + Number(p.shares || 0),   0) / totalActs) * 100), c: '#FFB23E' },
+  ];
+
+  // Platform mix card (left column) — shares of total reach across the
+  // user's connected platforms. Only relevant on the 'all' tab.
+  const platformReachMix = (() => {
+    if (!isAll) return null;
+    const byP = {};
+    for (const p of (D.posts || [])) {
+      byP[p.platform] = (byP[p.platform] || 0) + Number(p.views || 0);
+    }
+    const sum = Object.values(byP).reduce((a, b) => a + b, 0) || 1;
+    const COLORS = { ig: '#D62976', tt: '#FF2D6A', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2', x: '#0A0A0B' };
+    const LABELS = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X' };
+    return Object.entries(byP)
+      .map(([p, v]) => ({ p, label: LABELS[p] || p, color: COLORS[p] || '#9A958A', pct: Math.round((v / sum) * 100) }))
+      .sort((a, b) => b.pct - a.pct);
+  })();
+
+  const scopeLabel = isAll ? 'all platforms' : (ACCT_FIELDS[activePlatform]?.label || activePlatform);
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader eyebrow="Omni-channel" title="Overview" sub="Real-time intelligence aggregated across your ecosystem." right={<Btn variant="outline" size="sm"><Icon name="download" className="w-3.5 h-3.5" /> Export</Btn>} />
@@ -2640,68 +2699,53 @@ const OverviewScreen = ({ activePlatform }) => {
             <div className="text-[12px] text-paper/60 mt-2 mb-4">98th percentile · Creator plan</div>
             <div className="flex items-center justify-between text-[11px] font-mono pt-3 border-t border-paper/10"><span className="text-paper/50">Weekly trend</span><span className="text-lime">↗ +{D.weeklyTrend}%</span></div>
           </Card>
-          <Card>
-            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Platform mix</h3>
-            <div className="space-y-3">
-              {[
-                { p: 'tt', label: 'TikTok', pct: 42, color: '#FF2D6A' },
-                { p: 'ig', label: 'Instagram', pct: 28, color: '#D62976' },
-                { p: 'yt', label: 'YouTube', pct: 18, color: '#FF0000' },
-                { p: 'li', label: 'LinkedIn', pct: 12, color: '#0A66C2' }
-              ].map(r => (
-                <div key={r.p}>
-                  <div className="flex justify-between items-center text-[12px] mb-1.5"><span className="flex items-center gap-1.5"><Plat p={r.p} className="w-3 h-3" /> {r.label}</span><span className="font-mono">{r.pct}%</span></div>
-                  <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.color }} /></div>
+          {isAll && platformReachMix && platformReachMix.length > 0 && (
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Platform mix</h3>
+              <p className="text-[11px] text-mute dark:text-muteDark mb-3">Share of total reach last 30d</p>
+              <div className="space-y-3">
+                {platformReachMix.map(r => (
+                  <div key={r.p}>
+                    <div className="flex justify-between items-center text-[12px] mb-1.5"><span className="flex items-center gap-1.5"><Plat p={r.p} className="w-3 h-3" /> {r.label}</span><span className="font-mono">{r.pct}%</span></div>
+                    <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.color }} /></div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+          {totalActs > 1 && (
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement mix · {scopeLabel}</h3>
+              {engMix.map(r => (
+                <div key={r.l} className="mb-2.5">
+                  <div className="flex justify-between text-[12px] mb-1"><span>{r.l}</span><span className="font-mono">{r.pct}%</span></div>
+                  <div className="h-1 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.c }} /></div>
                 </div>
               ))}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement mix (IG)</h3>
-            {[
-              { l: 'Likes', pct: 85, c: '#FF2D6A' }, { l: 'Comments', pct: 8, c: '#6B5BFF' },
-              { l: 'Saves', pct: 5, c: '#D6FF3E' }, { l: 'Shares', pct: 2, c: '#FFB23E' }
-            ].map(r => (
-              <div key={r.l} className="mb-2.5">
-                <div className="flex justify-between text-[12px] mb-1"><span>{r.l}</span><span className="font-mono">{r.pct}%</span></div>
-                <div className="h-1 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.c }} /></div>
-              </div>
-            ))}
-          </Card>
+            </Card>
+          )}
         </div>
 
         <div className="lg:col-span-8 space-y-4 sm:space-y-5">
           <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <StatCard label="Total reach 4W" value={formatNum(D.accounts.ig.totalViews4W)} delta={12.4} sparkData={[2,3,2,4,3,5,4]} icon="eye" />
-            <StatCard label="Avg eng. rate" value={`${D.accounts.ig.engRate4W}%`} delta={1.4} sparkData={[3,3,4,3,4,4,5]} color="#FF2D6A" icon="heart" />
+            <StatCard label={isAll ? 'Total reach 30d' : `${scopeLabel} · reach 30d`} value={formatNum(totalReach)} sparkData={null} icon="eye" />
+            <StatCard label="Avg eng. rate" value={`${avgEngRate}%`} sparkData={null} color="#FF2D6A" icon="heart" />
           </div>
 
           <Card>
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="font-display text-[18px] font-semibold tracking-tight">Performance · 30 days</h3>
-                <p className="text-[12px] text-mute dark:text-muteDark">14 active campaigns aggregated</p>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Top performing content</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">{scopeLabel} · {filtered.length} post{filtered.length === 1 ? '' : 's'} in window</p>
               </div>
               <Pill color="ultraSoft">30D</Pill>
-            </div>
-            <PerfChart />
-            <div className="grid grid-cols-4 gap-3 pt-4 mt-4 border-t border-line dark:border-lineDark">
-              {[
-                { l: 'Total views', v: '12.4M' }, { l: 'Avg duration', v: '0:42s' },
-                { l: 'Shares', v: '142K' }, { l: 'Save rate', v: '4.2%' }
-              ].map((s,i) => <div key={i}><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">{s.l}</div><div className="font-display text-[20px] font-semibold tracking-tighter">{s.v}</div></div>)}
-            </div>
-          </Card>
-
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-[18px] font-semibold tracking-tight">Top performing content</h3>
-              <button className="text-[12px] text-ultra dark:text-lime hover:underline">Full audit →</button>
             </div>
             <div className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
               <span>Asset</span><span className="text-right">Views</span><span className="text-right">Likes</span><span className="text-right">ER%</span><span className="text-right">Signal</span>
             </div>
-            {filtered.slice(0,7).map(p => (
+            {filtered.length === 0 ? (
+              <div className="py-8 text-center text-[12.5px] text-mute dark:text-muteDark">No posts yet on this platform.</div>
+            ) : filtered.slice(0,7).map(p => (
               <div key={p.id} className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <div className="w-8 h-8 rounded-md bg-gradient-to-br from-ink/80 to-coal flex items-center justify-center text-[14px] flex-shrink-0">{p.emoji}</div>
@@ -2723,6 +2767,8 @@ const OverviewScreen = ({ activePlatform }) => {
   );
 };
 
+// Legacy fake-data chart — kept only so the export doesn't break if
+// referenced somewhere else. Not rendered by Overview anymore.
 const PerfChart = () => {
   const data = [40,50,38,62,75,90,82,108,140];
   const max = Math.max(...data);
@@ -2915,7 +2961,8 @@ const VELOCITY_TONE = {
   unknown:   { label: 'Building',  tone: 'text-mute dark:text-muteDark' },
 };
 
-const GrowthScreen = () => {
+const GrowthScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
   const [data,    setData]    = React.useState(null);
   const [days,    setDays]    = React.useState(30);
   const [loading, setLoading] = React.useState(true);
@@ -2931,14 +2978,15 @@ const GrowthScreen = () => {
     return () => { cancelled = true; };
   }, [days]);
 
-  // Series for the trajectory chart. Own platforms always shown; competitor
-  // lines toggleable to keep the view readable when many handles are tracked.
+  // Series for the trajectory chart. When a single platform is selected we
+  // narrow both the own line and the competitor overlay to that platform.
   const series = React.useMemo(() => {
     if (!data) return [];
     const out = [];
     const own = data.series?.own || {};
     for (const [k, points] of Object.entries(own)) {
       if (!points.length) continue;
+      if (!isAll && k !== activePlatform) continue;
       out.push({
         key: `own-${k}`,
         label: `${PLATFORM_LABEL[k] || k} (you)`,
@@ -2949,6 +2997,7 @@ const GrowthScreen = () => {
     if (showCompetitors) {
       for (const c of (data.series?.competitors || [])) {
         if (!c.points?.length) continue;
+        if (!isAll && c.platform !== activePlatform) continue;
         out.push({
           key: `comp-${c.platform}-${c.handle}`,
           label: `@${c.handle.replace(/^@/, '')}`,
@@ -2959,10 +3008,10 @@ const GrowthScreen = () => {
       }
     }
     return out;
-  }, [data, showCompetitors]);
+  }, [data, showCompetitors, activePlatform, isAll]);
 
-  const velocity = data?.velocity || [];
-  const competitors = data?.series?.competitors || [];
+  const velocity = (data?.velocity || []).filter(v => isAll || v.platform === activePlatform);
+  const competitors = (data?.series?.competitors || []).filter(c => isAll || c.platform === activePlatform);
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
@@ -3212,13 +3261,27 @@ const BenchmarkRow = ({ label, value, suffix = '', percentile, avg }) => {
   );
 };
 
-const ContentScreen = () => {
+const ContentScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
   // Local list — start with whatever brief seeded into D, then enrich from
   // /api/posts on mount so the picker isn't capped at 12.
   const [posts, setPosts]     = React.useState(D.posts || []);
   const [activeId, setActive] = React.useState((D.posts || [])[0]?.id || null);
   const [detail, setDetail]   = React.useState(null);
   const [loading, setLoading] = React.useState(false);
+
+  // Scope the picker to the active AccountBar tab.
+  const scopedPosts = React.useMemo(
+    () => isAll ? posts : posts.filter(p => p.platform === activePlatform),
+    [posts, activePlatform, isAll]
+  );
+
+  // If the active post falls outside the new scope, jump to the first
+  // post in the scoped list (or clear).
+  React.useEffect(() => {
+    if (!scopedPosts.length) { setActive(null); return; }
+    if (!scopedPosts.find(p => p.id === activeId)) setActive(scopedPosts[0].id);
+  }, [scopedPosts]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -3243,13 +3306,15 @@ const ContentScreen = () => {
     return () => { cancelled = true; };
   }, [activeId]);
 
-  if (!posts.length) {
+  if (!scopedPosts.length) {
     return (
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
         <ScreenHeader eyebrow="Anatomy" title="Content deep-dive" sub="Break down what worked — and how to replicate it." />
         <Card>
           <div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">
-            No posts yet. Once Pulse syncs your accounts, your published posts appear here for analysis.
+            {posts.length === 0
+              ? 'No posts yet. Once Pulse syncs your accounts, your published posts appear here for analysis.'
+              : `No posts yet on ${PLATFORM_LABEL_FULL[activePlatform] || activePlatform}. Switch tabs or pick "All accounts" to see other platforms.`}
           </div>
         </Card>
       </div>
@@ -3286,9 +3351,9 @@ const ContentScreen = () => {
         }
       />
 
-      {/* Post picker — scrollable pills */}
+      {/* Post picker — scrollable pills, scoped to active platform */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-5 pb-1">
-        {posts.slice(0, 24).map(post => (
+        {scopedPosts.slice(0, 24).map(post => (
           <button
             key={post.id}
             onClick={() => setActive(post.id)}
@@ -3475,67 +3540,109 @@ Object.assign(window, { ContentScreen });
 </script>
 <script type="text/babel">
 // Screen 5 — Intelligence
-const IntelScreen = () => {
+const IntelScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  // Scoped signal stream — when a platform tab is active, narrow to that
+  // platform plus any cross-platform ("all") signals.
+  const scoped = (D.signals || []).filter(s =>
+    isAll || s.platform === activePlatform || s.platform === 'all'
+  );
+  const hero = scoped[0];
+  const rest = scoped.slice(1);
+  const todayActions = (D.todayActions || []);
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
-      <ScreenHeader eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>} title="Strategic signals" sub="High-fidelity analysis derived from platform-wide pattern recognition." right={<div className="flex gap-2"><Btn variant="outline" size="sm"><Icon name="filter" className="w-3.5 h-3.5" /> Filter</Btn><Btn variant="ink" size="sm"><Icon name="download" className="w-3.5 h-3.5" /> Export</Btn></div>} />
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>}
+        title="Strategic signals"
+        sub={isAll
+          ? "AI-derived analysis across your entire catalogue, refreshed with every sync."
+          : `Signals scoped to ${platformLabel[activePlatform] || activePlatform}.`}
+      />
 
-      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
-        <div className="lg:col-span-8 rounded-2xl bg-gradient-to-br from-ultra via-ultra to-magenta text-white p-6 sm:p-8 relative overflow-hidden fade-up">
-          <div className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
-          <div className="absolute right-6 top-6 opacity-20"><Icon name="sparkle" className="w-20 h-20" /></div>
-          <Pill color="ink"><span className="text-white">Priority signal · 14m ago</span></Pill>
-          <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-xl">Viral formula detected: cross-platform narrative shift.</h2>
-          <div className="grid sm:grid-cols-2 gap-5 mt-6">
-            <div>
-              <div className="flex items-center gap-1.5 mb-2"><Icon name="bolt" className="w-3.5 h-3.5" /><span className="text-[10px] font-mono uppercase tracking-[0.12em]">The why</span></div>
-              <p className="text-[13px] text-white/80 leading-relaxed">Engagement data across IG + TikTok shows a 42% spike in "contrarian leadership" framing. Audience is fatigued by standard AI optimism and pivoting toward "Human-First" scaling narratives.</p>
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5 mb-2"><Icon name="target" className="w-3.5 h-3.5" /><span className="text-[10px] font-mono uppercase tracking-[0.12em]">The action</span></div>
-              <p className="text-[13px] text-white/80 leading-relaxed">Reposition upcoming visuals around artisanal craft over automation. Pivot headline hooks to "The Hidden Cost of Efficiency."</p>
-            </div>
+      {scoped.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">
+            {isAll
+              ? 'No signals yet — they appear after your first AI brief generates.'
+              : `No ${platformLabel[activePlatform] || activePlatform} signals in the current brief. Switch tabs or check back after the next sync.`}
           </div>
-          <Btn variant="lime" size="md" className="mt-6">Deploy intelligence <Icon name="arrowRight" className="w-3.5 h-3.5" /></Btn>
-        </div>
-        <div className="lg:col-span-4 space-y-4">
-          <Card>
-            <Pill color="magentaSoft">Emerging gap</Pill>
-            <h3 className="font-display text-[19px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">Platform gap: vertical video saturation</h3>
-            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed mb-3">Video retention dropping. Users returning to long-form editorial for deep-dives.</p>
-            <Pill color="ultraSoft">Opportunity: 8.4× engagement ROI</Pill>
-          </Card>
-          <Card>
-            <Pill color="ultraSoft"><Icon name="trending" className="w-3 h-3" /> Viral velocity</Pill>
-            <h3 className="font-display text-[19px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">"Slow tech" movement</h3>
-            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed mb-3">Macro-trend in tech hubs. "Intentionality" + "focus" keywords up 180%.</p>
-            <div className="flex items-center justify-between text-[11px] font-mono"><span className="text-mute">Confidence</span><span className="text-ultra">94%</span></div>
-          </Card>
-        </div>
-      </div>
-
-      <Card className="mb-5 bg-chalk dark:bg-coalsoft">
-        <div className="flex items-center gap-2 mb-4"><Icon name="bolt" className="w-4 h-4 text-magenta" /><h3 className="font-display text-[16px] font-semibold tracking-tight">Action plan · this week</h3></div>
-        <div className="grid sm:grid-cols-3 gap-3">
-          {[
-            { i: 'message', t: 'Reply to comments', d: 'Engage with 25+ top comments on viral reel using AI-suggested prompts.', p: 'High' },
-            { i: 'play', t: 'Make 2 TikToks', d: 'Deploy "Abstract Narrative" formula using trending audio from Signal 04.', p: 'Critical' },
-            { i: 'mail', t: 'DM for collab', d: 'Reach 3 high-affinity creators for the "Silent Stream" initiative.', p: 'Strategic' }
-          ].map((a,i) => (
-            <div key={i} className="rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink p-4">
-              <div className="w-9 h-9 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center mb-3"><Icon name={a.i} className="w-4 h-4" /></div>
-              <div className="text-[13.5px] font-semibold mb-1">{a.t}</div>
-              <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed mb-2">{a.d}</p>
-              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra dark:text-lime">Priority: {a.p}</span>
+        </Card>
+      ) : (
+        <>
+          {/* Hero — the top signal in the current scope */}
+          {hero && (
+            <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
+              <div className="lg:col-span-8 rounded-2xl bg-gradient-to-br from-ultra via-ultra to-magenta text-white p-6 sm:p-8 relative overflow-hidden fade-up">
+                <div className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute right-6 top-6 opacity-20"><Icon name="sparkle" className="w-20 h-20" /></div>
+                <Pill color="ink"><span className="text-white">Priority signal · {hero.impact || 'Strategic'}</span></Pill>
+                <h2 className="font-display text-[26px] sm:text-[36px] leading-[1.05] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">{hero.title}</h2>
+                <p className="text-[13.5px] text-white/85 max-w-xl leading-relaxed">{hero.body}</p>
+                {hero.action && (
+                  <div className="mt-6 inline-flex items-center gap-1.5 text-[13px] text-lime font-medium">
+                    <Icon name="arrowRight" className="w-3.5 h-3.5" /> {hero.action}
+                  </div>
+                )}
+              </div>
+              <div className="lg:col-span-4 space-y-4">
+                {/* Workspace verdict as the right-rail context card */}
+                {D.verdict && (
+                  <Card>
+                    <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Workspace verdict</Pill>
+                    <h3 className="font-display text-[18px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">{D.verdict.title}</h3>
+                    <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{D.verdict.body}</p>
+                  </Card>
+                )}
+                {typeof D.intelScore === 'number' && D.intelScore > 0 && (
+                  <Card className="bg-ink text-paper border-transparent">
+                    <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+                    <div className="font-display text-[40px] font-semibold leading-none tracking-tightest mt-2">{D.intelScore}<span className="text-[18px] text-paper/40">/100</span></div>
+                    <div className="text-[11.5px] text-paper/60 mt-2">Updated with each brief</div>
+                  </Card>
+                )}
+              </div>
             </div>
-          ))}
-        </div>
-      </Card>
+          )}
 
-      <SectionHead eyebrow="Stream" title="Intelligence stream" right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> {D.signals.length} signals today</span>} />
-      <div className="space-y-2.5">
-        {D.signals.slice(1).map(s => <SignalRow key={s.id} signal={s} />)}
-      </div>
+          {/* Today's actions — real AI output (also surfaced on Brief) */}
+          {todayActions.length > 0 && (
+            <Card className="mb-5 bg-chalk dark:bg-coalsoft">
+              <div className="flex items-center gap-2 mb-4">
+                <Icon name="bolt" className="w-4 h-4 text-magenta" />
+                <h3 className="font-display text-[16px] font-semibold tracking-tight">Action plan · this cycle</h3>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {todayActions.map(a => (
+                  <div key={a.id} className="rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink p-4">
+                    <div className="w-9 h-9 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center mb-3"><Icon name={a.icon || 'sparkle'} className="w-4 h-4" /></div>
+                    <div className="text-[13.5px] font-semibold mb-1">{a.title}</div>
+                    <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed mb-2">{a.body}</p>
+                    {a.cta && (
+                      <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra dark:text-lime">{a.cta}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Stream — every other signal in the current scope */}
+          {rest.length > 0 && (
+            <>
+              <SectionHead
+                eyebrow="Stream"
+                title="Intelligence stream"
+                right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> {scoped.length} signal{scoped.length === 1 ? '' : 's'}{isAll ? '' : ` · ${platformLabel[activePlatform] || activePlatform}`}</span>}
+              />
+              <div className="space-y-2.5">
+                {rest.map(s => <SignalRow key={s.id} signal={s} />)}
+              </div>
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 };
@@ -4704,9 +4811,9 @@ function App() {
   const screens = {
     Brief:    <BriefScreen activePlatform={activePlatform} />,
     Stats:    <OverviewScreen activePlatform={activePlatform} />,
-    Growth:   <GrowthScreen />,
-    Content:  <ContentScreen />,
-    Intel:    <IntelScreen />,
+    Growth:   <GrowthScreen activePlatform={activePlatform} />,
+    Content:  <ContentScreen activePlatform={activePlatform} />,
+    Intel:    <IntelScreen activePlatform={activePlatform} />,
     Targets:  <TargetsScreen />,
     Settings: <SettingsScreen />
   };
