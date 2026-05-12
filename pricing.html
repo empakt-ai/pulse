@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pricing — PULSE | Creator, Brand, Agency plans</title>
+<meta name="description" content="PULSE pricing: Creator at $29/mo, Brand at $149/mo, Agency at $599/mo. 14-day free trial on every plan. USD and SAR pricing. Cancel anytime.">
+<meta property="og:title" content="PULSE Pricing — Three plans, 14-day free trial">
+<meta property="og:description" content="Creator $29 · Brand $149 · Agency $599. Per workspace, per month. No credit card to start.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://karvan-pulse.vercel.app/pricing">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<style>
+  table.compare {
+    width: 100%; border-collapse: collapse;
+    background: white; border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden; margin: 32px 0;
+  }
+  table.compare th, table.compare td {
+    padding: 14px 18px; text-align: left;
+    border-bottom: 1px solid var(--line);
+    font-size: 14px;
+  }
+  table.compare thead th {
+    background: rgba(10,10,11,0.03);
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--mute);
+  }
+  table.compare tbody tr:last-child td { border-bottom: 0; }
+  table.compare td:not(:first-child) { text-align: center; }
+  table.compare .label { font-weight: 500; }
+  table.compare .check { color: var(--limeDeep); font-weight: 700; }
+  table.compare .dash  { color: var(--mute); }
+  details.faq {
+    border-top: 1px solid var(--line); padding: 18px 0; cursor: pointer;
+  }
+  details.faq:last-of-type { border-bottom: 1px solid var(--line); }
+  details.faq summary {
+    list-style: none; font-family: 'Bricolage Grotesque', sans-serif;
+    font-size: 17px; font-weight: 600; letter-spacing: -0.01em;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  details.faq summary::after { content: '+'; color: var(--mute); font-size: 22px; line-height: 1; }
+  details.faq[open] summary::after { content: '−'; }
+  details.faq p { margin-top: 10px; color: var(--mute); font-size: 14.5px; line-height: 1.6; max-width: 740px; }
+</style>
+<script>
+  // Toggle USD ↔ SAR pricing inline. Single source-of-truth array; the
+  // buttons just flip a dataset attr that swaps the rendered values.
+  document.addEventListener('DOMContentLoaded', () => {
+    const buttons = document.querySelectorAll('.currency-toggle button');
+    const apply = (cur) => {
+      document.querySelectorAll('[data-usd]').forEach(el => {
+        el.textContent = cur === 'sar' ? el.dataset.sar : el.dataset.usd;
+      });
+      buttons.forEach(b => b.classList.toggle('on', b.dataset.cur === cur));
+    };
+    buttons.forEach(b => b.addEventListener('click', () => apply(b.dataset.cur)));
+  });
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo">PULSE<span class="dot">.</span></a>
+    <nav class="nav-links">
+      <a href="/features">Features</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+      <a href="/" class="nav-cta">Start free trial</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap-sm" style="text-align: center;">
+    <span class="hero-tag">Pricing</span>
+    <h1 class="h1">Plans that fit the work.</h1>
+    <p class="lead" style="margin: 0 auto;">14-day free trial on every plan. No credit card to start. Cancel anytime from Settings.</p>
+    <div style="margin-top: 28px;">
+      <div class="currency-toggle">
+        <button class="on" data-cur="usd">USD</button>
+        <button data-cur="sar">SAR</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <div class="price-grid">
+      <div class="price-card">
+        <div class="price-tier">Creator</div>
+        <p class="muted" style="font-size: 13px; margin-top: 4px;">For solo creators tracking one brand presence.</p>
+        <div class="price-num"><span data-usd="$29" data-sar="SAR 115">$29</span><span class="unit"> / month</span></div>
+        <p class="muted" style="font-size: 12px;">Per workspace · billed monthly</p>
+        <ul class="price-features">
+          <li>7 platforms — IG · TT · YT · LI · FB · X · Snap</li>
+          <li>1 account per platform</li>
+          <li>5 tracked competitors</li>
+          <li>30 AI brief regenerations per month</li>
+          <li>Daily morning brief at 6 AM local</li>
+          <li>Weekly digest email (optional)</li>
+        </ul>
+        <a href="/" class="btn btn-outline">Start free trial</a>
+      </div>
+
+      <div class="price-card featured">
+        <div class="price-tier" style="color: var(--paper);">Brand</div>
+        <p style="font-size: 13px; margin-top: 4px; color: rgba(245,241,232,0.65);">For in-house teams managing multiple accounts.</p>
+        <div class="price-num"><span data-usd="$149" data-sar="SAR 560">$149</span><span class="unit"> / month</span></div>
+        <p style="font-size: 12px; color: rgba(245,241,232,0.55);">Per workspace · billed monthly</p>
+        <ul class="price-features">
+          <li>7 platforms — multi-account allowed</li>
+          <li>Up to 21 connected accounts total</li>
+          <li>15 tracked competitors</li>
+          <li>120 AI brief regenerations per month</li>
+          <li>Real-time signal stream (8 / 13 / 18 local)</li>
+          <li>Daily brief · weekly digest · on-demand PDF</li>
+        </ul>
+        <a href="/" class="btn btn-lime">Start free trial</a>
+      </div>
+
+      <div class="price-card">
+        <div class="price-tier">Agency</div>
+        <p class="muted" style="font-size: 13px; margin-top: 4px;">For agencies running multi-brand intelligence.</p>
+        <div class="price-num"><span data-usd="$599" data-sar="SAR 2,250">$599</span><span class="unit"> / month</span></div>
+        <p class="muted" style="font-size: 12px;">Per workspace · billed monthly</p>
+        <ul class="price-features">
+          <li>Unlimited connected accounts</li>
+          <li>50 tracked competitors per workspace</li>
+          <li>600 AI brief regenerations per month</li>
+          <li>Model switcher — Claude or Gemini, per workspace</li>
+          <li>Side-by-side model comparison</li>
+          <li>Agency tier bypasses cooldowns + caps</li>
+        </ul>
+        <a href="/" class="btn btn-outline">Start free trial</a>
+      </div>
+    </div>
+
+    <h2 class="h2">Side-by-side comparison.</h2>
+    <table class="compare">
+      <thead>
+        <tr><th>Feature</th><th>Creator</th><th>Brand</th><th>Agency</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="label">Connected accounts</td><td>7 (1 each)</td><td>Up to 21</td><td>Unlimited</td></tr>
+        <tr><td class="label">Tracked competitors</td><td>5</td><td>15</td><td>50</td></tr>
+        <tr><td class="label">Monthly AI regenerations</td><td>30</td><td>120</td><td>600</td></tr>
+        <tr><td class="label">Daily morning brief</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Real-time signal stream</td><td class="dash">—</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Weekly email digest</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">On-demand PDF export</td><td>5/month</td><td>50/month</td><td>Unlimited</td></tr>
+        <tr><td class="label">Model switcher (Claude / Gemini)</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+        <tr><td class="label">Side-by-side model comparison</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+        <tr><td class="label">Brand-axis tab filtering</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Strategic rewrite (AI)</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Cross-platform content intel</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Workspace seats</td><td>1</td><td>1</td><td>Multi-seat coming Q3</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="h2">Frequently asked.</h2>
+
+    <details class="faq" open>
+      <summary>How does the 14-day free trial work?</summary>
+      <p>Sign up, connect at least one social account, and PULSE delivers the full feature set for 14 days — no credit card required. We email you on day 11 to remind you the trial is winding down. After day 14 your data stays put; you just need to start a plan to keep generating new briefs.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Are prices per workspace or per user?</summary>
+      <p>Per workspace. A "workspace" is one brand or one creator identity with its own connected accounts and competitor list. If you manage three brands, you'd have three workspaces — each with its own plan. Agency-tier seat sharing (one bill, many workspaces) is on the Q3 roadmap.</p>
+    </details>
+
+    <details class="faq">
+      <summary>What payment methods do you accept?</summary>
+      <p>Credit and debit cards (Visa, Mastercard, Amex) through Stripe. For accounts in Saudi Arabia and the GCC we accept mada cards. Agency-plan annual billing via invoice is available — write to <a href="/contact">contact</a>.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can I cancel anytime?</summary>
+      <p>Yes. Cancel from Settings → Billing. You keep access through the end of your billing period; no phone calls, no retention specialist, no friction. Your data exports to JSON on request before deletion.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Do you offer a discount for annual billing?</summary>
+      <p>Yes — pay annually and you get two months free across every plan. The annual toggle ships with the billing module shortly after launch; until then we'll apply the discount manually on Agency-plan invoices.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Is my data safe?</summary>
+      <p>PULSE never sees your social platform passwords — every connection is via the platform's official OAuth flow. Your data is stored in Supabase (PostgreSQL with Row Level Security) hosted on AWS, with daily backups. We are GDPR-compliant for EU customers and PIPEDA-compliant for Canadian customers. Full details on the <a href="/privacy">privacy page</a>.</p>
+    </details>
+
+    <details class="faq">
+      <summary>Can I upgrade or downgrade mid-cycle?</summary>
+      <p>Yes. Upgrades are prorated immediately. Downgrades take effect at the end of the current billing period so you don't lose access to features you've already paid for.</p>
+    </details>
+
+    <div class="card-dark" style="margin: 48px 0;">
+      <span class="eyebrow" style="color: var(--lime);">Try it free</span>
+      <h2 class="h2" style="color: var(--paper); margin-top: 8px;">Tomorrow morning, you'll already know.</h2>
+      <p class="lead" style="color: rgba(245,241,232,0.7); max-width: 580px;">Connect your accounts tonight, get your first PULSE brief in the morning. 14 days on the house.</p>
+      <a href="/" class="btn btn-lime" style="margin-top: 20px;">Start free trial</a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <div class="logo">PULSE<span class="dot">.</span></div>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+    </div>
+    <div><h4>Product</h4><ul><li><a href="/features">Features</a></li><li><a href="/pricing">Pricing</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul></div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 KARVAN Business Intelligence Studio. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+</body>
+</html>

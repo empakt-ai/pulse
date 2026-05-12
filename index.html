@@ -1707,24 +1707,23 @@ const Footer = () => (
           <p className="text-[13.5px] text-mute dark:text-muteDark mt-4 max-w-xs">Daily social intelligence for serious creators, brands and agencies.</p>
         </div>
         {[
-          { h: 'Product', l: ['Features', 'Pricing', 'Integrations', 'Changelog', 'Roadmap'] },
-          { h: 'Company', l: ['About', 'Customers', 'Careers', 'Press', 'Contact'] },
-          { h: 'Resources', l: ['Documentation', 'API', 'Status', 'Privacy', 'Terms'] }
-        ].map((g,i) => (
+          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Pricing', u: '/pricing' }] },
+          { h: 'Company', l: [{ t: 'About',    u: '/about'    }, { t: 'Contact', u: '/contact' }] },
+          { h: 'Legal',   l: [{ t: 'Privacy',  u: '/privacy'  }, { t: 'Terms',   u: '/terms'   }] },
+        ].map((g, i) => (
           <div key={i}>
             <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-3">{g.h}</div>
             <ul className="space-y-2">
-              {g.l.map((l,j) => <li key={j}><a href="#" className="text-[13.5px] hover:text-ultra transition">{l}</a></li>)}
+              {g.l.map((l, j) => <li key={j}><a href={l.u} className="text-[13.5px] hover:text-ultra transition">{l.t}</a></li>)}
             </ul>
           </div>
         ))}
       </div>
       <div className="mt-12 pt-6 border-t border-line dark:border-lineDark flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-[12px] text-mute dark:text-muteDark">
-        <span>© 2026 Pulse Analytics, Inc. All rights reserved.</span>
+        <span>© 2026 KARVAN Business Intelligence Studio. All rights reserved.</span>
         <div className="flex items-center gap-5">
-          <a href="#" className="hover:text-ink dark:hover:text-paper">Privacy</a>
-          <a href="#" className="hover:text-ink dark:hover:text-paper">Terms</a>
-          <a href="#" className="hover:text-ink dark:hover:text-paper">Cookies</a>
+          <a href="/privacy" className="hover:text-ink dark:hover:text-paper">Privacy</a>
+          <a href="/terms" className="hover:text-ink dark:hover:text-paper">Terms</a>
         </div>
       </div>
     </div>

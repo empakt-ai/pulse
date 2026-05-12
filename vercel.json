@@ -6,9 +6,16 @@
   "functions": {
     "api/**/*.js": { "maxDuration": 60 }
   },
+  "cleanUrls": true,
   "rewrites": [
     { "source": "/api/connect/:platform", "destination": "/api/connect/platform?platform=:platform" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/features", "destination": "/features.html" },
+    { "source": "/pricing",  "destination": "/pricing.html"  },
+    { "source": "/about",    "destination": "/about.html"    },
+    { "source": "/contact",  "destination": "/contact.html"  },
+    { "source": "/privacy",  "destination": "/privacy.html"  },
+    { "source": "/terms",    "destination": "/terms.html"    },
+    { "source": "/((?!api/|features|pricing|about|contact|privacy|terms).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/cron/hourly", "schedule": "0 * * * *" }

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Contact — PULSE | Get in touch with KARVAN BI Studio</title>
+<meta name="description" content="Get in touch with the PULSE team. Email hello@karvan-pulse.vercel.app, or use the contact form for product questions, partnerships, and press.">
+<meta property="og:title" content="Contact PULSE">
+<meta property="og:description" content="Reach the team behind PULSE — product questions, partnerships, press.">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('contact-form');
+    const status = document.getElementById('contact-status');
+    const button = document.getElementById('contact-submit');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      status.textContent = '';
+      status.className = '';
+      button.disabled = true;
+      button.textContent = 'Sending…';
+
+      const data = {
+        name:    form.elements['name'].value,
+        email:   form.elements['email'].value,
+        message: form.elements['message'].value,
+        company: form.elements['company'].value, // honeypot — bots fill it; real users won't see it
+      };
+
+      try {
+        const res = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || json.error) {
+          status.textContent = json.message || json.error || `Couldn't send (HTTP ${res.status}).`;
+          status.className = 'form-status err';
+        } else {
+          status.textContent = 'Thanks — your message is in. We typically reply within a working day.';
+          status.className = 'form-status ok';
+          form.reset();
+        }
+      } catch (err) {
+        status.textContent = 'Network error. Please try again or email hello@karvan-pulse.vercel.app directly.';
+        status.className = 'form-status err';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Send message';
+      }
+    });
+  });
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo">PULSE<span class="dot">.</span></a>
+    <nav class="nav-links">
+      <a href="/features">Features</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+      <a href="/" class="nav-cta">Start free trial</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap-sm">
+    <span class="hero-tag">Contact</span>
+    <h1 class="h1">Talk to a human.</h1>
+    <p class="lead">No ticket queue, no chatbot. Write to <a href="mailto:hello@karvan-pulse.vercel.app" style="color: var(--ultra); text-decoration: underline; text-underline-offset: 3px;">hello@karvan-pulse.vercel.app</a> or use the form below. We read every message and answer most within a working day.</p>
+  </section>
+
+  <section class="wrap-sm" style="padding-bottom: 64px;">
+    <div class="card">
+      <form id="contact-form" autocomplete="on">
+        <div class="form-field">
+          <label for="contact-name">Your name</label>
+          <input id="contact-name" name="name" type="text" required maxlength="200" placeholder="Aisha Rahman">
+        </div>
+
+        <div class="form-field">
+          <label for="contact-email">Email</label>
+          <input id="contact-email" name="email" type="email" required maxlength="200" placeholder="you@brand.com">
+        </div>
+
+        <div class="form-field">
+          <label for="contact-message">Message</label>
+          <textarea id="contact-message" name="message" required maxlength="5000" rows="6" placeholder="What can we help with? Product questions, partnership ideas, press — anything works."></textarea>
+        </div>
+
+        <!-- Honeypot field — real users won't fill this; bots will. Hidden
+             via inline style + tabindex=-1 to keep it out of accessible UX. -->
+        <div aria-hidden="true" style="position: absolute; left: -9999px; height: 0; overflow: hidden;">
+          <label for="contact-company">Company (leave blank)</label>
+          <input id="contact-company" name="company" type="text" tabindex="-1" autocomplete="off">
+        </div>
+
+        <button id="contact-submit" type="submit" class="btn btn-ink" style="width: 100%;">Send message</button>
+
+        <div id="contact-status"></div>
+
+        <p class="muted" style="font-size: 12px; margin-top: 16px; text-align: center;">
+          We use your email to reply to you. We never add you to a marketing list.
+          See our <a href="/privacy" style="color: var(--ultra);">privacy policy</a>.
+        </p>
+      </form>
+    </div>
+
+    <div style="margin-top: 32px; text-align: center;">
+      <p class="muted" style="font-size: 13px;">
+        Press &amp; partnerships: <a href="mailto:hello@karvan-pulse.vercel.app" style="color: var(--ultra);">hello@karvan-pulse.vercel.app</a>
+      </p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <div class="logo">PULSE<span class="dot">.</span></div>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+    </div>
+    <div><h4>Product</h4><ul><li><a href="/features">Features</a></li><li><a href="/pricing">Pricing</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul></div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 KARVAN Business Intelligence Studio. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+</body>
+</html>

@@ -12,13 +12,14 @@ const FROM = process.env.PULSE_FROM_EMAIL || 'PULSE <reports@karvan-pulse.vercel
 //   { filename: string, content: Buffer | base64 string }
 // Resend accepts base64-encoded content under `content`. If we get a Buffer
 // we'll convert. Returns Resend's response JSON on success.
-export async function sendEmail({ to, subject, html, text, attachments = [] } = {}) {
+export async function sendEmail({ to, subject, html, text, attachments = [], replyTo } = {}) {
   if (!KEY) throw new Error('RESEND_API_KEY missing');
   if (!to || !subject) throw new Error('sendEmail requires to + subject');
 
   const body = { from: FROM, to: Array.isArray(to) ? to : [to], subject };
   if (html) body.html = html;
   if (text) body.text = text;
+  if (replyTo) body.reply_to = replyTo;
   if (attachments.length) {
     body.attachments = attachments.map(a => ({
       filename: a.filename,
