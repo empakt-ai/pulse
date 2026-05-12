@@ -142,12 +142,94 @@ tailwind.config = {
 </style>
 
 <!-- React + Babel -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<!-- Production React (~12KB) is roughly 10x smaller than the dev build —
+     parses + executes that much faster before Babel kicks in. Babel is
+     loaded async so it can fetch in parallel with React. -->
+<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script async crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
+
+<style>
+  /* Splash overlay — painted by the browser before React/Babel finish
+     loading, then dismissed once the SPA has real data. Sits OUTSIDE
+     #root so React's mount doesn't touch it; we control its lifecycle
+     by toggling `data-ready` on <html>. Background is the same paper /
+     ink color as the body so the seam between splash → app is invisible.
+
+     The blur is a backdrop-filter, which means once the app starts
+     rendering behind the splash, it dims and softens — the loader feels
+     intentional ("Loading your intelligence") rather than accidental
+     (blank screen with Babel compiling). */
+  #pulse-splash {
+    position: fixed; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(245, 241, 232, 0.85);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    z-index: 9999;
+    transition: opacity 320ms cubic-bezier(.22,1,.36,1);
+    will-change: opacity;
+  }
+  html.dark #pulse-splash {
+    background: rgba(10, 10, 11, 0.88);
+  }
+  html[data-ready="1"] #pulse-splash {
+    opacity: 0;
+    pointer-events: none;
+  }
+  #pulse-splash-inner {
+    display: flex; flex-direction: column; align-items: center; gap: 22px;
+    text-align: center;
+  }
+  #pulse-splash-logo {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 32px; font-weight: 700;
+    letter-spacing: -0.04em;
+    color: #0A0A0B;
+  }
+  html.dark #pulse-splash-logo { color: #F5F1E8; }
+  #pulse-splash-spinner {
+    width: 28px; height: 28px;
+    border: 2.5px solid rgba(10,10,11,0.12);
+    border-top-color: #6B5BFF;
+    border-radius: 9999px;
+    animation: pulse-splash-spin 0.8s linear infinite;
+  }
+  html.dark #pulse-splash-spinner {
+    border-color: rgba(245,241,232,0.12);
+    border-top-color: #6B5BFF;
+  }
+  #pulse-splash-status {
+    font-family: 'Geist Mono', ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(10,10,11,0.55);
+  }
+  html.dark #pulse-splash-status { color: rgba(245,241,232,0.55); }
+  @keyframes pulse-splash-spin { to { transform: rotate(360deg); } }
+</style>
 </head>
 <body class="grain">
 <div id="root"></div>
+<div id="pulse-splash" aria-live="polite" aria-busy="true">
+  <div id="pulse-splash-inner">
+    <div id="pulse-splash-logo">pulse.</div>
+    <div id="pulse-splash-spinner"></div>
+    <div id="pulse-splash-status">Loading your intelligence</div>
+  </div>
+</div>
+<script>
+  // Apply the saved theme to <html> immediately so the splash matches the
+  // user's dark/light preference on first paint (otherwise dark-mode users
+  // see a flash of paper-colored splash before the React effect runs).
+  (function () {
+    try {
+      var t = localStorage.getItem('pulse_theme');
+      if (t === 'dark') document.documentElement.classList.add('dark');
+    } catch (_) {}
+  })();
+</script>
 
 <!-- Order matters: utilities → icons → data → tweaks → screens → app -->
 <script type="text/babel">
@@ -4984,6 +5066,26 @@ function App() {
     return () => { cancelled = true; };
   }, [route, refreshBrief, briefData?.tier?.key, briefData?.workspace?.tier]);
 
+  // Dismiss the initial splash once we have something real to show.
+  // "Ready" means: the user is past the loading state AND either we have
+  // brief data, OR we're on a non-app route (landing/signin/onboarding
+  // need no brief), OR the user has no accounts connected (we'll render
+  // the empty-state CTA). Hard 4-second timeout guarantees the splash
+  // never lingers if a fetch hangs.
+  React.useEffect(() => {
+    if (route === 'loading') return;
+    const onAppRoute = route === 'app';
+    const briefReady = onAppRoute ? (briefData !== null || tab === 'Settings') : true;
+    if (!briefReady) {
+      // Fall-through timeout so a slow /api/brief doesn't strand the splash.
+      const t = setTimeout(() => {
+        document.documentElement.setAttribute('data-ready', '1');
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+    document.documentElement.setAttribute('data-ready', '1');
+  }, [route, briefData, tab]);
+
   // Scroll-to-top on every tab + route change. Window scroll is the common
   // case; on layouts where overflow lives on documentElement/body or a main
   // wrapper, we reset those too. behavior:'instant' is correct here —
@@ -5000,6 +5102,9 @@ function App() {
 
   React.useEffect(() => {
     document.documentElement.classList.toggle('dark', t.theme === 'dark');
+    // Persist for the pre-React script in <head> to read on next reload —
+    // keeps the splash matching the user's theme on first paint.
+    try { localStorage.setItem('pulse_theme', t.theme); } catch {}
   }, [t.theme]);
 
   React.useEffect(() => {
