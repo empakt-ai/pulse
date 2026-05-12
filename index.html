@@ -2688,6 +2688,29 @@ const BriefScreen = ({ activePlatform }) => {
     ? connected.map(p => PLATFORM_STAT[p]).filter(Boolean).slice(0, 4)
     : (PLATFORM_STAT[activePlatform] ? [PLATFORM_STAT[activePlatform]] : []);
 
+  // Pick a "critical signal" to promote into a red-tinted hero alert above
+  // the verdict — only when something genuinely warning-level exists in the
+  // current scope. We treat impact='Strategic Warning' or kind='warning' as
+  // critical. Falling back to null hides the alert entirely.
+  const criticalSignal = scopedSignals.find(s =>
+    s.kind === 'warning'
+    || /warning|critical|risk/i.test(String(s.impact || ''))
+  ) || null;
+
+  // Score-factor chips: short bullets the AI returns alongside the verdict.
+  // Classify "↑ X up Y%" / "✓ healthy" as positive; "↓ X down Y%" / "⚠"
+  // as negative; everything else as neutral. Drives chip color.
+  const verdictChips = (D.verdict?.score_factors || []).slice(0, 5).map((t, i) => {
+    const s = String(t || '').trim();
+    const tone =
+      /^(↓|⚠|↘|❌|✗|🔴)/.test(s)         ? 'neg' :
+      /\bdown\b|\bbelow\b|\bweak\b|\blag/i.test(s) ? 'neg' :
+      /^(↑|✓|✅|🟢|⬆)/.test(s)            ? 'pos' :
+      /\bup\b|\babove\b|\bstrong\b|\bhealthy\b|\bgrow/i.test(s) ? 'pos' :
+      'neu';
+    return { id: i, text: s, tone };
+  });
+
   // Real aggregates for the right-side panel (no fake numbers). Scoped to
   // the active tab so individual platform views show that platform's numbers.
   const totalReach = scopedPosts.reduce((s, p) => s + Number(p.views || 0), 0);
@@ -2727,6 +2750,35 @@ const BriefScreen = ({ activePlatform }) => {
         right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>}
       />
 
+      {/* Critical alert — promotes a warning-level signal to a red-tinted
+          hero above the verdict. Hidden when nothing in scope qualifies. */}
+      {criticalSignal && (
+        <div className="mb-4 sm:mb-5 rounded-2xl border border-magenta/30 bg-magenta/8 dark:bg-magenta/12 p-4 sm:p-5 flex items-start gap-4 fade-up">
+          <div className="w-10 h-10 rounded-xl bg-magenta text-white flex items-center justify-center flex-shrink-0">
+            <Icon name="bolt" className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-magenta font-semibold mb-1">
+              Critical · {criticalSignal.impact || 'Strategic Warning'}
+            </div>
+            <h3 className="font-display text-[16px] sm:text-[18px] font-semibold tracking-tight leading-snug mb-1">
+              {criticalSignal.title}
+            </h3>
+            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed line-clamp-2">
+              {criticalSignal.body}
+            </p>
+          </div>
+          <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
+            <Pill color="magentaSoft">Act now</Pill>
+            {criticalSignal.platform && criticalSignal.platform !== 'all' && (
+              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                {platformLabel[criticalSignal.platform] || criticalSignal.platform}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5 sm:mb-6">
         <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">
           <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-ultra/25 blur-2xl" />
@@ -2734,6 +2786,21 @@ const BriefScreen = ({ activePlatform }) => {
           <div className="relative">
             <Pill color="lime" className="!h-5"><Icon name="sparkle" className="w-3 h-3" /> AI Verdict · Live</Pill>
             <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">{D.verdict?.title || 'Your first brief is generating.'}</h2>
+            {verdictChips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {verdictChips.map(c => (
+                  <span
+                    key={c.id}
+                    className={cls(
+                      'inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-mono border',
+                      c.tone === 'pos' ? 'bg-lime/15 text-lime border-lime/30' :
+                      c.tone === 'neg' ? 'bg-magenta/15 text-magenta border-magenta/30' :
+                                          'bg-paper/8 text-paper/70 border-paper/15'
+                    )}
+                  >{c.text}</span>
+                ))}
+              </div>
+            )}
             <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
             {(D.todayActions || []).length > 0 && (
               <div className="grid sm:grid-cols-3 gap-2.5">
