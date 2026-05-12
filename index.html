@@ -3853,6 +3853,10 @@ const SettingsScreen = () => {
   const [newWsName, setNewWsName] = React.useState('');
   const [creatingWs, setCreatingWs] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
+  // Personal profile — separate from workspace settings because first_name
+  // lives on the user, not the workspace.
+  const [firstName, setFirstName] = React.useState(D.user?.firstName || '');
+  const [savingName, setSavingName] = React.useState(false);
   // Tracks the in-flight OAuth poll so the postMessage handler can cancel it.
   const pollerRef = React.useRef(null);
 
@@ -4031,6 +4035,24 @@ const SettingsScreen = () => {
     }
   };
 
+  // ── Save personal profile (first name) ───────────────────────────────────
+  const saveProfile = async () => {
+    const name = firstName.trim();
+    if (!name) return;
+    setSavingName(true);
+    try {
+      await sbAuth.updateUser(window.__pulseToken, { data: { first_name: name } });
+      // Reflect locally so the next Brief render greets correctly without
+      // waiting for the next /api/brief refresh.
+      D.user = { ...(D.user || {}), firstName: name, name };
+      showToast('Profile saved ✓');
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
   // ── Save workspace settings ───────────────────────────────────────────────
   const saveWorkspace = async () => {
     setSaving(true);
@@ -4138,8 +4160,30 @@ const SettingsScreen = () => {
 
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 sm:gap-8">
 
-        {/* ── LEFT — Platform connections + workspace ── */}
+        {/* ── LEFT — Profile, platform connections, competitors, workspaces ── */}
         <div className="space-y-8">
+
+          {/* Personal profile — first name powers the greeting on Brief */}
+          <div>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Your profile</h3>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-4">
+              How Pulse greets you across workspaces.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 max-w-md">
+              <input
+                value={firstName}
+                onChange={e => setFirstName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveProfile(); }}
+                placeholder="First name"
+                className="flex-1 h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+              />
+              <Btn variant="ink" onClick={saveProfile} disabled={savingName || !firstName.trim() || firstName.trim() === (D.user?.firstName || '')}>
+                {savingName ? 'Saving…' : 'Save'}
+              </Btn>
+            </div>
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
 
           {/* Platform connections */}
           <div>
