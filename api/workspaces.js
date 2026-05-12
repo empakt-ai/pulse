@@ -44,6 +44,7 @@ export default async function handler(req, res) {
       owner_id: auth.user.id,
       name: auth.user.email?.split('@')[0] || 'My Workspace',
       tier: 'creator',
+      ai_model: 'gemini',
     });
     workspace = inserted?.[0] || null;
     if (!workspace) return json(res, 500, { error: 'Workspace not found and could not be created' });
@@ -76,6 +77,7 @@ export default async function handler(req, res) {
         user_type: body?.user_type || 'creator',
         category: body?.category || null,
         country: body?.country || null,
+        ai_model: body?.ai_model || 'gemini',
       });
       return json(res, 200, { workspace: inserted?.[0] || null });
     } catch (e) {

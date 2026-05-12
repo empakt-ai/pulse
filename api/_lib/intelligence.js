@@ -716,7 +716,7 @@ export async function generateBrief(workspace) {
   const result = await generateIntelligence({
     system: SYSTEM_PROMPT,
     user:   buildUserMessage(payload),
-    model:  workspace.ai_model || 'claude',
+    model:  workspace.ai_model || 'gemini',
     max_tokens: 3000,
     temperature: 0.6,
   });

@@ -4101,7 +4101,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
   React.useEffect(() => {
     let cancelled = false;
     api('/workspace/ai-model')
-      .then(r => { if (!cancelled) setActive(r.ai_model || 'claude'); })
+      .then(r => { if (!cancelled) setActive(r.ai_model || 'gemini'); })
       .catch(() => { if (!cancelled) setActive('claude'); });
     return () => { cancelled = true; };
   }, [workspaceId]);

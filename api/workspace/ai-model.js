@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     return json(res, 200, {
       workspace_id: ws.id,
-      ai_model: ws.ai_model || 'claude',
+      ai_model: ws.ai_model || 'gemini',
     });
   }
 
