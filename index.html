@@ -3770,18 +3770,18 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) =
   const connected = !!account;
   return (
     <div className={cls(
-      'flex items-center justify-between p-4 rounded-2xl border transition',
+      'flex items-start justify-between gap-3 p-4 rounded-2xl border transition min-h-[72px]',
       connected
         ? 'border-lime/40 bg-chalk dark:bg-coalsoft'
         : 'border-line dark:border-lineDark bg-chalk dark:bg-coalsoft hover:border-ink/20 dark:hover:border-paper/20'
     )}>
-      <div className="flex items-center gap-3.5">
+      <div className="flex items-start gap-3.5 min-w-0">
         {/* Platform icon */}
         <div className="w-11 h-11 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink flex items-center justify-center flex-shrink-0">
           <Plat p={platform.icon} className="w-5 h-5" />
         </div>
-        <div>
-          <div className="flex items-center gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[14px] font-semibold">{platform.label}</span>
             {connected && (
               <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full bg-lime/20 text-limeDeep dark:text-lime text-[10px] font-medium">
@@ -3790,7 +3790,7 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) =
               </span>
             )}
           </div>
-          <div className="text-[12px] text-mute dark:text-muteDark font-mono mt-0.5">
+          <div className="text-[12px] text-mute dark:text-muteDark font-mono mt-0.5 break-words">
             {connected
               ? (account.platform_username || account.platform_name || 'Account linked')
               : platform.note}
@@ -3801,13 +3801,13 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) =
       {connected ? (
         <button
           onClick={() => onDisconnect(platform.id)}
-          className="h-8 px-3 rounded-lg text-[12px] font-medium border border-line dark:border-lineDark hover:border-magenta hover:text-magenta transition"
+          className="flex-shrink-0 self-center h-8 px-3 rounded-lg text-[12px] font-medium border border-line dark:border-lineDark hover:border-magenta hover:text-magenta transition"
         >
           Disconnect
         </button>
       ) : platform.comingSoon ? (
         <span
-          className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark cursor-not-allowed"
+          className="flex-shrink-0 self-center inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark cursor-not-allowed whitespace-nowrap"
           title="Direct Google integration is being built"
         >
           <Icon name="clock" className="w-3.5 h-3.5" /> Coming soon
@@ -3817,7 +3817,7 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading }) =
           onClick={() => onConnect(platform.id)}
           disabled={loading}
           className={cls(
-            'h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5',
+            'flex-shrink-0 self-center h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5 whitespace-nowrap',
             loading
               ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5'
               : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:bg-coal dark:hover:bg-chalk'
@@ -3919,7 +3919,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         Choose which AI model generates your brief and signals. The switch takes effect on the next sync.
       </p>
 
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-3">
         {['claude', 'gemini'].map(m => {
           const meta = MODEL_META[m];
           const isActive = active === m;
@@ -3930,7 +3930,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
               onClick={() => switchTo(m)}
               disabled={isActive || !!switching}
               className={cls(
-                'text-left p-4 rounded-2xl border transition relative overflow-hidden',
+                'h-full text-left p-4 rounded-2xl border transition relative overflow-hidden',
                 isActive
                   ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
                   : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
@@ -3959,7 +3959,7 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         })}
       </div>
 
-      <div className="flex items-center gap-2 mt-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-4">
         <Btn variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
           {comparing ? 'Running both…' : 'Run comparison'}
         </Btn>
@@ -3969,11 +3969,11 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
       </div>
 
       {compare && (
-        <div className="grid sm:grid-cols-2 gap-3 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-3 mt-4">
           {['claude', 'gemini'].map(m => {
             const r = compare[m];
             return (
-              <div key={m} className="rounded-xl border border-line dark:border-lineDark p-4 bg-chalk dark:bg-coalsoft">
+              <div key={m} className="h-full rounded-xl border border-line dark:border-lineDark p-4 bg-chalk dark:bg-coalsoft">
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full" style={{ background: MODEL_META[m].accent }} />
@@ -4348,7 +4348,7 @@ const SettingsScreen = () => {
       <div className="grid lg:grid-cols-[1fr_320px] gap-6 sm:gap-8">
 
         {/* ── LEFT — Profile, platform connections, competitors, workspaces ── */}
-        <div className="space-y-8">
+        <div className="space-y-6">
 
           {/* Personal profile — first name powers the greeting on Brief */}
           <div>
@@ -4362,7 +4362,7 @@ const SettingsScreen = () => {
                 onChange={e => setFirstName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') saveProfile(); }}
                 placeholder="First name"
-                className="flex-1 h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                className="flex-1 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
               />
               <Btn variant="ink" onClick={saveProfile} disabled={savingName || !firstName.trim() || firstName.trim() === (D.user?.firstName || '')}>
                 {savingName ? 'Saving…' : 'Save'}
@@ -4471,7 +4471,7 @@ const SettingsScreen = () => {
                 onChange={e => setCompForm(f => ({ ...f, handle: e.target.value }))}
                 onKeyDown={e => { if (e.key === 'Enter') addCompetitor(); }}
                 placeholder="@handle or channel ID"
-                className="flex-1 h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                className="flex-1 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
               />
               <Btn variant="ink" onClick={addCompetitor} disabled={addingComp || !compForm.handle.trim()}>
                 {addingComp ? 'Adding…' : 'Add'}
@@ -4557,15 +4557,23 @@ const SettingsScreen = () => {
               })}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2">
+            {/* Add workspace — row by default; falls back to column on
+                screens under 375px (where the button label crowds the input). */}
+            <div className="flex flex-col [@media(min-width:375px)]:flex-row gap-2">
               <input
                 value={newWsName}
                 onChange={e => setNewWsName(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') createWorkspace(); }}
                 placeholder="New workspace name"
-                className="flex-1 h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                className="flex-1 min-w-0 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                style={{ WebkitAppearance: 'none' }}
               />
-              <Btn variant="outline" onClick={createWorkspace} disabled={creatingWs || !newWsName.trim()}>
+              <Btn
+                variant="outline"
+                onClick={createWorkspace}
+                disabled={creatingWs || !newWsName.trim()}
+                className="flex-shrink-0 w-auto"
+              >
                 {creatingWs ? 'Creating…' : 'Add workspace'}
               </Btn>
             </div>
@@ -4576,24 +4584,26 @@ const SettingsScreen = () => {
           {/* Workspace settings */}
           <div>
             <h3 className="font-display text-[17px] font-semibold tracking-tight mb-4">Workspace settings</h3>
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-              <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">Workspace name</label>
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Workspace name</label>
                 <input
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="My Workspace"
-                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                  style={{ WebkitAppearance: 'none' }}
                 />
               </div>
 
-              <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">Account type</label>
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Account type</label>
                 <select
                   value={form.user_type}
                   onChange={e => setForm(f => ({ ...f, user_type: e.target.value }))}
-                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
                 >
                   <option value="creator">Individual Creator</option>
                   <option value="brand">Brand / Business</option>
@@ -4601,34 +4611,37 @@ const SettingsScreen = () => {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">Content category</label>
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Content category</label>
                 <select
                   value={form.category}
                   onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
                 >
                   {CATEGORIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">Your country</label>
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Your country</label>
                 <select
                   value={form.country}
                   onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
-                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
                 >
                   {COUNTRIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[12.5px] font-medium mb-1.5">How long active on social</label>
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">How long active on social</label>
                 <select
                   value={form.account_age}
                   onChange={e => setForm(f => ({ ...f, account_age: e.target.value }))}
-                  className="w-full h-10 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
                 >
                   <option value="under-6mo">Under 6 months</option>
                   <option value="6-12mo">6 – 12 months</option>
@@ -4649,14 +4662,14 @@ const SettingsScreen = () => {
               </p>
 
               <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Regions</div>
-              <div className="flex flex-wrap gap-1.5 mb-3">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 {REGION_PRESETS.map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => toggleFocus(id)}
                     className={cls(
-                      'h-8 px-3 rounded-full text-[12.5px] font-medium border transition',
+                      'inline-flex items-center h-9 px-3.5 rounded-full text-[12.5px] font-medium border transition whitespace-nowrap',
                       form.focus_regions?.includes(id)
                         ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
                         : 'border-line dark:border-lineDark hover:border-ink/30'
@@ -4668,14 +4681,14 @@ const SettingsScreen = () => {
               </div>
 
               <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Specific countries</div>
-              <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+              <div className="flex flex-wrap items-center gap-2 max-h-36 overflow-y-auto pr-1">
                 {COUNTRIES.filter(([id]) => id !== 'GLOBAL').map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
                     onClick={() => toggleFocus(id)}
                     className={cls(
-                      'h-8 px-3 rounded-full text-[12px] font-medium border transition',
+                      'inline-flex items-center h-9 px-3.5 rounded-full text-[12px] font-medium border transition whitespace-nowrap',
                       form.focus_regions?.includes(id)
                         ? 'bg-ultra text-white border-ultra'
                         : 'border-line dark:border-lineDark hover:border-ink/30 text-mute dark:text-muteDark'
