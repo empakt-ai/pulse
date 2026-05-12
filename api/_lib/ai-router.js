@@ -12,7 +12,7 @@ import { messages as claudeMessages, estimateCostCents as claudeCost } from './a
 import { call as geminiCall, estimateCostCents as geminiCost } from './gemini.js';
 
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 
 // Call Claude with our standard intelligence shape. Returns the normalised
 // envelope the router consumes.

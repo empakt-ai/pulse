@@ -6,7 +6,7 @@
 // ═════════════════════════════════════════════════════════════════════════
 
 const KEY = process.env.GEMINI_API_KEY;
-const DEFAULT_MODEL = 'gemini-2.0-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash';
 
 if (!KEY) console.warn('[gemini] GEMINI_API_KEY missing — Gemini calls will fail');
 
@@ -95,10 +95,10 @@ export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, te
 // Cheap-by-default cost estimator. Numbers approximate Google's
 // flash-tier rate card; refresh when pricing changes. Returns cents.
 export function estimateCostCents(usage = {}, model = DEFAULT_MODEL) {
-  // gemini-2.0-flash: $0.075 / 1M input, $0.30 / 1M output.
+  // gemini-2.5-flash: $0.30 / 1M input, $2.50 / 1M output.
   const rate = model.includes('pro')
-    ? { in: 1.25, out: 5.00 }     // gemini-1.5-pro reference
-    : { in: 0.075, out: 0.30 };   // flash family default
+    ? { in: 1.25, out: 10.00 }    // gemini-2.5-pro reference
+    : { in: 0.30, out: 2.50 };    // 2.5-flash default
   const dollars = (usage.input_tokens || 0) / 1e6 * rate.in
                 + (usage.output_tokens || 0) / 1e6 * rate.out;
   return Math.round(dollars * 100);

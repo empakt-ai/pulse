@@ -4084,7 +4084,7 @@ const UsageMeter = ({ used, limit, tier }) => {
 // ── Intelligence Layer (model switcher + comparison) ────────────────────
 const MODEL_META = {
   claude: { label: 'Claude (Anthropic)', sub: 'claude-sonnet-4-6 · deep reasoning', accent: '#D6905A' },
-  gemini: { label: 'Gemini (Google)',    sub: 'gemini-2.0-flash · fast & cheap',   accent: '#1A73E8' },
+  gemini: { label: 'Gemini (Google)',    sub: 'gemini-2.5-flash · fast & cheap',   accent: '#1A73E8' },
 };
 const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
   const [active, setActive]   = React.useState(null);
