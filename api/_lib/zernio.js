@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Pure wrapper around Zernio's REST API. Stays free of PULSE intelligence:
+// no signal classification, no benchmarking, no brief logic. Add new
+// endpoints as thin pass-throughs; downstream callers do the interpreting.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Zernio API wrapper — handles OAuth + analytics for social platforms.
 // Master key never reaches the browser. All requests authed with bearer.
 

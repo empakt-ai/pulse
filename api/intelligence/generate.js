@@ -1,3 +1,9 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo. Manual trigger for the PULSE AI
+// brief. After the platform extraction this stays a PULSE endpoint that
+// reads from the shared posts/account_snapshots tables.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // POST /api/intelligence/generate — manually trigger an AI brief for the
 // caller's workspace. Also runs automatically at the tail of /api/analytics/refresh
 // and inside /api/cron/daily.

@@ -1,3 +1,12 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo. The list mode is generic, but the
+// detail mode layers PULSE intelligence on top of raw posts: percentile
+// benchmarks against the user's own catalogue, hashtag/mention extraction,
+// day/time bucketing, prev/next navigation. That interpretation is the
+// PULSE product. Content Studio will read the same posts table differently
+// (e.g. campaign attribution, draft state).
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Content deep-dive endpoint.
 //
 //   GET /api/posts?id=<postId>  → full detail for one post, including

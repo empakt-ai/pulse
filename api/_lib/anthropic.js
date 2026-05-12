@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Generic Anthropic Messages API client. Today only consumed by PULSE
+// intelligence, but the wrapper itself has no product-specific logic; any
+// future product on the platform can use it.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Minimal Anthropic Messages API client — no SDK install needed.
 // Uses prompt caching so the system prompt (~1.5k tokens) costs 10% on repeat calls.
 

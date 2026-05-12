@@ -1,3 +1,11 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo. Week-over-week delta computation
+// and the velocity classifier (surging/climbing/steady/declining) are
+// PULSE intelligence on top of the shared account_snapshots table. The
+// raw rows belong to the platform; the labels and thresholds belong to
+// PULSE.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Growth module endpoint. Reads from account_snapshots (one row per
 // account-per-day) and returns:
 //

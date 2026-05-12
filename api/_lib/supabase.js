@@ -1,3 +1,8 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service
+// when Content Studio is built. No PULSE-specific logic lives here.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Server-side Supabase REST client using the service role key.
 // Bypasses RLS — only use from /api routes after auth() has validated the caller.
 

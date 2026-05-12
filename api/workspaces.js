@@ -1,3 +1,21 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [MIXED] Mostly SHARED — workspace CRUD is a generic multi-tenant primitive
+// — but the GET response embeds PULSE-specific tier + usage data.
+//
+//   SHARED (move to platform service):
+//     • GET list of workspaces a user owns
+//     • POST create workspace
+//     • PATCH workspace fields (name, user_type, category, country,
+//       focus_regions, account_age)
+//
+//   PULSE-SPECIFIC (stays here, or becomes a sibling endpoint):
+//     • tier metadata in GET response (label, price, runs_per_month cap)
+//     • usage block (monthly run count vs cap)
+//
+// Proposed split: shared service exposes /workspaces with the raw row data;
+// PULSE adds a /pulse/workspace-context endpoint that joins tier + usage.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Workspaces endpoint. A user may own multiple workspaces — each one is
 // effectively a separate subscription (separate account slots, competitor
 // quota, AI run quota). The active workspace for any request is selected via

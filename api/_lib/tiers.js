@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo. PULSE's commercial model (Creator /
+// Brand / Agency tiers, USD/SAR pricing, per-tier caps on accounts, comp-
+// etitors and AI runs) is a product decision, not a platform primitive.
+// Content Studio will have its own pricing/quota module.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Pricing tier limits + usage cap enforcement.
 
 import { supabase } from './supabase.js';

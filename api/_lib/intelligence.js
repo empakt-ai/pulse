@@ -1,3 +1,12 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo when the platform extraction happens.
+// All AI brief generation, prompt construction, signal taxonomy, and intel-
+// score calculation lives here. Content Studio will have its own equivalent
+// (different product, different lens). No shared infrastructure imports
+// (Supabase, Anthropic wrapper) become PULSE-specific by association — only
+// the orchestration and prompting in this file does.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Intelligence generator — turns 30 days of workspace data into a daily AI brief:
 //   - 1 verdict (the dark hero card on Brief)
 //   - 3 prioritized actions

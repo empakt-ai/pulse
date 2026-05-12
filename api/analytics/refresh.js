@@ -1,3 +1,24 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [MIXED] Currently combines SHARED data-fetch orchestration with PULSE-
+// specific intelligence triggers. Split before the platform extraction:
+//
+//   SHARED (move to platform service):
+//     • Account follower-count refresh (Zernio /follower-stats + Apify fallback)
+//     • Per-account analytics pull (Zernio /analytics, YouTube Data API)
+//     • Post upsert + account_snapshots writes
+//     • Ad performance pull via pullAds()
+//
+//   PULSE-SPECIFIC (stays here):
+//     • signalFor()  — viral/rising/steady/declining classifier
+//     • engagementRate() thresholds happen to feed signalFor → keep with it
+//     • Tail call to generateBrief() — PULSE's AI brief regeneration
+//     • checkUsageCap() — uses PULSE pricing tiers
+//
+// Proposed split: a new POST /api/refresh in the shared service that does
+// all the fetching, then a PULSE-side hook (webhook or follow-up call) that
+// runs signalFor + generateBrief once the raw write completes.
+// ═════════════════════════════════════════════════════════════════════════
+
 import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio, extractFollowers } from '../_lib/zernio.js';

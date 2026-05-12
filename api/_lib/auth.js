@@ -1,3 +1,9 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Generic Bearer-token validation + workspace selection. No PULSE-specific
+// concepts (tier checks, signal logic, etc.) belong in this file.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Auth middleware for Vercel serverless functions.
 // Extracts Bearer token, validates with Supabase, returns { user, workspace }.
 

@@ -1,3 +1,19 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [MIXED] Mostly SHARED — generic competitor-handle CRUD over a generic
+// schema — with one PULSE-specific touch: the cap on how many competitors
+// a workspace can track comes from PULSE's pricing tiers.
+//
+//   SHARED (move to platform service):
+//     • GET/POST/DELETE on the competitors table
+//     • action='sync' trigger that calls syncCompetitorsForWorkspace()
+//
+//   PULSE-SPECIFIC (stays here):
+//     • checkCompetitorCap() — uses PULSE tier limits (5/15/50)
+//
+// Proposed split: shared service exposes raw CRUD; PULSE wraps it with a
+// thin auth/quota check before forwarding.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Consolidated competitors endpoint (merged to stay under Vercel Hobby's
 // 12-function deployment limit).
 //

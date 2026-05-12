@@ -1,3 +1,11 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [PULSE-SPECIFIC] Stays in this repo. This is the dashboard hydration
+// endpoint — it joins raw shared data (accounts, posts, snapshots) with
+// PULSE intelligence outputs (signals, verdict, intel score, today actions,
+// posting heatmap, top-posts curation). The shaping done here is the PULSE
+// product, not the platform. Content Studio will have its own equivalent.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Consolidated read for the dashboard. Returns everything the SPA needs to
 // hydrate Brief/Stats/Growth/Content/Intel/Targets/Settings in one call.
 

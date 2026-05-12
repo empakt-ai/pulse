@@ -1,3 +1,23 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [MIXED] Same split as analytics/refresh.js. Currently a single 06:00 UTC
+// cron does both the SHARED data refresh and the PULSE intelligence pass.
+//
+//   SHARED (move to platform service cron):
+//     • zernio.listAccounts() → upsert connected_accounts
+//     • follower-stats refresh (Zernio + Apify fallback)
+//     • per-account post sync (Zernio /analytics, YouTube Data API)
+//     • snapshot write to account_snapshots
+//     • pullAds() and syncCompetitorsForWorkspace()
+//
+//   PULSE-SPECIFIC (stays here):
+//     • signalFor() classifier + engagement-rate scoring
+//     • generateBrief() tail call
+//
+// Proposed split: two crons. The platform service runs the fetch nightly
+// and emits a "refresh_complete" event per workspace; PULSE listens and
+// runs its brief generator off that event.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Daily cron — iterates every workspace with a Zernio profile,
 // syncs accounts, refreshes analytics. Vercel Cron triggers this at 06:00 UTC.
 //

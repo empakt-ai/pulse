@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Per-platform Apify actor configs + a generic runner. No PULSE-specific
+// scoring or signal logic — actors return normalised profile/posts objects
+// that downstream callers can interpret however they like.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Apify wrapper — per-platform actor configs. Each platform can have a
 // "profile" actor (returns followers/bio/verification) and a "posts" actor
 // (returns recent posts). competitor-sync calls both when present and merges.

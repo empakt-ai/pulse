@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Generic Google/YouTube wrapper: OAuth, channel scraping, token refresh.
+// No PULSE-specific transformation here — callers map the raw response to
+// whichever schema they want.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // YouTube Data API v3 client — direct Google API instead of Apify.
 // Spec requires this: "YouTube: Direct Google API (YouTube Data v3 + Analytics API)".
 //

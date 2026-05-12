@@ -1,3 +1,11 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Orchestrates Apify scrapes for tracked competitor handles and persists
+// to the generic posts + account_snapshots schema. The "competitor" concept
+// is a generic comparative-tracking primitive that Content Studio can reuse
+// for its own competitor benchmarks. No PULSE intelligence here.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Run Apify actors for all active competitors in a workspace, persist posts +
 // snapshots, update follower counts. Returns a per-competitor result summary.
 

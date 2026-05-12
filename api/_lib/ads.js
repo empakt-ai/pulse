@@ -1,3 +1,10 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Maps Zernio /ads payloads to the generic posts schema. No interpretation
+// of what "good" means happens here; consumers (PULSE brief, future Content
+// Studio campaign view) compute their own verdicts from the raw rows.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // Ad performance helper — pulls Zernio /ads for an account and persists into
 // the `posts` table with post_type='ad'. Keeps schema light: no new table.
 // Ad-specific fields (spend, CTR, CPM, conversions, status) live in raw_data.

@@ -1,3 +1,9 @@
+// ═════════════════════════════════════════════════════════════════════════
+// [SHARED] Platform infrastructure — moves to the shared platform service.
+// Generic OAuth callback handling for both Zernio and Google. The branded
+// HTML it renders is light enough to template per-product later.
+// ═════════════════════════════════════════════════════════════════════════
+//
 // OAuth landing page (rendered inside the popup that Zernio or Google redirects
 // back to). Two modes:
 //
