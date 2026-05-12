@@ -57,11 +57,11 @@ export const ACTORS = {
     },
     posts: {
       id: 'apify~instagram-scraper',
-      timeout: 45,
-      input: (handle) => ({
+      timeout: 60,
+      input: (handle, opts = {}) => ({
         directUrls: [`https://www.instagram.com/${handle.replace(/^@/, '')}/`],
         resultsType: 'posts',
-        resultsLimit: 12,
+        resultsLimit: opts.limit || 12,
         addParentData: false,
       }),
       normalisePosts: (items) => (items || [])
@@ -84,10 +84,10 @@ export const ACTORS = {
     // TikTok scraper returns profile + posts in one shot via the same actor.
     posts: {
       id: 'clockworks~tiktok-scraper',
-      timeout: 45,
-      input: (handle) => ({
+      timeout: 60,
+      input: (handle, opts = {}) => ({
         profiles: [handle.replace(/^@/, '')],
-        resultsPerPage: 12,
+        resultsPerPage: opts.limit || 12,
         shouldDownloadVideos: false,
         shouldDownloadCovers: false,
       }),
@@ -224,14 +224,14 @@ export async function runActor(platform, handle, opts = {}) {
   const tasks = [];
   if (cfg.profile) {
     tasks.push(
-      callActor(cfg.profile.id, cfg.profile.input(handle), cfg.profile.timeout, opts.signal)
+      callActor(cfg.profile.id, cfg.profile.input(handle, opts), cfg.profile.timeout, opts.signal)
         .then(items => ({ kind: 'profile', items }))
         .catch(e => ({ kind: 'profile', error: e.message, actor: cfg.profile.id }))
     );
   }
   if (cfg.posts) {
     tasks.push(
-      callActor(cfg.posts.id, cfg.posts.input(handle), cfg.posts.timeout, opts.signal)
+      callActor(cfg.posts.id, cfg.posts.input(handle, opts), cfg.posts.timeout, opts.signal)
         .then(items => ({ kind: 'posts', items }))
         .catch(e => ({ kind: 'posts', error: e.message, actor: cfg.posts.id }))
     );
