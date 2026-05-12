@@ -230,9 +230,13 @@ export async function detectSeries(workspace) {
     if (!groups.has(m.stem)) groups.set(m.stem, { stem: m.stem, entries: [] });
     groups.get(m.stem).entries.push({ post: p, number: m.number });
   }
-  // Drop singletons — one Part 1 doesn't make a series.
+  // A real series needs at least 2 DISTINCT entry numbers (Part 1, Part 2).
+  // Two cross-posts of the same "Part 1" don't make a series — they're
+  // already grouped as a single content_piece. Drop any group whose unique
+  // number count is < 2.
   for (const k of [...groups.keys()]) {
-    if (groups.get(k).entries.length < 2) groups.delete(k);
+    const uniqNumbers = new Set(groups.get(k).entries.map(e => e.number));
+    if (uniqNumbers.size < 2) groups.delete(k);
   }
 
   if (!groups.size) return { created: 0, updated: 0, series: 0 };
@@ -245,13 +249,28 @@ export async function detectSeries(workspace) {
   let created = 0, updated = 0;
   for (const g of groups.values()) {
     const entries = g.entries.sort((a, b) => a.number - b.number);
-    const views = entries.map(e => e.post.views || 0);
-    const avgViews = Math.round(views.reduce((s, n) => s + n, 0) / entries.length);
+    // Aggregate by entry number first — Part 1 cross-posted to IG + TT
+    // counts as one entry whose views are the SUM across platforms. Without
+    // this, the trend comparison would be apples-to-oranges (IG views vs TT
+    // views) and would wrongly flag every series as growing or declining.
+    const byNumber = new Map();
+    for (const e of entries) {
+      const slot = byNumber.get(e.number) || { number: e.number, views: 0, posted_at: e.post.posted_at };
+      slot.views += e.post.views || 0;
+      // Keep the latest posted_at across cross-posts.
+      if (e.post.posted_at && (!slot.posted_at || e.post.posted_at > slot.posted_at)) {
+        slot.posted_at = e.post.posted_at;
+      }
+      byNumber.set(e.number, slot);
+    }
+    const dedupedEntries = [...byNumber.values()].sort((a, b) => a.number - b.number);
+    const views = dedupedEntries.map(e => e.views);
+    const avgViews = Math.round(views.reduce((s, n) => s + n, 0) / dedupedEntries.length);
     const peakViews = Math.max(...views);
-    const latestNumber = entries[entries.length - 1].number;
-    const lastEntryAt = entries[entries.length - 1].post.posted_at || null;
+    const latestNumber = dedupedEntries[dedupedEntries.length - 1].number;
+    const lastEntryAt = dedupedEntries[dedupedEntries.length - 1].posted_at || null;
 
-    // Trend classification.
+    // Trend classification on the deduped (per-number) view totals.
     const first = views[0] || 0;
     const last = views[views.length - 1] || 0;
     const ageDays = lastEntryAt ? (Date.now() - new Date(lastEntryAt).getTime()) / 86400000 : Infinity;
