@@ -11,6 +11,6 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/cron/daily", "schedule": "0 6 * * *" }
+    { "path": "/api/cron/hourly", "schedule": "0 * * * *" }
   ]
 }

@@ -266,6 +266,143 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
 }
 
 // ── Main entrypoint ────────────────────────────────────────────────────────────
+// ─── Live signals (8/13/18 local) ────────────────────────────────────────
+// Pattern-detection only — no LLM call. Appends to the signals feed; does
+// not replace or invalidate the morning brief. Each detection writes a
+// `kind='live'` row with a deduplication key in metadata so we don't
+// re-alert on the same trigger if the cron runs twice in the same window.
+const FOLLOWER_MILESTONES = [10000, 25000, 50000, 100000, 250000, 500000, 1000000, 2500000, 5000000, 10000000];
+function fnum(n) {
+  if (n == null) return '0';
+  if (n >= 1e6) return (n / 1e6).toFixed(n >= 10e6 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(n >= 10e3 ? 0 : 1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+export async function generateLiveSignals(workspace) {
+  // Pull what we need to compare against the user's baseline.
+  const [posts, snapshots, existingLive] = await Promise.all([
+    supabase.select('posts', {
+      select: 'id,platform,caption,views,engagement_rate,signal,posted_at,likes,comments',
+      eq: { workspace_id: workspace.id, source: 'own' },
+      order: 'posted_at.desc', limit: 60,
+    }).catch(() => []),
+    supabase.select('account_snapshots', {
+      select: '*',
+      eq: { workspace_id: workspace.id, account_type: 'own' },
+      order: 'snapshot_date.desc', limit: 60,
+    }).catch(() => []),
+    supabase.select('signals', {
+      select: 'id,metadata,generated_at',
+      eq: { workspace_id: workspace.id, kind: 'live' },
+      order: 'generated_at.desc', limit: 100,
+    }).catch(() => []),
+  ]);
+
+  if (!posts?.length && !snapshots?.length) {
+    return { new: 0, checked: 0, reason: 'insufficient_data' };
+  }
+
+  const existingKeys = new Set((existingLive || []).map(s => s.metadata?.dedup_key).filter(Boolean));
+  const out = [];
+
+  // Pattern 1 — viral threshold crossed (engagement_rate >= 12%)
+  // Only consider posts from the last 7 days; older viral posts have already
+  // been surfaced via the morning brief.
+  const sevenDaysAgo = Date.now() - 7 * 86400000;
+  for (const p of (posts || [])) {
+    if ((p.engagement_rate || 0) < 12) continue;
+    if (!p.posted_at || new Date(p.posted_at).getTime() < sevenDaysAgo) continue;
+    const key = `viral_${p.id}`;
+    if (existingKeys.has(key)) continue;
+    out.push({
+      workspace_id: workspace.id,
+      kind: 'live',
+      label: 'Viral',
+      platform: p.platform,
+      title: `Post crossed viral threshold (${p.engagement_rate}% engagement)`,
+      body: `${(p.caption || 'Untitled post').slice(0, 140)}${(p.caption || '').length > 140 ? '…' : ''} — ${fnum(p.views)} views, ${fnum((p.likes || 0) + (p.comments || 0))} reactions.`,
+      impact: 'High Impact',
+      action: 'Open post',
+      is_read: false,
+      generated_at: new Date().toISOString(),
+      metadata: { dedup_key: key, post_id: p.id, type: 'viral_crossed' },
+    });
+  }
+
+  // Pattern 2 — follower milestone crossed
+  // Group snapshots by (platform, handle), sort newest-first, compare the
+  // latest reading to the previous one. Any milestone in between triggers.
+  const series = {};
+  for (const s of (snapshots || [])) {
+    const k = `${s.platform}::${s.handle}`;
+    (series[k] ||= []).push(s);
+  }
+  for (const arr of Object.values(series)) {
+    arr.sort((a, b) => String(b.snapshot_date).localeCompare(String(a.snapshot_date)));
+    if (arr.length < 2) continue;
+    const latest = arr[0], previous = arr[1];
+    if (latest.followers == null || previous.followers == null) continue;
+    for (const m of FOLLOWER_MILESTONES) {
+      if (previous.followers < m && latest.followers >= m) {
+        const key = `milestone_${m}_${latest.platform}_${latest.handle}`;
+        if (existingKeys.has(key)) continue;
+        out.push({
+          workspace_id: workspace.id,
+          kind: 'live',
+          label: 'Milestone',
+          platform: latest.platform,
+          title: `Crossed ${fnum(m)} followers on ${latest.platform}`,
+          body: `${latest.handle || 'Your account'} ticked past ${fnum(m)} today (was ${fnum(previous.followers)} yesterday).`,
+          impact: 'Milestone',
+          action: null,
+          is_read: false,
+          generated_at: new Date().toISOString(),
+          metadata: { dedup_key: key, type: 'follower_milestone', threshold: m, platform: latest.platform, handle: latest.handle },
+        });
+      }
+    }
+  }
+
+  // Pattern 3 — engagement spike (post in last 48h whose eng rate is >2x
+  // the rolling 30-day average for that platform).
+  const fortyEightHoursAgo = Date.now() - 48 * 3600000;
+  const byPlatformPosts = {};
+  for (const p of (posts || [])) {
+    (byPlatformPosts[p.platform] ||= []).push(p);
+  }
+  for (const [platform, group] of Object.entries(byPlatformPosts)) {
+    if (group.length < 5) continue; // not enough baseline
+    const baseline = group.reduce((s, p) => s + (p.engagement_rate || 0), 0) / group.length;
+    if (baseline <= 0) continue;
+    for (const p of group) {
+      if (!p.posted_at || new Date(p.posted_at).getTime() < fortyEightHoursAgo) continue;
+      if ((p.engagement_rate || 0) < baseline * 2) continue;
+      if ((p.engagement_rate || 0) >= 12) continue; // already covered by viral pattern
+      const key = `spike_${p.id}`;
+      if (existingKeys.has(key)) continue;
+      out.push({
+        workspace_id: workspace.id,
+        kind: 'live',
+        label: 'Spike',
+        platform,
+        title: `Engagement spike — ${p.engagement_rate}% vs your ${baseline.toFixed(1)}% average`,
+        body: `${(p.caption || 'A post').slice(0, 140)} is running ${((p.engagement_rate / baseline)).toFixed(1)}× hotter than your typical ${platform} post.`,
+        impact: 'Strategic',
+        action: 'Boost or cross-post',
+        is_read: false,
+        generated_at: new Date().toISOString(),
+        metadata: { dedup_key: key, post_id: p.id, type: 'engagement_spike', baseline: Math.round(baseline * 100) / 100 },
+      });
+    }
+  }
+
+  if (out.length) {
+    await supabase.insert('signals', out).catch(() => {});
+  }
+  return { new: out.length, checked: posts.length };
+}
+
 export async function generateBrief(workspace) {
   // 1) Gather data
   const [accounts, posts, snapshots, competitors] = await Promise.all([
