@@ -511,8 +511,11 @@ function fnum(n) {
 }
 
 export async function generateLiveSignals(workspace) {
-  // Pull what we need to compare against the user's baseline.
-  const [posts, snapshots, existingLive] = await Promise.all([
+  // Pull what we need to compare against the user's baseline. The
+  // inbox_events read is best-effort — the table only exists once
+  // migrations/006 is applied; on older DBs it returns [] and the
+  // comment-burst pattern simply doesn't fire.
+  const [posts, snapshots, existingLive, inboxEvents] = await Promise.all([
     supabase.select('posts', {
       select: 'id,platform,caption,views,engagement_rate,signal,posted_at,likes,comments',
       eq: { workspace_id: workspace.id, source: 'own' },
@@ -527,6 +530,11 @@ export async function generateLiveSignals(workspace) {
       select: 'id,metadata,generated_at',
       eq: { workspace_id: workspace.id, kind: 'live' },
       order: 'generated_at.desc', limit: 100,
+    }).catch(() => []),
+    supabase.select('inbox_events', {
+      select: 'id,post_id,kind,author_handle,received_at',
+      eq: { workspace_id: workspace.id, status: 'pending' },
+      order: 'received_at.desc', limit: 200,
     }).catch(() => []),
   ]);
 
@@ -628,10 +636,56 @@ export async function generateLiveSignals(workspace) {
     }
   }
 
+  // Pattern 4 — comment burst from inbox webhooks. When a single post
+  // collects 10+ webhook-delivered comments in the last 2 hours, surface
+  // an engagement_velocity signal urging the user to reply now (the
+  // platform algorithm boosts posts whose authors engage with their own
+  // comment thread). Counts only comment_* event kinds; DMs are handled
+  // separately.
+  const twoHoursAgo = Date.now() - 2 * 3600000;
+  const commentsByPost = new Map();
+  for (const e of (inboxEvents || [])) {
+    if (!e.post_id) continue;
+    if (!/^comment/i.test(e.kind || '')) continue;
+    if (new Date(e.received_at).getTime() < twoHoursAgo) continue;
+    commentsByPost.set(e.post_id, (commentsByPost.get(e.post_id) || 0) + 1);
+  }
+  for (const [postId, count] of commentsByPost.entries()) {
+    if (count < 10) continue;
+    const key = `comment_burst_${postId}`;
+    if (existingKeys.has(key)) continue;
+    const p = (posts || []).find(x => x.id === postId);
+    if (!p) continue;
+    out.push({
+      workspace_id: workspace.id,
+      kind: 'live',
+      label: 'Reply now',
+      platform: p.platform,
+      title: `${count} new comments on a post in 2 hours`,
+      body: `${(p.caption || 'A post').slice(0, 140)} just collected ${count} comments. Replying in the next hour extends algorithmic reach.`,
+      impact: 'High Impact',
+      action: 'Open thread',
+      is_read: false,
+      generated_at: new Date().toISOString(),
+      metadata: { dedup_key: key, post_id: postId, type: 'comment_burst', count },
+    });
+  }
+
   if (out.length) {
     await supabase.insert('signals', out).catch(() => {});
   }
-  return { new: out.length, checked: posts.length };
+
+  // Mark consumed inbox events as processed so they don't trigger again
+  // on the next live-signals run. Best-effort.
+  const consumedIds = (inboxEvents || []).map(e => e.id).filter(Boolean);
+  if (consumedIds.length) {
+    await supabase.update('inbox_events',
+      { status: 'processed' },
+      { in: { id: consumedIds } }
+    ).catch(() => {});
+  }
+
+  return { new: out.length, checked: posts.length, inbox: inboxEvents?.length || 0 };
 }
 
 export async function generateBrief(workspace) {

@@ -4091,6 +4091,11 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
   const [switching, setSwitching] = React.useState(null); // 'claude' | 'gemini' | null
   const [comparing, setComparing] = React.useState(false);
   const [compare, setCompare]    = React.useState(null);
+  // Manual brief regenerate state — explicit diagnostic surface so the user
+  // can see exactly what generateBrief returned (success counts, persist
+  // errors, model used, fallbacks).
+  const [generating, setGenerating] = React.useState(false);
+  const [generateResult, setGenerateResult] = React.useState(null);
 
   // Load current selection on mount.
   React.useEffect(() => {
@@ -4148,6 +4153,23 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
     }
   };
 
+  const runRegenerate = async () => {
+    setGenerating(true);
+    setGenerateResult(null);
+    try {
+      const r = await api('/intelligence/generate', { method: 'POST' });
+      setGenerateResult(r);
+      if (r?.ok) onSwitched?.(`Brief generated with ${r.model_used} — ${r.signals || 0} signals, ${r.actions || 0} actions`);
+      else if (r?.skipped) onError?.(`Skipped: ${r.skipped}`);
+      else if (r?.error) onError?.(`Brief error: ${r.message || r.error}`);
+    } catch (e) {
+      onError?.(e.message);
+      setGenerateResult({ error: 'request_failed', message: e.message });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <div>
       <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Intelligence Layer</h3>
@@ -4199,10 +4221,31 @@ const ModelSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
         <Btn variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
           {comparing ? 'Running both…' : 'Run comparison'}
         </Btn>
+        <Btn variant="ink" size="sm" onClick={runRegenerate} disabled={generating}>
+          {generating ? 'Generating…' : 'Regenerate brief now'}
+        </Btn>
         <span className="text-[11.5px] text-mute dark:text-muteDark">
-          Runs the same prompt through both and shows results side-by-side. No data is saved.
+          "Run comparison" runs both side-by-side without saving. "Regenerate" creates a fresh live brief with the active model.
         </span>
       </div>
+
+      {generateResult && (
+        <div className={cls(
+          'mt-3 p-3 rounded-xl border text-[12px] font-mono',
+          generateResult.ok
+            ? 'border-lime/40 bg-lime/10 text-limeDeep dark:text-lime'
+            : 'border-magenta/40 bg-magenta/10 text-magenta'
+        )}>
+          <div className="font-semibold mb-1">
+            {generateResult.ok
+              ? `✓ Brief generated with ${generateResult.model_used}`
+              : `✗ ${generateResult.error || 'Failed'}`}
+          </div>
+          <div className="text-[11px] opacity-80 whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+            {JSON.stringify(generateResult, null, 2)}
+          </div>
+        </div>
+      )}
 
       {compare && (
         <div className="grid grid-cols-1 sm:grid-cols-2 items-stretch gap-3 mt-4">
