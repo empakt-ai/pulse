@@ -21,8 +21,11 @@ export default async function handler(req, res) {
 
   try {
     const result = await generateBrief(ws);
-    if (result.error) return json(res, 502, { error: result.error, raw: result.raw });
-    return json(res, 200, result);
+    // Forward the WHOLE result on error so the UI panel sees message/details
+    // (e.g. the underlying SQL error from a persist failure). Keep status 200
+    // so the browser api() helper doesn't throw and discard the body.
+    if (result.error) return json(res, 200, { ok: false, ...result });
+    return json(res, 200, { ok: true, ...result });
   } catch (e) {
     return json(res, e.status || 500, { error: e.message });
   }
