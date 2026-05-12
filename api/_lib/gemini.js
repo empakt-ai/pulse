@@ -14,6 +14,12 @@ function endpoint(model) {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${KEY}`;
 }
 
+function streamEndpoint(model) {
+  // alt=sse returns Server-Sent Events; without it Gemini returns a JSON
+  // array of chunks all at once (defeats the point of streaming).
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${KEY}`;
+}
+
 // Map our { system, messages } shape (Anthropic-style) onto Gemini's
 // systemInstruction + contents shape. We expect a single user turn for
 // brief generation, which keeps the mapping trivial.
@@ -88,6 +94,82 @@ export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, te
     text: out,
     model,
     finish_reason: finishReason,
+    usage: {
+      input_tokens: usage.promptTokenCount ?? 0,
+      output_tokens: usage.candidatesTokenCount ?? 0,
+      total_tokens: usage.totalTokenCount ?? 0,
+    },
+  };
+}
+
+// Streaming variant. Calls the SSE endpoint and yields each text chunk
+// as it arrives. Caller is responsible for accumulating and parsing.
+// On stream end yields a final { done: true, text, usage } chunk.
+//
+// Each Gemini SSE event looks like:
+//   data: { "candidates": [{ "content": { "parts": [{ "text": "..." }] } }] }
+//
+// Generator pattern — drain with `for await (const c of callStream(...))`.
+export async function* callStream({ system, user, model = DEFAULT_MODEL, max_tokens, temperature, json = true } = {}) {
+  if (!KEY) throw new Error('GEMINI_API_KEY missing');
+  const body = buildBody({ system, user, max_tokens, temperature, json });
+  const res = await fetch(streamEndpoint(model), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    const err = new Error(`Gemini stream HTTP ${res.status}: ${txt.slice(0, 200)}`);
+    err.status = res.status;
+    throw err;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  let lastUsage = null;
+  let finishReason = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE messages are separated by blank lines; each message is one or
+    // more "data: ..." prefixed lines. Process whole messages only —
+    // leave any partial trailing chunk in the buffer.
+    let idx;
+    while ((idx = buffer.indexOf('\n\n')) !== -1) {
+      const message = buffer.slice(0, idx);
+      buffer = buffer.slice(idx + 2);
+      for (const line of message.split('\n')) {
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') continue;
+        try {
+          const data = JSON.parse(payload);
+          const text = data?.candidates?.[0]?.content?.parts?.map(p => p.text || '').join('') || '';
+          if (text) {
+            fullText += text;
+            yield { chunk: text };
+          }
+          if (data?.candidates?.[0]?.finishReason) {
+            finishReason = data.candidates[0].finishReason;
+          }
+          if (data?.usageMetadata) lastUsage = data.usageMetadata;
+        } catch { /* skip malformed SSE row */ }
+      }
+    }
+  }
+
+  const usage = lastUsage || {};
+  yield {
+    done: true,
+    text: fullText,
+    finish_reason: finishReason || 'UNKNOWN',
+    model,
     usage: {
       input_tokens: usage.promptTokenCount ?? 0,
       output_tokens: usage.candidatesTokenCount ?? 0,

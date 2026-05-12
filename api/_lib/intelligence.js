@@ -20,6 +20,7 @@
 import { supabase } from './supabase.js';
 import { parseJsonResponse } from './anthropic.js';
 import { generateIntelligence } from './ai-router.js';
+import { callStream as geminiCallStream } from './gemini.js';
 import { allRulesAsPromptText } from './platform-rules.js';
 
 // ── Deterministic intel score (don't trust the LLM for math) ───────────────────
@@ -851,5 +852,118 @@ export async function generateBrief(workspace) {
     latency_ms: result.latency_ms,
     tokens_used: result.tokens_used,
     cost_cents: result.cost_cents,
+  };
+}
+
+// ─── Streaming variant ────────────────────────────────────────────────────
+// Same flow as generateBrief but yields raw text chunks as Gemini emits
+// them. The caller (api/intelligence/stream.js) forwards each chunk to
+// the browser as SSE so the verdict text starts appearing in ~1s instead
+// of waiting 5-10s for the full JSON. Persistence happens after the
+// stream completes — same persist() + usage_log path as the synchronous
+// version, so the resulting database state is identical.
+//
+// Generator yields:
+//   { phase: 'gathering' }                — initial signal
+//   { phase: 'generating' }               — prompt built, calling Gemini
+//   { chunk: '...' }                      — text chunk from Gemini
+//   { phase: 'persisting' }               — full text received, parsing + writing
+//   { done: true, summary: {...} } | { error: 'persist_failed', ... } | etc.
+export async function* generateBriefStream(workspace) {
+  yield { phase: 'gathering' };
+
+  const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
+    supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
+    supabase.select('posts', { select: '*', eq: { workspace_id: workspace.id }, order: 'posted_at.desc', limit: 200 }).catch(() => []),
+    supabase.select('account_snapshots', { select: '*', eq: { workspace_id: workspace.id }, order: 'snapshot_date.desc', limit: 30 }).catch(() => []),
+    supabase.select('competitors', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
+    supabase.select('content_pieces', { select: '*', eq: { workspace_id: workspace.id }, order: 'first_posted_at.desc', limit: 60 }).catch(() => []),
+    supabase.select('series', { select: '*', eq: { workspace_id: workspace.id }, order: 'last_entry_at.desc' }).catch(() => []),
+  ]);
+
+  if (!accounts?.length || !posts?.length) {
+    yield { skipped: 'insufficient_data', accounts: accounts?.length || 0, posts: posts?.length || 0 };
+    return;
+  }
+
+  const intelScore = computeIntelScore({ accounts, posts, snapshots });
+  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
+  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
+
+  yield { phase: 'generating' };
+
+  const startMs = Date.now();
+  let fullText = '';
+  let usage = {};
+  let model = 'gemini-2.5-flash';
+
+  // Inline the stream call here so we forward chunks one-for-one to the
+  // browser. Importing geminiCallStream keeps the SSE-parsing logic in
+  // gemini.js where it can be reused by other streaming callers later.
+  try {
+    for await (const ev of geminiCallStream({
+      system: SYSTEM_PROMPT,
+      user:   buildUserMessage(payload, tone),
+      max_tokens: 6000,
+      temperature: 0.6,
+    })) {
+      if (ev.chunk) {
+        fullText += ev.chunk;
+        yield { chunk: ev.chunk };
+      } else if (ev.done) {
+        usage = ev.usage || {};
+        model = ev.model || model;
+      }
+    }
+  } catch (e) {
+    yield { error: 'generation_failed', message: e.message };
+    return;
+  }
+
+  yield { phase: 'persisting' };
+
+  const brief = parseJsonResponse(fullText);
+  if (!brief) {
+    yield { error: 'parse_failed', raw: fullText.slice(0, 500) };
+    return;
+  }
+
+  const latency_ms = Date.now() - startMs;
+  const tokens_used = (usage.input_tokens || 0) + (usage.output_tokens || 0);
+
+  try {
+    await persist({
+      workspace, brief, intelScore,
+      usage,
+      model,
+      modelUsed: 'gemini',
+      latencyMs: latency_ms,
+      tokensUsed: tokens_used,
+    });
+  } catch (e) {
+    yield { error: 'persist_failed', message: e.message, details: e.body };
+    return;
+  }
+
+  await supabase.insert('usage_log', {
+    workspace_id: workspace.id,
+    run_type: 'intelligence',
+    platform: 'all',
+    records_fetched: (brief.signals?.length || 0) + (brief.actions?.length || 0) + 1,
+    cost_cents: 0,
+    status: 'completed',
+    run_at: new Date().toISOString(),
+  }).catch(e => console.warn('[intelligence/stream] usage_log insert failed:', e.message));
+
+  yield {
+    done: true,
+    summary: {
+      verdict: brief.verdict?.title,
+      actions: brief.actions?.length || 0,
+      signals: brief.signals?.length || 0,
+      intelScore,
+      latency_ms,
+      tokens_used,
+    },
   };
 }

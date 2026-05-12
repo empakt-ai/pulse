@@ -260,6 +260,24 @@ tailwind.config = {
     } catch (_) {}
   })();
 
+  // Unauthenticated visitors never need the splash — they land on the
+  // marketing page, which renders instantly without any data fetches.
+  // Dismiss the splash synchronously *before* it paints if there is no
+  // cached session and the URL has no magic-link hash to exchange.
+  (function () {
+    try {
+      var hasMagic = window.location.hash && window.location.hash.indexOf('access_token') !== -1;
+      var raw = localStorage.getItem('pulse_session');
+      var hasSession = false;
+      if (raw) {
+        try { hasSession = !!(JSON.parse(raw) || {}).access_token; } catch (_) {}
+      }
+      if (!hasMagic && !hasSession) {
+        document.documentElement.setAttribute('data-ready', '1');
+      }
+    } catch (_) {}
+  })();
+
   // Pre-React fail-safe: if anything goes wrong with React / Babel / the
   // network in a way that prevents the in-app dismiss effect from running,
   // force the splash to dismiss after 6 seconds AND show whatever error
@@ -1300,6 +1318,7 @@ const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'b
       <Integrations />
       <Testimonials />
       <Pricing activePlan={activePlan} onSignUp={onSignUp} />
+      <ComparePlans onSignUp={onSignUp} />
       <FAQ />
       <CTA onSignUp={onSignUp} />
       <Footer />
@@ -1315,6 +1334,7 @@ const LandingNav = ({ onSignIn, onSignUp }) => (
         <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
         <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
         <a href="#pricing" className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
+        <a href="#compare" className="hover:text-ink dark:hover:text-paper transition">Compare</a>
         <a href="#faq" className="hover:text-ink dark:hover:text-paper transition">FAQ</a>
       </nav>
       <div className="flex items-center gap-2">
@@ -1356,7 +1376,7 @@ const HeroGradient = ({ onSignUp }) => (
 
         <div className="flex flex-wrap items-center gap-3 mb-12">
           <Btn variant="ink" size="lg" onClick={onSignUp}>
-            Start your 14-day free trial
+            Start your 7-day free trial
             <Icon name="arrowRight" className="w-4 h-4" />
           </Btn>
           <Btn variant="outline" size="lg">
@@ -1623,19 +1643,42 @@ const Testimonials = () => (
 
 const Pricing = ({ activePlan, onSignUp }) => {
   const plans = [
-    { id: 'creator', name: 'Creator', price: 29, blurb: 'For solo creators going pro.',
-      bullets: ['5 platforms (IG, TT, YT, FB, LI)', '1 account per platform', 'Up to 5 competitors tracked', 'Daily morning brief', '7 total account slots'],
-      cta: 'Start free trial', color: 'bg-chalk dark:bg-coalsoft' },
-    { id: 'brand', name: 'Brand', price: 149, blurb: 'For brands with regional handles & teams.',
-      bullets: ['5 platforms', 'Up to 3 accounts per platform', 'Up to 15 competitors tracked', 'Daily brief + weekly competitive report', '20 total account slots'],
-      cta: 'Start free trial', color: 'bg-ink text-paper', featured: true },
-    { id: 'agency', name: 'Agency', price: 599, blurb: 'For agencies running many clients.',
-      bullets: ['5 platforms', 'Unlimited accounts per platform', 'Up to 50 competitors tracked', '20 client workspaces · White-label', 'Priority refresh · Bulk export'],
-      cta: 'Talk to sales', color: 'bg-chalk dark:bg-coalsoft' }
+    { id: 'creator', name: 'Creator', price: 15, blurb: 'For solo creators starting out.',
+      bullets: [
+        '2 workspaces',
+        '5 social accounts total',
+        '5 competitors tracked',
+        '5 platforms (IG, TT, YT, FB, LI)',
+        'Weekly intelligence brief',
+        '7-day free trial — no credit card'
+      ],
+      cta: 'Start free trial', featured: false },
+    { id: 'brand', name: 'Brand', price: 99, blurb: 'For businesses tracking real performance.',
+      bullets: [
+        '3 workspaces',
+        '1 account per platform (7 total)',
+        '10 competitors tracked',
+        'All 7 platforms incl. X & Snapchat',
+        'Daily intelligence brief',
+        'Ad performance dashboard (Meta, TikTok, X)',
+        'Add-ons: +$5/extra account'
+      ],
+      cta: 'Start free trial', featured: true },
+    { id: 'agency', name: 'Agency', price: 449, blurb: 'For agencies managing multiple clients.',
+      bullets: [
+        '20 client workspaces',
+        '5 accounts per workspace (~100 total)',
+        '30 competitors tracked',
+        'All 7 platforms',
+        'Daily brief + alerts + white-label',
+        'Ad performance across all clients',
+        'Add-ons: +$5/extra account'
+      ],
+      cta: 'Talk to sales', featured: false }
   ];
   return (
     <section id="pricing" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
-      <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="14-day free trial on every plan. No credit card required to start." />
+      <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="7-day free trial on Creator & Brand. No credit card required." />
       <div className="grid md:grid-cols-3 gap-5">
         {plans.map(p => {
           const featured = p.id === activePlan;
@@ -1667,6 +1710,115 @@ const Pricing = ({ activePlan, onSignUp }) => {
   );
 };
 
+const ComparePlans = ({ onSignUp }) => {
+  const features = [
+    { category: 'Workspaces & Accounts', rows: [
+      { label: 'Workspaces',         creator: '2',          brand: '3',               agency: '20 client workspaces' },
+      { label: 'Social accounts',    creator: '5 total',    brand: '7 (1 per platform)', agency: '~100 (5 per workspace)' },
+      { label: 'Competitors tracked',creator: '5',          brand: '10',              agency: '30' },
+      { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
+    ]},
+    { category: 'Intelligence', rows: [
+      { label: 'Daily brief',        creator: false,        brand: true,              agency: true },
+      { label: 'Weekly brief',       creator: true,         brand: true,              agency: true },
+      { label: 'Live signal alerts', creator: false,        brand: false,             agency: true },
+      { label: 'Competitor analysis',creator: true,         brand: true,              agency: true },
+      { label: 'AI verdict + signals',creator: true,        brand: true,              agency: true },
+      { label: 'Market context',     creator: false,        brand: true,              agency: true },
+    ]},
+    { category: 'Ad Intelligence', rows: [
+      { label: 'Ad performance dashboard', creator: false,  brand: true,              agency: true },
+      { label: 'Organic vs paid comparison', creator: false,brand: true,              agency: true },
+      { label: 'Cross-platform ad reporting', creator: false, brand: true,            agency: true },
+      { label: 'Per-client ad reporting', creator: false,   brand: false,             agency: true },
+    ]},
+    { category: 'Reports & Export', rows: [
+      { label: 'PDF reports',        creator: false,        brand: true,              agency: true },
+      { label: 'White-label reports',creator: false,        brand: false,             agency: true },
+      { label: 'CSV export',         creator: false,        brand: true,              agency: true },
+      { label: 'Daily email brief',  creator: false,        brand: true,              agency: true },
+    ]},
+    { category: 'Billing', rows: [
+      { label: 'Monthly price',      creator: '$15',        brand: '$99',             agency: '$449' },
+      { label: 'Annual (2 mo free)', creator: '$150/yr',    brand: '$990/yr',         agency: '$4,490/yr' },
+      { label: 'Free trial',         creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
+      { label: 'Add-on accounts',    creator: false,        brand: '+$5/account',     agency: '+$5/account' },
+    ]},
+  ];
+
+  const Check = () => <Icon name="check" className="w-4 h-4 text-ultra dark:text-lime mx-auto" stroke={2.5} />;
+  const Cross = () => <span className="text-mute dark:text-muteDark text-[13px] mx-auto block text-center">—</span>;
+  const Val = ({ v }) => {
+    if (v === true) return <Check />;
+    if (v === false) return <Cross />;
+    return <span className="text-[12.5px] font-mono text-center block">{v}</span>;
+  };
+
+  return (
+    <section id="compare" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
+      <SectionHead
+        eyebrow="Compare plans"
+        title="Everything, side by side."
+        sub="Pick the plan that fits your stage. Upgrade or downgrade anytime."
+      />
+      <div className="overflow-x-auto rounded-2xl border border-line dark:border-lineDark">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-line dark:border-lineDark bg-chalk dark:bg-coalsoft">
+              <th className="px-5 py-4 text-left font-medium text-mute dark:text-muteDark w-[40%]">Feature</th>
+              {['Creator', 'Brand', 'Agency'].map((p, i) => (
+                <th key={p} className={cls('px-4 py-4 text-center', i === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
+                  <div className="font-display text-[16px] font-semibold tracking-tight">{p}</div>
+                  <div className={cls('font-mono text-[13px] mt-0.5', i === 1 ? 'text-ultra' : 'text-mute dark:text-muteDark')}>
+                    {i === 0 ? '$15/mo' : i === 1 ? '$99/mo' : '$449/mo'}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {features.map((group, gi) => (
+              <React.Fragment key={gi}>
+                <tr className="bg-ink/[0.02] dark:bg-paper/[0.02]">
+                  <td colSpan={4} className="px-5 py-2.5 text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark font-semibold">
+                    {group.category}
+                  </td>
+                </tr>
+                {group.rows.map((row, ri) => (
+                  <tr key={ri} className="border-t border-line/50 dark:border-lineDark/50 hover:bg-ink/[0.015] dark:hover:bg-paper/[0.015] transition">
+                    <td className="px-5 py-3 text-[13px]">{row.label}</td>
+                    {[row.creator, row.brand, row.agency].map((v, ci) => (
+                      <td key={ci} className={cls('px-4 py-3 text-center', ci === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
+                        <Val v={v} />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </React.Fragment>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-line dark:border-lineDark bg-chalk dark:bg-coalsoft">
+              <td className="px-5 py-4" />
+              {[
+                { label: 'Start free trial', variant: 'outline' },
+                { label: 'Start free trial', variant: 'ink' },
+                { label: 'Talk to sales', variant: 'outline' },
+              ].map((btn, i) => (
+                <td key={i} className={cls('px-4 py-4 text-center', i === 1 && 'bg-ultra/5 dark:bg-ultra/10')}>
+                  <Btn variant={btn.variant} size="sm" onClick={onSignUp} className="w-full justify-center">
+                    {btn.label}
+                  </Btn>
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </section>
+  );
+};
+
 const FAQ = () => {
   const [open, setOpen] = React.useState(0);
   const qs = [
@@ -1674,7 +1826,8 @@ const FAQ = () => {
     { q: 'When does the brief arrive?', a: 'Every morning at 6 AM in your local time zone. You can also enable a same-time email summary. The dashboard updates automatically when the sync completes.' },
     { q: 'Can I track competitors?', a: 'Yes. Creator tracks up to 5, Brand up to 15, Agency up to 50. You add a public handle and Pulse runs the same analysis as it does for your own accounts.' },
     { q: 'What about TikTok / Instagram API limits?', a: 'We use the official Business / Creator APIs. Pulse handles rate-limiting and retry logic so you never see "data delayed" messages.' },
-    { q: 'Is there a free trial?', a: '14 days on every plan, no credit card required. You\'ll get the full feature set — including the daily brief — for the full trial.' },
+    { q: 'Is there a free trial?', a: '7 days on Creator & Brand, no credit card required. You\'ll get the full feature set — including the daily brief — for the full trial.' },
+    { q: 'What happens after the trial?', a: 'Your data goes read-only — nothing is deleted. You can upgrade at any time and pick up exactly where you left off. We hold your data for 30 days before clearing inactive trial accounts.' },
     { q: 'Can I cancel anytime?', a: 'Yes, from the Billing page in Settings. No phone calls, no retention specialists, no friction. Your data is exported automatically.' }
   ];
   return (
@@ -1704,7 +1857,7 @@ const CTA = ({ onSignUp }) => (
         <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mb-5">Tomorrow morning, you'll already know.</h2>
         <p className="text-[16px] text-paper/70 mb-7">Get your first Pulse brief in less than 24 hours.</p>
         <div className="flex flex-wrap gap-3">
-          <Btn variant="lime" size="lg" onClick={onSignUp}>Start free 14-day trial <Icon name="arrowRight" className="w-4 h-4" /></Btn>
+          <Btn variant="lime" size="lg" onClick={onSignUp}>Start free 7-day trial <Icon name="arrowRight" className="w-4 h-4" /></Btn>
           <Btn variant="outline" size="lg" className="border-paper/20 text-paper">Book a 15-min demo</Btn>
         </div>
       </div>
@@ -2043,7 +2196,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
               {step === 'signin' ? 'Sign in to Pulse.' : 'Create your account.'}
             </h1>
             <p className="text-[14px] text-mute dark:text-muteDark mb-8">
-              {step === 'signin' ? 'Pick up where you left off.' : '14-day free trial. No credit card required.'}
+              {step === 'signin' ? 'Pick up where you left off.' : '7-day free trial. No credit card required.'}
             </p>
 
             {sent ? (
@@ -2894,7 +3047,7 @@ const BriefScreen = ({ activePlatform, setTab }) => {
             <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">
               {D.verdict?.title
                 || (window.__pulseBriefGenerating
-                      ? 'Drafting your first brief.'
+                      ? (window.__pulseBriefPartial?.title || 'Drafting your first brief…')
                       : 'Your first brief is generating.')}
             </h2>
             {verdictChips.length > 0 && (
@@ -2912,7 +3065,9 @@ const BriefScreen = ({ activePlatform, setTab }) => {
                 ))}
               </div>
             )}
-            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
+            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body
+              || (window.__pulseBriefGenerating && window.__pulseBriefPartial?.body)
+              || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
             {(D.todayActions || []).length > 0 && (
               <div className="grid sm:grid-cols-3 gap-2.5">
                 {D.todayActions.map(a => (
@@ -6600,9 +6755,9 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                   {tierLabel}
                 </div>
                 <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
-                  {tier === 'creator' ? '$29/month · 7 platforms · 5 competitors · 30 briefs/month'
-                   : tier === 'brand'  ? '$149/month · 21 accounts · 15 competitors · 120 briefs/month'
-                                       : '$599/month · Unlimited accounts · 50 competitors · 600 briefs/month'}
+                  {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · weekly brief'
+                   : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts · 10 competitors · daily brief + ads'
+                                       : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · white-label + ads'}
                 </p>
                 {usage && (
                   <div className="pt-4 border-t border-paper/10">
@@ -6994,6 +7149,7 @@ function App() {
   //   • not an agency (the effect above already covers them)
   const firstBriefFiredRef = React.useRef(false);
   const [briefGenerating, setBriefGenerating] = React.useState(false);
+  const [briefPartial, setBriefPartial] = React.useState({ title: '', body: '' });
   React.useEffect(() => {
     if (route !== 'app' || !briefData) return;
     if (firstBriefFiredRef.current) return;
@@ -7007,20 +7163,82 @@ function App() {
     if (isAgency) return; // covered by the agency effect above
     firstBriefFiredRef.current = true;
     setBriefGenerating(true);
+    setBriefPartial({ title: '', body: '' });
     let cancelled = false;
-    api('/intelligence/generate', { method: 'POST' })
-      .then(r => {
-        if (cancelled) return;
-        if (r?.ok) refreshBrief();
-      })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setBriefGenerating(false); });
+
+    // Stream the brief over SSE so the verdict title appears in ~1s instead
+    // of waiting for the full 5-10s Gemini round-trip. We accumulate the raw
+    // JSON text and regex-extract verdict.title/body as they materialise —
+    // the model emits keys in a stable order under responseMimeType=json,
+    // so partial extraction is reliable in practice. After `done` we call
+    // refreshBrief() to swap in the fully-parsed verdict + actions + signals.
+    (async () => {
+      try {
+        const token = window.__pulseToken;
+        const wsId = (() => { try { return localStorage.getItem('pulse:workspaceId') || null; } catch { return null; } })();
+        const res = await fetch(`${API_BASE}/api/intelligence/stream`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...(wsId ? { 'x-workspace-id': wsId } : {}),
+          },
+        });
+        if (!res.ok || !res.body) {
+          // Fallback to non-streaming endpoint if stream isn't available
+          const r = await api('/intelligence/generate', { method: 'POST' });
+          if (!cancelled && r?.ok) refreshBrief();
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let acc = '';
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const msg = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            for (const line of msg.split('\n')) {
+              if (!line.startsWith('data:')) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              let ev = null;
+              try { ev = JSON.parse(payload); } catch { continue; }
+              if (ev.chunk) {
+                acc += ev.chunk;
+                const tMatch = acc.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*?)(?:"|$)/);
+                const bMatch = acc.match(/"body"\s*:\s*"((?:[^"\\]|\\.)*?)(?:"|$)/);
+                const unescape = (s) => s.replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\\\/g, '\\');
+                if (!cancelled) {
+                  setBriefPartial({
+                    title: tMatch ? unescape(tMatch[1]) : '',
+                    body:  bMatch ? unescape(bMatch[1]) : '',
+                  });
+                }
+              } else if (ev.done) {
+                if (!cancelled) refreshBrief();
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Silent — generating state clears in finally
+      } finally {
+        if (!cancelled) setBriefGenerating(false);
+      }
+    })();
+
     return () => { cancelled = true; };
   }, [route, briefData, refreshBrief]);
 
-  // Expose generating state via window so screens that render before
-  // briefData hydrates can read it without prop-drilling.
+  // Expose generating state + partial verdict via window so screens that
+  // render before briefData hydrates can read them without prop-drilling.
   React.useEffect(() => { window.__pulseBriefGenerating = briefGenerating; }, [briefGenerating]);
+  React.useEffect(() => { window.__pulseBriefPartial = briefPartial; }, [briefPartial]);
 
   // Dismiss the initial splash once we have something real to show.
   // "Ready" means: the user is past the loading state AND either we have
