@@ -1310,7 +1310,7 @@ const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'b
 const LandingNav = ({ onSignIn, onSignUp }) => (
   <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
     <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-      <PulseLogo />
+      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="PULSE — go to homepage"><PulseLogo /></a>
       <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
         <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
         <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
@@ -1703,7 +1703,7 @@ const Footer = () => (
     <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12">
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-2">
-          <PulseLogo />
+          <a href="/" className="inline-block hover:opacity-80 transition" aria-label="PULSE — go to homepage"><PulseLogo /></a>
           <p className="text-[13.5px] text-mute dark:text-muteDark mt-4 max-w-xs">Daily social intelligence for serious creators, brands and agencies.</p>
         </div>
         {[
