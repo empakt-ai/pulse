@@ -766,7 +766,7 @@ export async function generateBrief(workspace) {
     system: SYSTEM_PROMPT,
     user:   buildUserMessage(payload),
     model:  workspace.ai_model || 'gemini',
-    max_tokens: 3000,
+    max_tokens: 6000,
     temperature: 0.6,
   });
 

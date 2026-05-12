@@ -114,5 +114,38 @@ export default async function handler(req, res) {
     }
   }
 
+  // ── DELETE: remove a workspace owned by the caller ─────────────────────
+  // Cascade-deletes all child rows (accounts, posts, signals, competitors,
+  // reports, etc.) via the ON DELETE CASCADE foreign keys defined in the
+  // original schema. Refuses to delete the user's last workspace — they
+  // need at least one to keep the app functional.
+  if (req.method === 'DELETE') {
+    const targetId = req.query?.id;
+    if (!targetId) return json(res, 400, { error: 'id is required' });
+
+    // Only owner of the workspace can delete it.
+    const target = await supabase.select('workspaces', {
+      select: 'id,owner_id,name',
+      eq: { id: targetId, owner_id: auth.user.id },
+      single: true,
+    }).catch(() => null);
+    if (!target) return json(res, 404, { error: 'Workspace not found or not yours' });
+
+    // Refuse if this would leave the user with zero workspaces.
+    const all = await supabase.select('workspaces', {
+      select: 'id', eq: { owner_id: auth.user.id },
+    }).catch(() => []);
+    if ((all || []).length <= 1) {
+      return json(res, 400, { error: 'Cannot delete your last workspace — create another one first.' });
+    }
+
+    try {
+      await supabase.delete('workspaces', { eq: { id: targetId } });
+      return json(res, 200, { ok: true, deleted: targetId });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+  }
+
   return json(res, 405, { error: 'Method not allowed' });
 }

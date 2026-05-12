@@ -53,8 +53,8 @@ export default async function handler(req, res) {
   // fallback, so a transient failure from one provider doesn't poison
   // the comparison — we report both regardless.
   const [claudeResult, geminiResult] = await Promise.allSettled([
-    generateIntelligence({ system, user, model: 'claude', max_tokens: 3000, temperature: 0.6 }),
-    generateIntelligence({ system, user, model: 'gemini', max_tokens: 3000, temperature: 0.6 }),
+    generateIntelligence({ system, user, model: 'claude', max_tokens: 6000, temperature: 0.6 }),
+    generateIntelligence({ system, user, model: 'gemini', max_tokens: 6000, temperature: 0.6 }),
   ]);
 
   // Shape both into the side-by-side payload the SPA expects.

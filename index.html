@@ -6018,14 +6018,40 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                         {(w.tier || 'creator')} · created {w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}
                       </div>
                     </div>
-                    {!isActive && (
-                      <button
-                        onClick={() => window.switchWorkspace(w.id)}
-                        className="text-[12px] font-medium text-ultra dark:text-lime hover:underline px-2 py-1"
-                      >
-                        Switch →
-                      </button>
-                    )}
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {!isActive && (
+                        <button
+                          onClick={() => window.switchWorkspace(w.id)}
+                          className="text-[12px] font-medium text-ultra dark:text-lime hover:underline px-2 py-1"
+                        >
+                          Switch →
+                        </button>
+                      )}
+                      {workspaces.length > 1 && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Delete "${w.name || 'this workspace'}" permanently? This removes all its accounts, posts, signals, and reports.`)) return;
+                            try {
+                              await api(`/workspaces?id=${encodeURIComponent(w.id)}`, { method: 'DELETE' });
+                              showToast('Workspace deleted ✓');
+                              // If we deleted the active one, switch to the first remaining.
+                              if (isActive) {
+                                const remaining = workspaces.find(x => x.id !== w.id);
+                                if (remaining) window.switchWorkspace(remaining.id);
+                              } else {
+                                setWorkspaces(prev => prev.filter(x => x.id !== w.id));
+                              }
+                            } catch (e) {
+                              showToast(e.message || 'Delete failed', 'err');
+                            }
+                          }}
+                          className="text-[12px] font-medium text-mute dark:text-muteDark hover:text-magenta px-2 py-1"
+                          title="Delete workspace"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
