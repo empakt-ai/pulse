@@ -1685,10 +1685,13 @@ const COMPARE_GROUPS = [
 const ComparePlans = ({ onSignUp }) => {
   const Val = ({ v, featured }) => {
     if (v === true) {
+      // Solid bubble with a dark ink check — keeps the check legible
+      // regardless of mode. The pale lime/15 tint that used to back the
+      // check was so close to the icon color that the glyph disappeared.
       return (
-        <span className={cls('inline-flex items-center justify-center w-6 h-6 rounded-full',
-          featured ? 'bg-lime/25 text-limeDeep dark:text-lime' : 'bg-ultra/10 text-ultra dark:bg-ultra/15')}>
-          <Icon name="check" className="w-3.5 h-3.5" stroke={2.5} />
+        <span className={cls('inline-flex items-center justify-center w-6 h-6 rounded-full text-ink',
+          featured ? 'bg-lime' : 'bg-ultra/90 text-paper')}>
+          <Icon name="check" className="w-3.5 h-3.5" stroke={3} />
         </span>
       );
     }
