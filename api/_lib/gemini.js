@@ -22,7 +22,11 @@ function buildBody({ system, user, max_tokens, temperature, json }) {
     contents: [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: {
       temperature: temperature ?? 0.6,
-      maxOutputTokens: max_tokens ?? 3000,
+      maxOutputTokens: max_tokens ?? 6000,
+      // Gemini 2.5 Flash spends "thinking" tokens against maxOutputTokens
+      // before emitting visible content. For a JSON-mode brief we don't
+      // need that — disable thinking so the budget goes to actual output.
+      thinkingConfig: { thinkingBudget: 0 },
     },
   };
   if (system) {
