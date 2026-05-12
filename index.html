@@ -142,11 +142,13 @@ tailwind.config = {
 </style>
 
 <!-- React + Babel -->
-<!-- Production React (~12KB) is roughly 10x smaller than the dev build —
-     parses + executes that much faster before Babel kicks in. Babel is
-     loaded async so it can fetch in parallel with React. -->
-<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<!-- React dev builds — slower to parse than production but they show full
+     error messages in the console when components throw, which has saved
+     us multiple times during silent-mount issues. Babel is loaded async
+     so it can fetch in parallel with React.
+     TODO: swap back to production builds once the app is stable. -->
+<script crossorigin="anonymous" src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
+<script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
 <script async crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
 
 <style>
@@ -251,14 +253,36 @@ tailwind.config = {
 
   // Pre-React fail-safe: if anything goes wrong with React / Babel / the
   // network in a way that prevents the in-app dismiss effect from running,
-  // force the splash to dismiss after 6 seconds. Better to show a possibly-
-  // broken page than to trap the user behind a splash they can't escape.
-  // React's dismiss effect (running with a 4s budget of its own) will fire
-  // earlier on healthy loads so this only ever kicks in as a true fallback.
+  // force the splash to dismiss after 6 seconds AND show whatever error
+  // info we have collected inside the splash itself so the user isn't
+  // staring at a blank screen wondering what happened.
+  var __pulse_errors = [];
+  window.addEventListener('error', function (e) {
+    __pulse_errors.push((e.message || 'error') + (e.filename ? ' (' + e.filename.split('/').pop() + ':' + e.lineno + ')' : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    __pulse_errors.push('promise: ' + (e.reason?.message || String(e.reason)));
+  });
   setTimeout(function () {
-    if (!document.documentElement.getAttribute('data-ready')) {
-      document.documentElement.setAttribute('data-ready', '1');
-      console.warn('[pulse] splash dismissed by pre-React fallback — React may have failed to mount');
+    var root = document.getElementById('root');
+    var mounted = root && root.children.length > 0;
+    if (mounted) return;
+
+    // React hasn't mounted. Repurpose the splash into a diagnostic screen
+    // rather than fading out into nothing. The user gets actionable info
+    // and a reset button.
+    var splash = document.getElementById('pulse-splash');
+    if (!splash) return;
+    document.documentElement.removeAttribute('data-ready'); // keep splash visible
+    var inner = document.getElementById('pulse-splash-inner');
+    if (inner) {
+      var details = __pulse_errors.length
+        ? __pulse_errors.slice(0, 3).map(function (s) { return s.slice(0, 140); }).join('\n')
+        : 'No errors captured — React or Babel may have failed to load.';
+      inner.innerHTML =
+        '<div id="pulse-splash-logo">Couldn\'t start Pulse</div>' +
+        '<div style="font-family:Geist Mono,ui-monospace,monospace;font-size:11px;color:rgba(10,10,11,0.6);max-width:520px;white-space:pre-wrap;text-align:left;padding:12px;background:rgba(10,10,11,0.04);border-radius:10px;">' + details.replace(/[<>&]/g, function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) + '</div>' +
+        '<button onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}location.reload()" style="margin-top:8px;padding:9px 18px;border-radius:10px;background:#0A0A0B;color:#F5F1E8;border:none;font-family:Geist,system-ui,sans-serif;font-size:13px;cursor:pointer;">Reset & retry</button>';
     }
   }, 6000);
 
