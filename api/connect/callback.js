@@ -21,6 +21,7 @@
 
 import { supabase } from '../_lib/supabase.js';
 import { exchangeCode, getOwnChannel, verifyOAuthState } from '../_lib/youtube.js';
+import { isAvailable, claimHandle } from '../_lib/handle-registry.js';
 
 function esc(s) {
   return String(s || '').replace(/[<>&"']/g, c =>
@@ -68,6 +69,40 @@ async function handleGoogleCallback(req, res, code, state) {
 
   const expiresAt = Math.floor(Date.now() / 1000) + Number(tokens.expires_in || 3600);
 
+  // Reject the connect if this YouTube handle is already bound to a
+  // different workspace in the global handle registry. We do this before
+  // touching connected_accounts so a failed claim doesn't leave a stub
+  // row behind.
+  const handleForRegistry = channel.snippet?.customUrl
+    || channel.snippet?.title
+    || channel.id;
+  try {
+    const check = await isAvailable('youtube', handleForRegistry, verified.workspaceId);
+    if (!check.available) {
+      return renderError(res, 'Channel already connected',
+        check.reason === 'trial_locked'
+          ? 'This YouTube channel was used by a different workspace whose trial expired. Contact support if it\'s yours.'
+          : 'This YouTube channel is connected to another PULSE workspace. Disconnect it there first.');
+    }
+  } catch (_) { /* registry check failed — fall through; insert below will still try */ }
+
+  // Look up the workspace tier for the registry record so we know which
+  // plan was responsible for the claim (useful for billing audits).
+  let wsTier = 'creator';
+  let wsIsTrial = false;
+  try {
+    const wsRows = await supabase.select('workspaces', {
+      select: 'tier,trial_ends_at,trial_converted_at',
+      eq: { id: verified.workspaceId }, limit: 1,
+    });
+    const ws = wsRows?.[0];
+    if (ws) {
+      wsTier = ws.tier || 'creator';
+      const endsAt = ws.trial_ends_at ? new Date(ws.trial_ends_at).getTime() : null;
+      wsIsTrial = !!(endsAt && Date.now() < endsAt && !ws.trial_converted_at);
+    }
+  } catch (_) {}
+
   // Upsert into connected_accounts. We use the YouTube channel ID as
   // zernio_account_id (it's the unique external identifier we have for this
   // account, even though there's no Zernio profile involved for YT).
@@ -106,6 +141,18 @@ async function handleGoogleCallback(req, res, code, state) {
     }
   } catch (e) {
     return renderError(res, 'Could not save your channel', e.message);
+  }
+
+  // Claim the handle in the global registry. Best-effort — connect already
+  // succeeded as far as the user is concerned; a registry miss can be
+  // reconciled by a later sweep without user impact.
+  try {
+    await claimHandle('youtube', handleForRegistry, {
+      workspaceId: verified.workspaceId,
+      tier: wsIsTrial ? 'trial' : wsTier,
+    });
+  } catch (e) {
+    console.warn('[connect/callback] claimHandle failed:', e.message);
   }
 
   // Fall through to success HTML below

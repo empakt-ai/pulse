@@ -27,6 +27,7 @@ import { renderReportHTML } from '../_lib/report-template.js';
 import { renderPdfFromHtml } from '../_lib/pdf.js';
 import { uploadFile } from '../_lib/storage.js';
 import { sendEmail } from '../_lib/email.js';
+import { releaseAllForWorkspace } from '../_lib/handle-registry.js';
 
 // Returns { hour: 0..23, dow: 0..6 (Sun..Sat) } for the workspace's local
 // timezone using the Intl API. Falls back to UTC on any failure.
@@ -237,6 +238,45 @@ async function runWorkspace(workspace) {
   return result;
 }
 
+// Trial sweep — finds workspaces whose 7-day window has elapsed without
+// conversion, flips trial_locked=true, and releases their handles from
+// the registry. Run inside the same hourly tick as everything else;
+// idempotent and cheap (skips already-locked rows). Returns a summary.
+async function runTrialSweep() {
+  const candidates = await supabase.select('workspaces', {
+    select: 'id,name,trial_ends_at,trial_converted_at,trial_locked',
+  }).catch(() => []);
+
+  const nowMs = Date.now();
+  const expired = (candidates || []).filter(w => {
+    if (w.trial_locked) return false;          // already locked
+    if (w.trial_converted_at) return false;    // converted to paid
+    if (!w.trial_ends_at) return false;        // no trial state (legacy)
+    return new Date(w.trial_ends_at).getTime() < nowMs;
+  });
+
+  const swept = [];
+  for (const w of expired) {
+    try {
+      await supabase.update('workspaces',
+        { trial_locked: true },
+        { eq: { id: w.id } }
+      );
+      // Soft-disconnect all accounts so syncs stop running against locked
+      // trials. The user can reactivate them on upgrade.
+      await supabase.update('connected_accounts',
+        { is_active: false },
+        { eq: { workspace_id: w.id } }
+      ).catch(() => {});
+      const released = await releaseAllForWorkspace(w.id, { reason: 'trial_expired' });
+      swept.push({ workspace_id: w.id, name: w.name, handles_released: released });
+    } catch (e) {
+      swept.push({ workspace_id: w.id, error: e.message });
+    }
+  }
+  return { scanned: candidates?.length || 0, expired: expired.length, swept };
+}
+
 export default async function handler(req, res) {
   // Auth: CRON_SECRET via Bearer header (Vercel Cron injects this).
   const secret = process.env.CRON_SECRET;
@@ -245,14 +285,22 @@ export default async function handler(req, res) {
     return json(res, 401, { error: 'Unauthorized' });
   }
 
+  // Trial sweep runs first — locking expired trials before the per-
+  // workspace fan-out means a workspace that just expired won't get one
+  // more brief generated on its way out.
+  let trial_sweep = null;
+  try { trial_sweep = await runTrialSweep(); } catch (e) { trial_sweep = { error: e.message }; }
+
   const workspaces = await supabase.select('workspaces', {
-    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email',
+    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email,trial_locked',
   }).catch(() => []);
 
   // Sequential to stay under the 60s function budget. With 50ish workspaces
   // and most no-op at any given hour, we're well under.
   const results = [];
   for (const ws of (workspaces || [])) {
+    // Skip locked trials — they're effectively dormant until upgrade.
+    if (ws.trial_locked) { results.push({ workspace_id: ws.id, skipped: true, reason: 'trial_locked' }); continue; }
     try {
       results.push(await runWorkspace(ws));
     } catch (e) {
@@ -264,6 +312,7 @@ export default async function handler(req, res) {
     ran_at: new Date().toISOString(),
     utc_hour: new Date().getUTCHours(),
     workspaces_scanned: workspaces.length,
+    trial_sweep,
     results: results.filter(r => !r.skipped),
   });
 }

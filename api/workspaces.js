@@ -40,11 +40,15 @@ export default async function handler(req, res) {
   // Auto-create on first hit if no workspaces exist yet (defensive — the
   // Supabase signup trigger should have done this already).
   if (!workspace && (!auth.workspaces || !auth.workspaces.length)) {
+    const now = new Date();
     const inserted = await supabase.insert('workspaces', {
       owner_id: auth.user.id,
       name: auth.user.email?.split('@')[0] || 'My Workspace',
       tier: 'creator',
       ai_model: 'gemini',
+      trial_started_at: now.toISOString(),
+      trial_ends_at: new Date(now.getTime() + 7 * 86400000).toISOString(),
+      trial_intent_tier: 'creator',
     });
     workspace = inserted?.[0] || null;
     if (!workspace) return json(res, 500, { error: 'Workspace not found and could not be created' });
@@ -69,15 +73,26 @@ export default async function handler(req, res) {
     const name = (body?.name || '').trim();
     if (!name) return json(res, 400, { error: 'name is required' });
 
+    // Every new workspace enters a 7-day trial. tier here is the user's
+    // *intent* — what they plan to upgrade to. We persist it in both
+    // tier (so all existing tier-checks work) and trial_intent_tier (so
+    // we know what the trial was anchored to even if the user toggles
+    // tier later).
+    const intentTier = body?.tier || 'creator';
+    const now = new Date();
+    const endsAt = new Date(now.getTime() + 7 * 86400000);
     try {
       const inserted = await supabase.insert('workspaces', {
         owner_id: auth.user.id,
         name,
-        tier: body?.tier || 'creator',
+        tier: intentTier,
         user_type: body?.user_type || 'creator',
         category: body?.category || null,
         country: body?.country || null,
         ai_model: body?.ai_model || 'gemini',
+        trial_started_at: now.toISOString(),
+        trial_ends_at: endsAt.toISOString(),
+        trial_intent_tier: intentTier,
       });
       return json(res, 200, { workspace: inserted?.[0] || null });
     } catch (e) {

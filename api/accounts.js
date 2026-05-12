@@ -15,6 +15,7 @@
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { zernio, extractFollowers } from './_lib/zernio.js';
+import { claimHandle, releaseHandle, isAvailable } from './_lib/handle-registry.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -91,13 +92,56 @@ export default async function handler(req, res) {
     }).catch(() => []);
     const existingIds = new Set((existing || []).map(r => r.zernio_account_id));
 
-    if (rows.length) {
+    // Filter the rows we'd insert against the handle registry. Rows
+    // that are taken by another workspace are dropped from the insert
+    // and reported separately in the response so the UI can warn.
+    const rejected = [];
+    const claimableRows = [];
+    const tierForClaim = (ws.tier || 'creator');
+    for (const r of rows) {
+      // No handle (e.g. Zernio returned account_id only) — skip the
+      // claim check, treat as connectable. Downstream features will
+      // simply lack a handle-based competitor view.
+      if (!r.platform_username) { claimableRows.push(r); continue; }
       try {
-        await supabase.upsert('connected_accounts', rows, {
+        const check = await isAvailable(r.platform, r.platform_username, ws.id);
+        if (!check.available) {
+          rejected.push({
+            platform: r.platform,
+            handle: r.platform_username,
+            reason: check.reason,
+          });
+          continue;
+        }
+        claimableRows.push(r);
+      } catch (e) {
+        rejected.push({ platform: r.platform, handle: r.platform_username, reason: 'check_failed', error: e.message });
+      }
+    }
+
+    if (claimableRows.length) {
+      try {
+        await supabase.upsert('connected_accounts', claimableRows, {
           onConflict: 'workspace_id,zernio_account_id',
         });
       } catch (e) {
         return json(res, 500, { error: `DB upsert failed: ${e.message}` });
+      }
+
+      // Claim the handle for each row that made it in. We swallow per-row
+      // errors so a registry hiccup doesn't fail the whole sync — the
+      // account is already in connected_accounts; the registry can be
+      // reconciled by a later sweep if needed.
+      for (const r of claimableRows) {
+        if (!r.platform_username) continue;
+        try {
+          await claimHandle(r.platform, r.platform_username, {
+            workspaceId: ws.id,
+            tier: ws.trial_active ? 'trial' : tierForClaim,
+          });
+        } catch (e) {
+          console.warn(`[accounts] claimHandle failed for ${r.platform}/${r.platform_username}:`, e.message);
+        }
       }
     }
 
@@ -112,9 +156,10 @@ export default async function handler(req, res) {
       .map(a => ({ platform: a.platform, handle: a.platform_username, id: a.id }));
 
     return json(res, 200, {
-      synced: rows.length,
+      synced: claimableRows.length,
       accounts: accounts || [],
       new_accounts,
+      rejected: rejected.length ? rejected : undefined,
       analytics_addon_required: followerResult.addonRequired || false,
     });
   }
@@ -153,6 +198,20 @@ export default async function handler(req, res) {
     try {
       const updated = await supabase.update('connected_accounts',
         { is_active: false }, { eq: filter });
+
+      // Release the handle from the global registry so the user (or
+      // anyone else) can re-bind it later. permanent:true nulls the
+      // workspace_id binding — this is a user-initiated disconnect, not
+      // a trial expiry, so we fully free the handle.
+      for (const acct of (targets || [])) {
+        if (!acct.platform_username) continue;
+        try {
+          await releaseHandle(acct.platform, acct.platform_username, {
+            permanent: true, reason: 'user_disconnect',
+          });
+        } catch (_) { /* best-effort */ }
+      }
+
       return json(res, 200, {
         ok: true,
         disconnected: updated?.length || 0,

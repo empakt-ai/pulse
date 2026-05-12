@@ -41,7 +41,49 @@ export async function authenticate(req) {
   }
   if (!workspace) workspace = owned[0] || null;
 
+  // Derive trial state on every request so downstream handlers can gate
+  // features without re-querying. Three computed flags:
+  //   trial_active  — within the 7-day window, never converted
+  //   trial_locked  — past the window, never converted (read-only paywall)
+  //   trial_days_left — UI banner copy
+  // We attach them to the workspace object in-memory only; the persisted
+  // `trial_locked` boolean column is set by the trial-sweep cron.
+  if (workspace) attachTrialState(workspace);
+  for (const w of owned) attachTrialState(w);
+
   return { user, workspace, token, workspaces: owned };
+}
+
+// Compute and attach trial flags to a workspace row. Idempotent and
+// dependency-free — pure function over the row's own columns + now().
+function attachTrialState(w) {
+  if (!w) return;
+  const now = Date.now();
+  const endsAt = w.trial_ends_at ? new Date(w.trial_ends_at).getTime() : null;
+  const converted = !!w.trial_converted_at;
+
+  // If a workspace has no trial_started_at at all (pre-migration row,
+  // edge case), treat it as already converted so existing users don't
+  // get surprised by a lockout.
+  if (!w.trial_started_at || converted) {
+    w.trial_active = false;
+    w.trial_locked = false;
+    w.trial_days_left = null;
+    return;
+  }
+
+  if (endsAt && now < endsAt) {
+    w.trial_active = true;
+    w.trial_locked = false;
+    w.trial_days_left = Math.max(0, Math.ceil((endsAt - now) / 86400000));
+  } else {
+    // Trial window has passed without conversion → locked. Persisted
+    // `trial_locked` column eventually catches up via the sweep cron;
+    // we honour the computed value immediately either way.
+    w.trial_active = false;
+    w.trial_locked = true;
+    w.trial_days_left = 0;
+  }
 }
 
 // Helper to send JSON consistently
