@@ -3786,11 +3786,136 @@ const ContentScreen = ({ activePlatform }) => {
           </div>
         </div>
       )}
+
+      {/* ── Top Competitor Content ──────────────────────────────────────── */}
+      <CompetitorTopContent activePlatform={activePlatform} />
     </div>
   );
 };
 
-Object.assign(window, { ContentScreen });
+// Top-performing competitor posts, sorted by views, with pattern badges.
+// Lazy-loads on mount and quietly hides itself if the workspace has no
+// competitors connected yet.
+const CompetitorTopContent = ({ activePlatform }) => {
+  const [posts, setPosts] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const q = activePlatform && activePlatform !== 'all' ? `&platform=${activePlatform}` : '';
+    api(`/competitors?mode=top-content&limit=20${q}`)
+      .then(r => { if (!cancelled) setPosts(r.posts || []); })
+      .catch(() => { if (!cancelled) setPosts([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activePlatform]);
+
+  if (loading) return null;
+  if (!posts || posts.length === 0) return null;
+
+  // Format big numbers compactly. 32,600,000 → 32.6M, 182,400 → 182K.
+  const fmt = (n) => {
+    if (n == null) return '—';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  };
+
+  const patternBadgeClass = (tone) => {
+    switch (tone) {
+      case 'magenta': return 'bg-magenta/15 text-magenta border-magenta/30';
+      case 'ultra':   return 'bg-ultra/15 text-ultra border-ultra/30';
+      case 'lime':    return 'bg-lime/25 text-limeDeep dark:text-lime border-lime/30';
+      case 'amber':   return 'bg-amber/15 text-amber border-amber/30';
+      default:        return 'bg-ink/5 dark:bg-paper/5 text-mute dark:text-muteDark border-line dark:border-lineDark';
+    }
+  };
+
+  return (
+    <div className="mt-10">
+      <SectionHead
+        eyebrow="Benchmark"
+        title="Top competitor content"
+        sub="What's working for the brands you track — and the hook formula behind each one."
+        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> {posts.length} post{posts.length === 1 ? '' : 's'}</span>}
+      />
+
+      <Card className="overflow-hidden p-0">
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark bg-ink/5 dark:bg-paper/5 border-b border-line dark:border-lineDark">
+                <th className="px-4 py-3 font-medium">Brand</th>
+                <th className="px-4 py-3 font-medium">Platform</th>
+                <th className="px-4 py-3 font-medium">Caption</th>
+                <th className="px-4 py-3 font-medium text-right">Views</th>
+                <th className="px-4 py-3 font-medium text-right">Likes</th>
+                <th className="px-4 py-3 font-medium">Pattern</th>
+              </tr>
+            </thead>
+            <tbody>
+              {posts.map(p => (
+                <tr key={p.id} className="border-b border-line dark:border-lineDark last:border-b-0 hover:bg-ink/[0.02] dark:hover:bg-paper/[0.02] transition">
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
+                        <Plat p={p.platform} className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{p.competitor.display_name}</div>
+                        <div className="text-[11px] font-mono text-mute dark:text-muteDark truncate">@{p.competitor.handle}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 align-top text-[12px] text-mute dark:text-muteDark whitespace-nowrap">{platformLabel[p.platform] || p.platform}</td>
+                  <td className="px-4 py-3 align-top max-w-[340px]">
+                    <div className="text-[12.5px] leading-relaxed line-clamp-2">{p.caption_excerpt || <span className="text-mute dark:text-muteDark italic">No caption</span>}</div>
+                  </td>
+                  <td className="px-4 py-3 align-top text-right font-mono font-semibold">{fmt(p.views)}</td>
+                  <td className="px-4 py-3 align-top text-right font-mono">{fmt(p.likes)}</td>
+                  <td className="px-4 py-3 align-top">
+                    <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-mono', patternBadgeClass(p.pattern.tone))}>
+                      {p.pattern.label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden">
+          {posts.map(p => (
+            <div key={p.id} className="px-4 py-3 border-b border-line dark:border-lineDark last:border-b-0">
+              <div className="flex items-start justify-between gap-3 mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Plat p={p.platform} className="w-3.5 h-3.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[13px] truncate">{p.competitor.display_name}</div>
+                    <div className="text-[10.5px] font-mono text-mute dark:text-muteDark truncate">@{p.competitor.handle}</div>
+                  </div>
+                </div>
+                <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-mono flex-shrink-0', patternBadgeClass(p.pattern.tone))}>
+                  {p.pattern.label}
+                </span>
+              </div>
+              <div className="text-[12px] text-mute dark:text-muteDark leading-relaxed line-clamp-2 mb-2">{p.caption_excerpt}</div>
+              <div className="flex items-center gap-3 text-[11px] font-mono">
+                <span><span className="text-mute dark:text-muteDark">views</span> <strong>{fmt(p.views)}</strong></span>
+                <span><span className="text-mute dark:text-muteDark">likes</span> <strong>{fmt(p.likes)}</strong></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+Object.assign(window, { ContentScreen, CompetitorTopContent });
 
 </script>
 <script type="text/babel">

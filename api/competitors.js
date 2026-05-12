@@ -26,6 +26,7 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { checkCompetitorCap } from './_lib/tiers.js';
 import { syncCompetitorsForWorkspace } from './_lib/competitor-sync.js';
+import { classifyCaption } from './_lib/caption-patterns.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -34,6 +35,64 @@ export default async function handler(req, res) {
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
   if (req.method === 'GET') {
+    // ── Top-content mode ────────────────────────────────────────────────
+    // GET /api/competitors?mode=top-content[&platform=tiktok][&limit=20]
+    // Returns the top-performing competitor posts across the workspace,
+    // each tagged with a caption pattern (price, cultural, BNPL, etc).
+    // Drives the "Top Competitor Content" table on the Content screen.
+    if (req.query?.mode === 'top-content') {
+      const limit = Math.min(50, Math.max(5, Number(req.query?.limit) || 20));
+      const platform = req.query?.platform && req.query.platform !== 'all' ? req.query.platform : null;
+
+      // Pull competitor metadata first so we can attach display_name without
+      // an N+1 join per post.
+      const comps = await supabase.select('competitors', {
+        select: 'id,handle,display_name,platform,followers',
+        eq: { workspace_id: ws.id },
+      }).catch(() => []);
+      const compById = {};
+      (comps || []).forEach(c => { compById[c.id] = c; });
+
+      const filter = { workspace_id: ws.id, source: 'competitor' };
+      if (platform) filter.platform = platform;
+
+      const rows = await supabase.select('posts', {
+        select: 'id,competitor_id,platform,caption,views,likes,comments,shares,posted_at,raw_data',
+        eq: filter,
+        order: 'views.desc.nullslast',
+        limit: 200,
+      }).catch(() => []);
+
+      const top = (rows || [])
+        .filter(p => (p.views || 0) > 0 && compById[p.competitor_id])
+        .slice(0, limit)
+        .map(p => {
+          const c = compById[p.competitor_id];
+          const pattern = classifyCaption(p.caption);
+          const permalink = p.raw_data?.permalink || p.raw_data?.url || p.raw_data?.webUrl || null;
+          return {
+            id: p.id,
+            competitor: {
+              id: c.id, handle: c.handle,
+              display_name: c.display_name || c.handle,
+              platform: c.platform,
+              followers: c.followers || null,
+            },
+            platform: p.platform,
+            caption_excerpt: p.caption ? p.caption.slice(0, 140) : '',
+            posted_at: p.posted_at,
+            views: p.views || 0,
+            likes: p.likes || 0,
+            comments: p.comments || 0,
+            shares: p.shares || 0,
+            permalink,
+            pattern,
+          };
+        });
+
+      return json(res, 200, { posts: top, scanned: (rows || []).length });
+    }
+
     const rows = await supabase.select('competitors', {
       select: '*',
       eq: { workspace_id: ws.id },
