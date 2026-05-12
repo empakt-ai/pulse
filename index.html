@@ -3173,139 +3173,299 @@ Object.assign(window, { GrowthScreen });
 </script>
 <script type="text/babel">
 // Screen 4 — Content Deep-Dive
+const PLATFORM_LABEL_FULL = {
+  ig: 'Instagram', tt: 'TikTok', yt: 'YouTube',
+  fb: 'Facebook', li: 'LinkedIn', x: 'X', sc: 'Snapchat',
+};
+const SIGNAL_TONE = {
+  viral:     { label: 'Viral peak',  tone: 'magenta' },
+  rising:    { label: 'Rising',      tone: 'lime'    },
+  steady:    { label: 'Steady',      tone: 'ultraSoft' },
+  declining: { label: 'Declining',   tone: 'mute'    },
+};
+
+// One row of the per-metric benchmark panel.
+const BenchmarkRow = ({ label, value, suffix = '', percentile, avg }) => {
+  const pct = percentile;
+  // Tone: top quartile green, mid amber-ish, bottom magenta.
+  const tone = pct == null ? 'text-mute dark:text-muteDark'
+            : pct >= 75 ? 'text-emerald-600 dark:text-lime'
+            : pct >= 25 ? 'text-ultra'
+            : 'text-magenta';
+  return (
+    <div className="flex items-baseline gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
+      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark w-24 flex-shrink-0">{label}</div>
+      <div className="font-display text-[18px] font-semibold tracking-tighter flex-1">
+        {typeof value === 'number' ? formatNum(value) : value}{suffix}
+      </div>
+      <div className="text-[11px] font-mono text-right">
+        <div className={cls('font-medium', tone)}>
+          {pct == null ? '—' : `${pct}th pct`}
+        </div>
+        {avg != null && (
+          <div className="text-mute dark:text-muteDark">
+            avg {typeof avg === 'number' ? formatNum(avg) : avg}{suffix}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ContentScreen = () => {
-  const [idx, setIdx] = React.useState(0);
-  const p = D.posts[idx];
+  // Local list — start with whatever brief seeded into D, then enrich from
+  // /api/posts on mount so the picker isn't capped at 12.
+  const [posts, setPosts]     = React.useState(D.posts || []);
+  const [activeId, setActive] = React.useState((D.posts || [])[0]?.id || null);
+  const [detail, setDetail]   = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    api('/posts?limit=60').then(r => {
+      if (cancelled) return;
+      if (r.posts?.length) {
+        setPosts(r.posts);
+        if (!activeId) setActive(r.posts[0].id);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!activeId) { setDetail(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    api(`/posts?id=${encodeURIComponent(activeId)}`)
+      .then(r => { if (!cancelled) setDetail(r); })
+      .catch(() => { if (!cancelled) setDetail(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeId]);
+
+  if (!posts.length) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+        <ScreenHeader eyebrow="Anatomy" title="Content deep-dive" sub="Break down what worked — and how to replicate it." />
+        <Card>
+          <div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">
+            No posts yet. Once Pulse syncs your accounts, your published posts appear here for analysis.
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const p = detail?.post;
+  const bm = detail?.benchmarks;
+  const signal = SIGNAL_TONE[p?.signal] || SIGNAL_TONE.steady;
+  const platformLabel = p ? (PLATFORM_LABEL_FULL[p.platform] || p.platform) : '';
+  const daysAgo = p?.posted_at ? Math.max(0, Math.floor((Date.now() - new Date(p.posted_at).getTime()) / 86400000)) : null;
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
-      <ScreenHeader eyebrow="Anatomy" title="Content deep-dive" sub="Break down what worked — and how to replicate it." />
+      <ScreenHeader
+        eyebrow="Anatomy"
+        title="Content deep-dive"
+        sub="Per-post benchmarks against your own catalogue — what's an outlier vs the baseline you've established."
+        right={
+          detail?.nav && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => detail.nav.prev && setActive(detail.nav.prev.id)}
+                disabled={!detail.nav.prev}
+                className="h-8 px-2.5 rounded-lg border border-line dark:border-lineDark text-[12px] disabled:opacity-40 hover:bg-ink/5 dark:hover:bg-paper/5"
+              >← Older</button>
+              <button
+                onClick={() => detail.nav.next && setActive(detail.nav.next.id)}
+                disabled={!detail.nav.next}
+                className="h-8 px-2.5 rounded-lg border border-line dark:border-lineDark text-[12px] disabled:opacity-40 hover:bg-ink/5 dark:hover:bg-paper/5"
+              >Newer →</button>
+            </div>
+          )
+        }
+      />
 
+      {/* Post picker — scrollable pills */}
       <div className="flex gap-2 overflow-x-auto no-scrollbar mb-5 pb-1">
-        {D.posts.slice(0,5).map((post, i) => (
-          <button key={post.id} onClick={() => setIdx(i)} className={cls('flex items-center gap-2 h-9 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap border transition', idx === i ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper' : 'border-line dark:border-lineDark hover:border-ink/30')}>
+        {posts.slice(0, 24).map(post => (
+          <button
+            key={post.id}
+            onClick={() => setActive(post.id)}
+            className={cls(
+              'flex items-center gap-2 h-9 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap border transition',
+              activeId === post.id
+                ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                : 'border-line dark:border-lineDark hover:border-ink/30'
+            )}
+          >
             <Plat p={post.platform} className="w-3 h-3" />
-            {post.title.length > 28 ? post.title.slice(0,28) + '…' : post.title}
+            {(post.title || '').length > 28 ? post.title.slice(0, 28) + '…' : (post.title || 'Untitled')}
           </button>
         ))}
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
-        <div className="lg:col-span-8 space-y-4 sm:space-y-5">
-          <Card>
-            <div className="grid sm:grid-cols-[180px_1fr] gap-5">
-              <div className="aspect-[9/16] rounded-2xl bg-gradient-to-br from-ink via-ultra/40 to-magenta/40 flex flex-col justify-between p-3 text-white relative overflow-hidden">
-                <Pill color="magenta">{p.signal === 'viral' ? 'Viral peak' : p.signal}</Pill>
-                <div>
-                  <div className="text-[36px]">{p.emoji}</div>
-                  <div className="text-[11px] font-mono">{p.daysAgo}d ago</div>
-                </div>
-              </div>
-              <div>
-                <Eyebrow>{platformLabel[p.platform]} · {p.type}</Eyebrow>
-                <h2 className="font-display text-[24px] sm:text-[32px] leading-[1.05] font-semibold tracking-tighter mt-2 mb-3">"{p.title}"</h2>
-                <p className="text-[13.5px] text-mute dark:text-muteDark mb-5">Analyzing the engagement loop, retention pattern, and algorithmic signals across the first 48 hours.</p>
-                <div className="grid grid-cols-3 gap-3">
-                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Reach</div><div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(p.views)}</div><div className="text-[11px] text-emerald-600 dark:text-lime font-mono">↑ avg</div></div>
-                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Eng. rate</div><div className="font-display text-[22px] font-semibold tracking-tighter">{p.engRate}%</div><div className="text-[11px] text-emerald-600 dark:text-lime font-mono">Elite</div></div>
-                  <div><div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Share→view</div><div className="font-display text-[22px] font-semibold tracking-tighter">1:18</div><div className="text-[11px] text-mute font-mono">{formatNum(p.shares || 0)} shares</div></div>
-                </div>
-              </div>
-            </div>
-          </Card>
+      {loading && !p ? (
+        <Card><div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">Loading post detail…</div></Card>
+      ) : !p ? (
+        <Card><div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">Couldn't load this post.</div></Card>
+      ) : (
+        <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+          <div className="lg:col-span-8 space-y-4 sm:space-y-5">
 
-          <Card>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="font-display text-[18px] font-semibold tracking-tight">Retention curve</h3>
-                <p className="text-[12px] text-mute dark:text-muteDark">Viewership % over duration (45s total)</p>
-              </div>
-              <div className="flex gap-3 text-[10px] font-mono text-mute dark:text-muteDark">
-                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-ultra" /> This post</span>
-                <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-ink/20" /> Benchmark</span>
-              </div>
-            </div>
-            <div className="h-44 flex items-end gap-1">
-              {[100,99,98,96,95,94,99,92,88,85,80,76,73,70,68,65,63,60,58].map((v,i) => (
-                <div key={i} className="flex-1 rounded-t-sm transition-all" style={{ height: `${v}%`, background: i === 6 ? '#FF2D6A' : '#6B5BFF', opacity: i === 6 ? 1 : 0.85 }} />
-              ))}
-            </div>
-            <div className="flex justify-between mt-2 text-[10px] font-mono text-mute dark:text-muteDark"><span>0s</span><span>15s</span><span>30s</span><span>45s</span></div>
-          </Card>
-
-          <Card>
-            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Performance timeline</h3>
-            <div className="flex items-center justify-between">
-              {[
-                { l: 'Posted', s: 'T+0h', dot: 'bg-ink dark:bg-paper' },
-                { l: 'Indexed', s: 'T+2h', dot: 'bg-ultra' },
-                { l: 'Explosion', s: 'T+12h', dot: 'bg-magenta' },
-                { l: 'Viral peak', s: 'T+36h', dot: 'bg-magenta animate-pulse' },
-                { l: 'Stabilized', s: 'Now', dot: 'bg-ink/30 dark:bg-paper/30' }
-              ].map((s,i) => (
-                <div key={i} className="flex flex-col items-center text-center flex-1 relative">
-                  <div className={cls('w-3.5 h-3.5 rounded-full mb-2 z-10', s.dot)} />
-                  <div className="text-[12px] font-medium">{s.l}</div>
-                  <div className="text-[10px] font-mono text-mute dark:text-muteDark">{s.s}</div>
-                  {i < 4 && <div className="absolute top-1.5 left-1/2 right-0 h-px bg-line dark:bg-lineDark" style={{ width: '100%', transform: 'translateX(50%)' }} />}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Replicate this</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
-              {[
-                { n: '01', t: 'The visual hook', d: 'Start with a 1.5s macro shot of a sleek product. High-key lighting emphasizes premium features.' },
-                { n: '02', t: 'Audio pacing', d: 'Sync key transitions to percussive audio. DM Mono font for technical overlays.' },
-                { n: '03', t: 'Information gap', d: 'Explain a concept in 3s. Use high-contrast "Pulse Pink" chips to highlight critical data.' },
-                { n: '04', t: 'Final call', d: 'End with a clear benefit statement. Direct viewers to "signals" in the link-in-bio.' }
-              ].map(s => (
-                <div key={s.n} className="rounded-xl border border-line dark:border-lineDark p-4 bg-paper dark:bg-ink">
-                  <div className="w-7 h-7 rounded-full bg-ink text-paper dark:bg-lime dark:text-ink font-mono text-[11px] flex items-center justify-center mb-3">{s.n}</div>
-                  <div className="text-[13px] font-semibold mb-1">{s.t}</div>
-                  <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed">{s.d}</p>
-                </div>
-              ))}
-            </div>
-            <Btn variant="ink" size="md" className="w-full mt-4">Duplicate strategy</Btn>
-          </Card>
-        </div>
-
-        <div className="lg:col-span-4 space-y-4">
-          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
-            <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-magenta/30 blur-2xl" />
-            <Pill color="lime"><Icon name="brain" className="w-3 h-3" /> AI Verdict</Pill>
-            <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3">Niche resonance spike.</h3>
-            <p className="text-[12.5px] text-paper/70 leading-relaxed mb-4">Significant cluster of "Bookmark" actions at the 12-second mark. Your technical breakdown of AI infrastructure matched high-intent user profiles in the "SaaS Development" segment.</p>
-            <div className="pt-4 border-t border-paper/10">
-              <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-paper/50 mb-1">Virality score</div>
-              <div className="font-display text-[48px] font-semibold tracking-tightest leading-none text-magenta">94<span className="text-[20px] text-paper/40">/100</span></div>
-            </div>
-          </Card>
-
-          <Card>
-            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">What worked</h3>
-            <div className="space-y-2.5">
-              {[
-                { i: 'layers', l: 'Format', d: 'Split-screen narrative · 120bpm sync', tag: 'Optimized' },
-                { i: 'flame', l: 'Hook', d: '0.5s visual dissonance, stop-scroll reflex', tag: 'Critical' },
-                { i: 'users', l: 'Niche', d: 'Creator Tech sub-niche · low saturation', tag: 'Accurate' },
-                { i: 'clock', l: 'Timing', d: 'Tuesday 8:00 AM EST · US/EU crossover', tag: 'Standard' }
-              ].map((w,i) => (
-                <div key={i} className="flex gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0"><Icon name={w.i} className="w-3.5 h-3.5" /></div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{w.l}</div>
-                    <div className="text-[12.5px] font-medium leading-tight">{w.d}</div>
-                    <div className="text-[10px] font-mono text-magenta mt-0.5">✓ {w.tag}</div>
+            {/* Hero card */}
+            <Card>
+              <div className="grid sm:grid-cols-[180px_1fr] gap-5">
+                <div className="aspect-[9/16] rounded-2xl bg-gradient-to-br from-ink via-ultra/40 to-magenta/40 flex flex-col justify-between p-3 text-white relative overflow-hidden">
+                  {p.thumbnail && (
+                    <img src={p.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover opacity-90"
+                         onError={e => { e.currentTarget.style.display = 'none'; }} />
+                  )}
+                  <div className="relative z-10">
+                    <Pill color={signal.tone}>{signal.label}</Pill>
+                  </div>
+                  <div className="relative z-10">
+                    <div className="text-[11px] font-mono">{daysAgo != null ? `${daysAgo}d ago` : ''}</div>
                   </div>
                 </div>
-              ))}
-            </div>
-          </Card>
+                <div className="min-w-0">
+                  <Eyebrow>{platformLabel} · {p.type}</Eyebrow>
+                  <h2 className="font-display text-[22px] sm:text-[28px] leading-[1.1] font-semibold tracking-tighter mt-2 mb-3 break-words">
+                    {p.caption ? (p.caption.length > 240 ? `${p.caption.slice(0, 240)}…` : p.caption) : 'Untitled post'}
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Views</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.views)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Likes</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.likes)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Eng. rate</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{p.engagement_rate}%</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Shares</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.shares)}</div>
+                    </div>
+                  </div>
+                  {p.permalink && (
+                    <a href={p.permalink} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 mt-4 text-[12px] text-ultra dark:text-lime hover:underline">
+                      <Icon name="arrowUpRight" className="w-3 h-3" /> View original post
+                    </a>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Benchmarks card */}
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-display text-[18px] font-semibold tracking-tight">Benchmarks vs your catalogue</h3>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">
+                    Compared to your last {bm?.peer_count ?? 0} {platformLabel} posts.
+                  </p>
+                </div>
+              </div>
+              {bm?.peer_count > 0 ? (
+                <div>
+                  <BenchmarkRow label="Views"        value={bm.views.value}            percentile={bm.views.percentile}            avg={bm.views.avg} />
+                  <BenchmarkRow label="Eng. rate"    value={bm.engagement_rate.value}  suffix="%" percentile={bm.engagement_rate.percentile} avg={bm.engagement_rate.avg} />
+                  <BenchmarkRow label="Shares"       value={bm.shares.value}           percentile={bm.shares.percentile}           avg={bm.shares.avg} />
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-mute dark:text-muteDark py-2">
+                  No peer posts yet on this platform — percentiles appear once Pulse has at least 2 same-platform posts.
+                </div>
+              )}
+            </Card>
+
+            {/* Caption + hashtags + mentions */}
+            {(p.caption || p.hashtags?.length || p.mentions?.length) && (
+              <Card>
+                <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Caption breakdown</h3>
+                {p.caption && (
+                  <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink dark:text-paper">{p.caption}</p>
+                )}
+                {p.hashtags?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-2">Hashtags · {p.hashtags.length}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.hashtags.map(h => (
+                        <span key={h} className="text-[11.5px] px-2 py-0.5 rounded-full bg-ultraSoft dark:bg-ultra/15 text-ultra font-mono">{h}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {p.mentions?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-2">Mentions</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.mentions.map(m => (
+                        <span key={m} className="text-[11.5px] px-2 py-0.5 rounded-full bg-ink/5 dark:bg-paper/5 font-mono">{m}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+
+          <div className="lg:col-span-4 space-y-4">
+
+            {/* Engagement breakdown */}
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement breakdown</h3>
+              <div className="space-y-2">
+                {[
+                  { l: 'Likes',    v: p.likes,    i: 'heart' },
+                  { l: 'Comments', v: p.comments, i: 'message' },
+                  { l: 'Shares',   v: p.shares,   i: 'share' },
+                  { l: 'Saves',    v: p.saves,    i: 'bookmark' },
+                ].map(row => (
+                  <div key={row.l} className="flex items-center gap-3 py-1.5">
+                    <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
+                      <Icon name={row.i} className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="flex-1 text-[13px]">{row.l}</span>
+                    <span className="font-mono text-[12.5px]">{formatNum(row.v)}</span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Posting context */}
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Posting context</h3>
+              <div className="space-y-2 text-[13px]">
+                {p.day_of_week && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Day</span><span className="font-medium">{p.day_of_week}</span></div>
+                )}
+                {p.time_bucket && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Time</span><span className="font-medium">{p.time_bucket}</span></div>
+                )}
+                {p.posted_at && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Posted</span><span className="font-mono text-[12px]">{new Date(p.posted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Type</span><span className="font-medium">{p.type}</span></div>
+              </div>
+            </Card>
+
+            {/* Workspace verdict — context, not per-post */}
+            {D.verdict && (
+              <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+                <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-magenta/30 blur-2xl" />
+                <Pill color="lime"><Icon name="brain" className="w-3 h-3" /> Workspace verdict</Pill>
+                <h3 className="font-display text-[18px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
+                <p className="text-[12.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+              </Card>
+            )}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };
