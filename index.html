@@ -4888,13 +4888,45 @@ const DEFAULTS = /*EDITMODE-BEGIN*/{
 }/*EDITMODE-END*/;
 
 function App() {
-  const [route, setRoute]               = React.useState('loading');
+  // Synchronous init — read localStorage during the first render so the
+  // browser never paints the loading spinner for returning users. Magic
+  // links still need an async exchange and fall through to 'loading'.
+  const [route, setRoute] = React.useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+        return 'loading'; // magic link — async exchange below resolves this
+      }
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pulse_session') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token) {
+          window.__pulseToken = parsed.access_token;
+          // Best-effort: hydrate the session synchronously too so the
+          // TopBar avatar/email/userMeta don't pop in after first paint.
+          return 'app';
+        }
+      }
+    } catch { /* fall through to landing */ }
+    return 'landing';
+  });
+
   const [tab, setTab]                   = React.useState('Brief');
   const [activePlatform, setActivePlatform] = React.useState('all');
   const [range, setRange]               = React.useState('4W');
   const [t, setTweak]                   = useTweaks(DEFAULTS);
   const [showTweaks, setShowTweaks]     = React.useState(false);
-  const [session, setSession]           = React.useState(null);
+  // Hydrate session synchronously from the same localStorage read so TopBar
+  // / AccountBar render with the right user metadata on first paint.
+  const [session, setSession]           = React.useState(() => {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pulse_session') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token) return parsed;
+      }
+    } catch {}
+    return null;
+  });
   const [briefData, setBriefData]       = React.useState(null);
   const [dataKey, setDataKey]           = React.useState(0);  // remount trigger
 
@@ -4952,6 +4984,20 @@ function App() {
     return () => { cancelled = true; };
   }, [route, refreshBrief, briefData?.tier?.key, briefData?.workspace?.tier]);
 
+  // Scroll-to-top on every tab + route change. Window scroll is the common
+  // case; on layouts where overflow lives on documentElement/body or a main
+  // wrapper, we reset those too. behavior:'instant' is correct here —
+  // smooth scroll on every nav feels sluggish.
+  React.useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      const main = document.querySelector('main') || document.querySelector('[data-scroll]');
+      if (main) main.scrollTop = 0;
+    } catch { /* SSR / non-DOM contexts */ }
+  }, [tab, route]);
+
   React.useEffect(() => {
     document.documentElement.classList.toggle('dark', t.theme === 'dark');
   }, [t.theme]);
@@ -4964,9 +5010,14 @@ function App() {
     D.user.plan = t.persona === 'agency' ? 'Agency' : t.persona === 'brand' ? 'Brand' : 'Creator';
   }, [t.persona]);
 
-  // Auth init — check magic link hash first, then localStorage.
-  // Returning users hitting a magic link should land in the app, not onboarding.
-  // The "new user" check (created within last 60s) gates the onboarding route.
+  // Auth init.
+  // Returning users were already routed to 'app' synchronously above using
+  // the localStorage session. Here we:
+  //   1. Process a magic-link hash if present (still needs async exchange).
+  //   2. Validate the cached token in the background. If validation fails
+  //      (token expired and refresh failed), drop back to landing.
+  // The user sees the app immediately and only gets redirected on hard fail
+  // — which is better UX than a spinner on every cold start.
   React.useEffect(() => {
     const routeFor = (sess) => {
       const createdAt = sess?.user?.created_at;
@@ -4981,14 +5032,30 @@ function App() {
           setRoute(routeFor(sess));
         });
         if (handled) return;
+        // hash present but exchange failed — clear and show landing
+        setRoute('landing');
+        return;
       }
+      // For non-magic-link entry, the synchronous init either already routed
+      // us to 'app' (cached session) or to 'landing' (no session). Validate
+      // the cached token in the background; on failure restoreSession() will
+      // clear the session and we route back to landing.
       const restored = restoreSession((sess) => {
         setSession(sess);
-        setRoute(routeFor(sess));
+        // Only adjust route if validation surfaced a NEW route — don't blink
+        // back from 'app' to 'app'.
+        const next = routeFor(sess);
+        setRoute(prev => prev === next ? prev : next);
       });
-      if (!restored) setRoute('landing');
+      if (!restored && route === 'app') {
+        // We optimistically routed to 'app' but there's no usable session
+        // (shouldn't happen given the synchronous init, but guard anyway).
+        setRoute('landing');
+      }
     };
     init();
+    // Intentionally empty deps — auth init runs exactly once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   React.useEffect(() => {
@@ -5079,7 +5146,7 @@ function App() {
             connectedPlatforms={briefData?.state?.hasAccounts ? Object.keys(briefData.accountSummary || {}) : []}
             onGoConnect={() => setTab('Settings')}
           />
-          <div key={`${tab}-${dataKey}`} className="fade-up">
+          <div key={`${tab}-${dataKey}`}>
             {(() => {
               // Settings always renders (it's how you connect accounts in the first place)
               if (tab === 'Settings') return screens.Settings;
