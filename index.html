@@ -1878,7 +1878,14 @@ const checkMagicLinkHash = async (onAuthed) => {
 // Verifies the saved access_token still works. If it's expired (very likely
 // after >1 hour idle), exchanges the refresh_token for a fresh access_token
 // before giving up. Only clears the session if the refresh also fails.
-const restoreSession = (onAuthed) => {
+// Validates the cached Supabase session.
+//   - On success with the SAME token: does NOT call onAuthed → no setState
+//     → no re-render. This is the path that previously caused a visible
+//     blink ~1.5s after first paint on every page navigation.
+//   - On token refresh (new access_token): calls onAuthed so the new
+//     token propagates into React state.
+//   - On hard failure: calls onInvalidated so the app can redirect.
+const restoreSession = (onAuthed, onInvalidated) => {
   const session = sbAuth.getSession();
   if (!session?.access_token) return false;
 
@@ -1891,9 +1898,14 @@ const restoreSession = (onAuthed) => {
     }
   }).then(async r => {
     if (r.ok) {
-      // Refresh user object too so user.created_at and metadata are current
-      const user = await r.json().catch(() => session.user);
-      onAuthed({ ...session, user });
+      // Valid session. Do NOT trigger a re-render — the synchronous init
+      // already routed us into the app with this session, so no React
+      // state change is needed. Quietly stash the freshened user object
+      // for components that read it lazily (e.g. via window.__pulseUser).
+      try {
+        const user = await r.json();
+        if (user) window.__pulseUser = user;
+      } catch {}
       return;
     }
     // Token rejected — try to refresh before clearing.
@@ -1901,19 +1913,20 @@ const restoreSession = (onAuthed) => {
       try {
         const refreshed = await sbAuth.refresh(session.refresh_token);
         sbAuth.saveSession(refreshed);
-        onAuthed(refreshed);
+        // Genuinely new tokens — propagate into state.
+        onAuthed?.(refreshed);
         return;
       } catch (e) {
         // Refresh failed too — session is genuinely dead.
       }
     }
     sbAuth.clearSession();
-  }).catch(async () => {
+    onInvalidated?.();
+  }).catch(() => {
     // Network error reaching Supabase /user. Don't nuke the session for a
-    // transient failure — keep it and let the next call retry. We do still
-    // signal "authed" with the cached session so the UI shows the app, not the
-    // landing page, during a flaky connection.
-    onAuthed(session);
+    // transient failure — keep the cached session in place. The synchronous
+    // init already routed us into the app with this session, so silently
+    // bail (no setState, no re-render).
   });
 
   return true;
@@ -2449,7 +2462,7 @@ Object.assign(window, { Auth, Onboarding, sbAuth, checkMagicLinkHash, restoreSes
 <script type="text/babel">
 // Pulse Shell — TopBar, AccountBar, MobileNav
 
-const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, theme, toggleTheme }) => {
+const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, userEmail, theme, toggleTheme }) => {
   // Convenience: jump to Settings + a named anchor section. Falls back to
   // setActive when the prop isn't wired (older shells).
   const goSettings = (anchor) => {
@@ -2566,11 +2579,11 @@ const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, t
       </div>
     </header>
   );
-};
+});
 
 // Filter to only show actually-connected platforms. If nothing is connected,
 // hide the bar entirely so the dashboard doesn't show ghost tabs.
-const AccountBar = ({ activePlatform, setActivePlatform, activeBrand, setActiveBrand, connectedPlatforms, onGoConnect }) => {
+const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand, setActiveBrand, connectedPlatforms, onGoConnect }) => {
   const PLATFORM_LABEL = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X', sc: 'Snapchat' };
   // Map connected platform keys (ig/tt/yt/li/fb/x/sc) to display rows, pulling
   // handle from the hydrated D.accounts shape so it stays in sync with /api/brief.
@@ -2661,9 +2674,9 @@ const AccountBar = ({ activePlatform, setActivePlatform, activeBrand, setActiveB
       )}
     </div>
   );
-};
+});
 
-const MobileNav = ({ active, setActive }) => {
+const MobileNav = React.memo(({ active, setActive }) => {
   const tabs = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
     { id: 'Growth', icon: 'trending' }, { id: 'Content', icon: 'play' },
@@ -2682,7 +2695,7 @@ const MobileNav = ({ active, setActive }) => {
       </div>
     </nav>
   );
-};
+});
 
 const ScreenHeader = ({ eyebrow, title, sub, right }) => (
   <div className="mb-6 sm:mb-8 fade-up">
@@ -6680,7 +6693,23 @@ function App() {
     return 'landing';
   });
 
-  const [tab, setTab]                   = React.useState('Brief');
+  const [tab, setTabState]              = React.useState('Brief');
+  // Brief fade between tabs without a forced remount — flips opacity for
+  // ~120ms, swaps the screen, then fades back in. Replaces the previous
+  // key={tab} remount that cascaded a fade-up re-fire across the whole
+  // app tree on every navigation.
+  const [tabAnimating, setTabAnimating] = React.useState(false);
+  const setTab = React.useCallback((next) => {
+    if (next === tab) return;
+    setTabAnimating(true);
+    setTimeout(() => {
+      setTabState(next);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      // Frame-delay the un-fade so the new screen's first paint is at
+      // opacity 0 → 1, not flashing in already-rendered.
+      requestAnimationFrame(() => setTabAnimating(false));
+    }, 80);
+  }, [tab]);
   // Optional anchor hint for Settings — set when navigating from the
   // TopBar workspace dropdown ('workspaces'), the avatar menu ('profile'),
   // etc. Settings reads it on mount and scrolls to the matching section.
@@ -6876,18 +6905,17 @@ function App() {
       }
       // For non-magic-link entry, the synchronous init either already routed
       // us to 'app' (cached session) or to 'landing' (no session). Validate
-      // the cached token in the background; on failure restoreSession() will
-      // clear the session and we route back to landing.
-      const restored = restoreSession((sess) => {
-        setSession(sess);
-        // Only adjust route if validation surfaced a NEW route — don't blink
-        // back from 'app' to 'app'.
-        const next = routeFor(sess);
-        setRoute(prev => prev === next ? prev : next);
-      });
+      // the cached token in the background:
+      //   • Valid token: restoreSession does NOT fire either callback →
+      //     ZERO re-renders. This is critical to avoid the post-paint blink.
+      //   • Refreshed token: onAuthed fires once with new tokens.
+      //   • Hard failure: onInvalidated fires once → route back to landing.
+      const restored = restoreSession(
+        (sess) => { setSession(sess); },
+        () => { setRoute('landing'); }
+      );
       if (!restored && route === 'app') {
-        // We optimistically routed to 'app' but there's no usable session
-        // (shouldn't happen given the synchronous init, but guard anyway).
+        // We optimistically routed to 'app' but there's no usable session.
         setRoute('landing');
       }
     };
@@ -6989,13 +7017,13 @@ function App() {
             connectedPlatforms={briefData?.state?.hasAccounts ? Object.keys(briefData.accountSummary || {}) : []}
             onGoConnect={() => setTab('Settings')}
           />
-          {/* Key on tab only — remounting on dataKey caused a visible blink
-              because every screen subtree re-fired its fade-up animation
-              when /api/brief finished ~1.5s after first paint. React's
-              normal reconciliation handles the data refresh fine: D is
-              mutated atomically by hydrateD before setBriefData fires,
-              so the re-render reads fresh values without a remount. */}
-          <div key={tab}>
+          {/* No key here — React handles unmount/remount naturally when
+              the tab's component identity changes. Forcing a key={tab}
+              cascaded a fade-up animation re-fire across the entire tree
+              every time the user clicked a sidebar tab, which read as a
+              visible page-level blink. The brief tab-fade below replaces
+              that visual cue without re-mounting the whole subtree. */}
+          <div className={cls('transition-opacity duration-150', tabAnimating ? 'opacity-0' : 'opacity-100')}>
             {(() => {
               // Settings always renders (it's how you connect accounts in the first place)
               if (tab === 'Settings') return screens.Settings;
