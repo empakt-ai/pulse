@@ -13,6 +13,10 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/marketing.css">
 <script>
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
+<script>
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('contact-form');
     const status = document.getElementById('contact-status');

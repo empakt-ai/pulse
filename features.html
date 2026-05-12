@@ -14,6 +14,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/css/marketing.css">
+<script>
+  // Always land at the top of the page on navigation. Browsers default
+  // to restoring the previous scroll position which feels broken when
+  // jumping between marketing pages of different lengths.
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
 </head>
 <body>
 
@@ -31,7 +38,7 @@
 </header>
 
 <main>
-  <section class="hero wrap-sm">
+  <section class="hero wrap">
     <span class="hero-tag">Features</span>
     <h1 class="h1">The intelligence layer over your social.</h1>
     <p class="lead">PULSE is a single workspace that fetches your posts, watches your competitors, and ships a daily brief that tells you the one thing you should do today — backed by your real numbers.</p>
