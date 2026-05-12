@@ -15,6 +15,8 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { runSync } from './_lib/sync.js';
 
+// Default cooldown for non-agency tiers. Agency bypasses the cooldown
+// entirely (15-min staleness instead — applied client-side via login flow).
 const COOLDOWN_MINUTES = 60;
 
 export default async function handler(req, res) {
@@ -26,10 +28,12 @@ export default async function handler(req, res) {
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
   const mode = req.query?.mode === 'backfill' ? 'backfill' : 'incremental';
+  const isAgency = (ws.tier || '').toLowerCase() === 'agency';
 
   // Cooldown only applies to incremental — backfill is one-shot per account
   // (gated by initial_sync_complete inside runSync) and always allowed.
-  if (mode === 'incremental') {
+  // Agency tier bypasses the cooldown entirely.
+  if (mode === 'incremental' && !isAgency) {
     const accounts = await supabase.select('connected_accounts', {
       select: 'last_incremental_sync_at',
       eq: { workspace_id: ws.id, is_active: true },

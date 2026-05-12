@@ -53,16 +53,21 @@ export default async function handler(req, res) {
   const mode = body?.mode === 'deep' ? 'deep' : 'incremental';
 
   // Tier cap — counts today's manual syncs only. Background login syncs
-  // skip this endpoint entirely (they hit /api/sync/login instead).
+  // skip this endpoint entirely (they hit /api/sync instead).
+  // Agency tier: explicit no-cap. We still check the lookup table for
+  // defence-in-depth (agency maps to -1 = unlimited).
   const tier = tierFor(ws);
-  const cap = MANUAL_DAILY_CAP[ws.tier || 'creator'] ?? MANUAL_DAILY_CAP.creator;
-  if (cap !== -1) {
-    const used = await manualSyncsToday(ws.id);
-    if (used >= cap) {
-      return json(res, 429, {
-        error: `Daily manual sync limit reached (${used}/${cap}). Resets at 00:00 UTC.`,
-        used, limit: cap, tier: tier.label,
-      });
+  const isAgency = (ws.tier || '').toLowerCase() === 'agency';
+  if (!isAgency) {
+    const cap = MANUAL_DAILY_CAP[ws.tier || 'creator'] ?? MANUAL_DAILY_CAP.creator;
+    if (cap !== -1) {
+      const used = await manualSyncsToday(ws.id);
+      if (used >= cap) {
+        return json(res, 429, {
+          error: `Daily manual sync limit reached (${used}/${cap}). Resets at 00:00 UTC.`,
+          used, limit: cap, tier: tier.label,
+        });
+      }
     }
   }
 

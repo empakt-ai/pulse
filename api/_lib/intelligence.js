@@ -18,9 +18,8 @@
 // /api/brief endpoint segregates by kind on read.
 
 import { supabase } from './supabase.js';
-import { messages, parseJsonResponse, estimateCostCents } from './anthropic.js';
-
-const MODEL = 'claude-sonnet-4-6';
+import { parseJsonResponse } from './anthropic.js';
+import { generateIntelligence } from './ai-router.js';
 
 // ── Deterministic intel score (don't trust the LLM for math) ───────────────────
 // Inputs: per-platform avg engagement vs category baselines, growth velocity,
@@ -285,8 +284,15 @@ function buildUserMessage(payload) {
   return `Generate today's PULSE brief for this workspace.\n\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
 }
 
+// Re-export the prompt-building flow so the compare-models endpoint can run
+// the identical prompt against both providers without copying internal logic.
+export function buildBriefPrompt({ workspace, accounts, posts, snapshots, competitors }) {
+  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
+  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload) };
+}
+
 // ── Persist generated brief into signals table ─────────────────────────────────
-async function persist({ workspace, brief, intelScore, usage, model }) {
+async function persist({ workspace, brief, intelScore, usage, model, modelUsed, latencyMs, tokensUsed }) {
   // Soft-delete prior BRIEF rows (verdict/action/standard signals) so the
   // screen reads today's brief. Live-signal rows (kind='live') are kept —
   // they're an independent append-only feed and shouldn't be invalidated
@@ -297,6 +303,14 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
     { is_read: true },
     { eq: { workspace_id: workspace.id }, in: { kind: briefKinds } }
   ).catch(() => {});
+
+  // Common per-row provenance fields. model_used / latency_ms / tokens_used
+  // were added in migrations/005 so the UI can attribute generations.
+  const provenance = {
+    model_used: modelUsed || null,
+    latency_ms: typeof latencyMs === 'number' ? latencyMs : null,
+    tokens_used: typeof tokensUsed === 'number' ? tokensUsed : null,
+  };
 
   const rows = [];
   const now = new Date().toISOString();
@@ -311,6 +325,7 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
     body: brief.verdict?.body || '',
     impact: 'High Impact',
     action: 'Read brief',
+    ...provenance,
     metadata: { ...baseMeta, score_factors: brief.score_factors || [] },
   });
 
@@ -324,6 +339,7 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
       body: a.body || '',
       impact: a.when || 'Today',
       action: a.cta || 'Open →',
+      ...provenance,
       metadata: { ...baseMeta, when: a.when, icon: a.icon, order: i },
     });
   });
@@ -339,6 +355,7 @@ async function persist({ workspace, brief, intelScore, usage, model }) {
       impact: s.impact || 'Strategic',
       action: s.action || 'Review',
       is_series: !!s.is_series,
+      ...provenance,
       metadata: baseMeta,
     });
   });
@@ -507,12 +524,13 @@ export async function generateBrief(workspace) {
   // 3) Build prompt
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
 
-  // 4) Call Claude
-  const result = await messages({
-    model: MODEL,
-    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-    messages: [{ role: 'user', content: buildUserMessage(payload) }],
-    max_tokens: 3000, // bumped — verdict body + signal bodies are richer now
+  // 4) Call the AI router — picks Claude or Gemini per workspace.ai_model
+  //    with automatic fallback on provider failure.
+  const result = await generateIntelligence({
+    system: SYSTEM_PROMPT,
+    user:   buildUserMessage(payload),
+    model:  workspace.ai_model || 'claude',
+    max_tokens: 3000,
     temperature: 0.6,
   });
 
@@ -521,10 +539,15 @@ export async function generateBrief(workspace) {
     return { error: 'LLM returned unparseable output', raw: result.text?.slice(0, 500) };
   }
 
-  // 5) Persist
-  await persist({ workspace, brief, intelScore, usage: result.usage, model: result.model });
-
-  const costCents = estimateCostCents(result.usage, result.model);
+  // 5) Persist (with per-row provenance: model_used / latency_ms / tokens_used)
+  await persist({
+    workspace, brief, intelScore,
+    usage: result.usage,
+    model: result.raw_model,
+    modelUsed: result.model_used,
+    latencyMs: result.latency_ms,
+    tokensUsed: result.tokens_used,
+  });
 
   // 6) Log usage
   await supabase.insert('usage_log', {
@@ -532,7 +555,7 @@ export async function generateBrief(workspace) {
     run_type: 'intelligence',
     platform: 'all',
     records_fetched: (brief.signals?.length || 0) + (brief.actions?.length || 0) + 1,
-    cost_cents: costCents,
+    cost_cents: result.cost_cents || 0,
     status: 'completed',
   }).catch(() => {});
 
@@ -542,7 +565,11 @@ export async function generateBrief(workspace) {
     verdict: brief.verdict?.title,
     actions: brief.actions?.length || 0,
     signals: brief.signals?.length || 0,
-    usage: result.usage,
-    cost_cents: costCents,
+    model_used: result.model_used,
+    model_requested: result.model_requested,
+    fallback_from: result.fallback_from,
+    latency_ms: result.latency_ms,
+    tokens_used: result.tokens_used,
+    cost_cents: result.cost_cents,
   };
 }
