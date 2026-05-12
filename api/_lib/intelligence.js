@@ -9,7 +9,7 @@
 //
 // Intelligence generator — turns 30 days of workspace data into a daily AI brief:
 //   - 1 verdict (the dark hero card on Brief)
-//   - 3 prioritized actions
+//   - 6 prioritized actions (urgent + this-week + strategic)
 //   - 4-8 cross-platform signals
 //   - Intelligence score /100 (deterministic formula, LLM annotates factors)
 //
@@ -310,11 +310,16 @@ Body: 2-4 sentences. Explain the WHY using SPECIFIC numbers and post references 
 
 ═══ ACTIONS ═══
 
-Exactly 3. Ordered by urgency (Now → Today → This week). Each action must:
+Exactly 6, distributed: 2 urgent (Now / Today), 2 medium (This week), 2 strategic (This month).
+Ordered by urgency. Each action must:
   • Reference a SPECIFIC post, platform, or audience segment from the data
-  • Be do-able in under 30 minutes if "Now", under 2 hours if "Today"
+  • Be do-able in under 30 minutes if "Now", under 2 hours if "Today",
+    finishable in a single sitting if "This week", a multi-step build if "This month"
   • Move ONE metric the reader cares about
   • Avoid generic copy ("engage with your audience" → no, "reply to the top 8 comments on the 'Khasara' reel within the next hour" → yes)
+  • "This month" actions are strategic builds — content series launches, new
+    formats to test, niche territory to claim. They should explain what to build,
+    why it wins, and the success metric to watch.
 
 ═══ CROSS-PLATFORM REASONING ═══
 
@@ -364,7 +369,7 @@ Return STRICT JSON only. No prose before or after. No code fences.
   },
   "actions": [
     {
-      "when": "Now" | "Today" | "This week",
+      "when": "Now" | "Today" | "This week" | "This month",
       "icon": "flame" | "clock" | "sparkle" | "trending" | "users" | "message" | "play" | "mail",
       "title": "string, 4-8 words, specific and actionable",
       "body": "string, 1-2 sentences: what + why + expected impact",
@@ -454,7 +459,7 @@ async function persist({ workspace, brief, intelScore, usage, model, modelUsed, 
   });
 
   // Actions
-  (brief.actions || []).slice(0, 3).forEach((a, i) => {
+  (brief.actions || []).slice(0, 6).forEach((a, i) => {
     rows.push({
       workspace_id: workspace.id,
       kind: 'action',

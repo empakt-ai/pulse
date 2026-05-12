@@ -211,6 +211,23 @@ export default async function handler(req, res) {
         score_factors: v.metadata?.score_factors || [],
       };
     })(),
+    // Full action plan — every action from the current brief, sorted by
+    // the urgency order the model returned them in. The Action Plan screen
+    // groups these by `when` into Now/Today/This week/This month buckets.
+    actionPlan: (signals || [])
+      .filter(s => s.kind === 'action' && !s.is_read)
+      .sort((a, b) => (a.metadata?.order || 0) - (b.metadata?.order || 0))
+      .map((a, i) => ({
+        id: `a${i + 1}`,
+        when: a.metadata?.when || a.impact || 'Today',
+        icon: a.metadata?.icon || 'sparkle',
+        title: a.title,
+        body: a.body,
+        cta: a.action,
+      })),
+    // Today's Top 3 — what the Brief / Intel screens splash above the fold.
+    // Same source, just the urgent slice. Keeping a separate field so
+    // existing screens don't need to change their data binding.
     todayActions: (signals || [])
       .filter(s => s.kind === 'action' && !s.is_read)
       .sort((a, b) => (a.metadata?.order || 0) - (b.metadata?.order || 0))

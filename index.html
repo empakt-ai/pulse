@@ -2451,7 +2451,7 @@ const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, t
     if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
     setActive('Settings');
   };
-  const tabs = ['Brief','Stats','Growth','Content','Intel','Targets','Settings'];
+  const tabs = ['Brief','Stats','Growth','Content','Intel','Actions','Targets','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -2608,11 +2608,12 @@ const MobileNav = ({ active, setActive }) => {
   const tabs = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
     { id: 'Growth', icon: 'trending' }, { id: 'Content', icon: 'play' },
-    { id: 'Intel', icon: 'sparkle' }, { id: 'Targets', icon: 'target' }
+    { id: 'Intel', icon: 'sparkle' }, { id: 'Actions', icon: 'bolt' },
+    { id: 'Targets', icon: 'target' }
   ];
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-6 px-1 py-1.5">
+      <div className="grid grid-cols-7 px-1 py-1.5">
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActive(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
             <Icon name={t.icon} className="w-4 h-4" />
@@ -3902,6 +3903,133 @@ const IntelScreen = ({ activePlatform }) => {
 };
 
 Object.assign(window, { IntelScreen });
+
+</script>
+<script type="text/babel">
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen — Action Plan
+// Surfaces the full set of brief-generated actions, grouped by timeframe
+// (Now / Today / This week / This month). Reads from D.actionPlan which the
+// brief endpoint exposes as the full ordered list; falls back to D.todayActions
+// if the field is missing (older briefs / mid-deploy).
+// ─────────────────────────────────────────────────────────────────────────────
+const ActionsScreen = ({ activePlatform }) => {
+  const all = (D.actionPlan && D.actionPlan.length) ? D.actionPlan : (D.todayActions || []);
+
+  // Bucket by `when`. Anything that doesn't match a known bucket falls into
+  // "This week" — that's the median urgency the prompt asks for.
+  const norm = (w) => {
+    const v = String(w || '').toLowerCase();
+    if (v.includes('now') || v.includes('immediate')) return 'now';
+    if (v.includes('today')) return 'today';
+    if (v.includes('month') || v.includes('strategic') || v.includes('quarter')) return 'month';
+    if (v.includes('week')) return 'week';
+    return 'week';
+  };
+  const buckets = { now: [], today: [], week: [], month: [] };
+  all.forEach(a => buckets[norm(a.when)].push(a));
+
+  const groups = [
+    { id: 'now',   eyebrow: 'Right now',      title: 'Act in the next hour',  accent: 'magenta', border: 'border-magenta' },
+    { id: 'today', eyebrow: 'Today',          title: 'Finish before EOD',     accent: 'ultra',   border: 'border-ultra'   },
+    { id: 'week',  eyebrow: 'This week',      title: 'Fix the foundation',    accent: 'amber',   border: 'border-amber'   },
+    { id: 'month', eyebrow: 'This month',     title: 'Build the engine',      accent: 'lime',    border: 'border-lime'    },
+  ].filter(g => buckets[g.id].length > 0);
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> Prioritised by impact</span>}
+        title="Action plan"
+        sub="Every move the latest brief surfaced — grouped by when it needs to happen. Start at the top."
+        right={typeof D.intelScore === 'number' && D.intelScore > 0 ? (
+          <Card className="bg-ink text-paper border-transparent px-5 py-4">
+            <Eyebrow color="text-lime">Intel score</Eyebrow>
+            <div className="font-display text-[32px] font-semibold leading-none tracking-tightest mt-1">{D.intelScore}<span className="text-[14px] text-paper/40">/100</span></div>
+          </Card>
+        ) : null}
+      />
+
+      {all.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">
+            No actions yet — they appear after your first AI brief generates.
+          </div>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {groups.map(g => (
+            <section key={g.id}>
+              <div className="flex items-baseline justify-between mb-3">
+                <div>
+                  <Eyebrow color={`text-${g.accent}`}>{g.eyebrow}</Eyebrow>
+                  <h2 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tight mt-1">{g.title}</h2>
+                </div>
+                <span className="text-[11px] font-mono text-mute dark:text-muteDark">
+                  {buckets[g.id].length} action{buckets[g.id].length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                {buckets[g.id].map(a => (
+                  <div
+                    key={a.id}
+                    className={cls(
+                      'rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 sm:p-5 border-l-4',
+                      g.accent === 'magenta' ? 'border-l-magenta' :
+                      g.accent === 'ultra'   ? 'border-l-ultra'   :
+                      g.accent === 'amber'   ? 'border-l-amber'   : 'border-l-lime'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cls(
+                        'w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center',
+                        g.accent === 'magenta' ? 'bg-magenta/15 text-magenta' :
+                        g.accent === 'ultra'   ? 'bg-ultra/15 text-ultra'     :
+                        g.accent === 'amber'   ? 'bg-amber/15 text-amber'     : 'bg-lime/25 text-limeDeep dark:text-lime'
+                      )}>
+                        <Icon name={a.icon || 'sparkle'} className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1">
+                          {a.when || g.eyebrow}
+                        </div>
+                        <h3 className="font-display text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug mb-1.5">
+                          {a.title}
+                        </h3>
+                        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{a.body}</p>
+                        {a.cta && (
+                          <p className={cls(
+                            'text-[11.5px] mt-2.5 font-medium',
+                            g.accent === 'magenta' ? 'text-magenta' :
+                            g.accent === 'ultra'   ? 'text-ultra dark:text-lime' :
+                            g.accent === 'amber'   ? 'text-amber' : 'text-limeDeep dark:text-lime'
+                          )}>→ {a.cta}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          {/* Closing goal panel — only shows if there's a verdict to anchor it */}
+          {D.verdict?.title && (
+            <Card className="bg-ink text-paper border-transparent p-6 sm:p-8 mt-2">
+              <Eyebrow color="text-lime">The goal</Eyebrow>
+              <h2 className="font-display text-[22px] sm:text-[26px] font-semibold tracking-tightest leading-tight mt-2 mb-2 text-paper">
+                {D.verdict.title}
+              </h2>
+              <p className="text-[13px] text-paper/70 leading-relaxed max-w-2xl">{D.verdict.body}</p>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ActionsScreen });
 
 </script>
 <script type="text/babel">
@@ -5468,6 +5596,7 @@ function App() {
     Growth:   <GrowthScreen activePlatform={activePlatform} />,
     Content:  <ContentScreen activePlatform={activePlatform} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
+    Actions:  <ActionsScreen activePlatform={activePlatform} />,
     Targets:  <TargetsScreen />,
     Settings: <SettingsScreen scrollAnchor={settingsAnchor} onAnchorConsumed={() => setSettingsAnchor(null)} />
   };
