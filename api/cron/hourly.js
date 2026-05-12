@@ -23,6 +23,10 @@ import { json } from '../_lib/auth.js';
 import { runSync } from '../_lib/sync.js';
 import { generateBrief, generateLiveSignals } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
+import { renderReportHTML } from '../_lib/report-template.js';
+import { renderPdfFromHtml } from '../_lib/pdf.js';
+import { uploadFile } from '../_lib/storage.js';
+import { sendEmail } from '../_lib/email.js';
 
 // Returns { hour: 0..23, dow: 0..6 (Sun..Sat) } for the workspace's local
 // timezone using the Intl API. Falls back to UTC on any failure.
@@ -49,12 +53,121 @@ function jobsFor(workspace) {
   const jobs = [];
   if (hour === 6) {
     jobs.push('brief');
-    if (dow === 0) jobs.push('weekly-deep');
+    if (dow === 0) {
+      jobs.push('weekly-deep');
+      // Weekly digest email — only if user opted in. Runs AFTER the brief
+      // job below so we email the freshly-regenerated content.
+      if (workspace.weekly_digest_enabled) jobs.push('weekly-digest');
+    }
   }
   if (hour === 8 || hour === 13 || hour === 18) {
     jobs.push('live-signals');
   }
   return { hour, dow, jobs };
+}
+
+// Sunday digest: render the current brief into a PDF, store it, and email
+// the workspace's configured digest address (falling back to owner email).
+// Skips quietly when prerequisites are missing rather than failing the cron.
+async function runWeeklyDigest(workspace) {
+  // Pull the digest recipient. digest_email column wins; otherwise look up
+  // the owner's auth email.
+  let recipient = workspace.digest_email || null;
+  if (!recipient && workspace.owner_id) {
+    try {
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+      const r = await fetch(`${supabaseUrl}/auth/v1/admin/users/${workspace.owner_id}`, {
+        headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` },
+      });
+      if (r.ok) {
+        const u = await r.json();
+        recipient = u?.email || null;
+      }
+    } catch {}
+  }
+  if (!recipient) return { skipped: 'no_recipient' };
+
+  // Build brief envelope from current signals.
+  const signals = await supabase.select('signals', {
+    select: '*', eq: { workspace_id: workspace.id }, order: 'generated_at.desc', limit: 30,
+  }).catch(() => []);
+  const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
+  const actionRows = (signals || [])
+    .filter(s => s.kind === 'action' && !s.is_read)
+    .sort((a, b) => (a.metadata?.order || 0) - (b.metadata?.order || 0));
+  const competitors = await supabase.select('competitors', {
+    select: 'handle,display_name,platform,followers',
+    eq: { workspace_id: workspace.id, is_active: true },
+  }).catch(() => []);
+
+  const brief = {
+    verdict: v ? { title: v.title, body: v.body, score_factors: v.metadata?.score_factors || [] } : null,
+    actionPlan: actionRows.map((a, i) => ({
+      id: `a${i + 1}`, when: a.metadata?.when || a.impact || 'Today',
+      icon: a.metadata?.icon || 'sparkle', title: a.title, body: a.body, cta: a.action,
+    })),
+    signals: (signals || [])
+      .filter(s => s.kind !== 'verdict' && s.kind !== 'action' && !s.is_read)
+      .slice(0, 6)
+      .map(s => ({ kind: s.kind, label: s.kind, title: s.title, body: s.body })),
+    formula: v?.metadata?.formula || null,
+    intelScore: v?.metadata?.intel_score || null,
+    competitors: (competitors || []).map(c => ({
+      handle: c.handle, display_name: c.display_name, platform: c.platform, latest: c.followers,
+    })),
+  };
+
+  const today = new Date();
+  const start = new Date(today); start.setDate(start.getDate() - 7);
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const period = `${fmt(start)} → ${fmt(today)}`;
+
+  const inserted = await supabase.insert('reports', {
+    workspace_id: workspace.id, kind: 'weekly', period, status: 'rendering',
+  });
+  const reportRow = inserted?.[0];
+  if (!reportRow) return { skipped: 'insert_failed' };
+
+  try {
+    const html = renderReportHTML({
+      workspace: { name: workspace.name }, brief, generatedAt: new Date().toISOString(),
+    });
+    const pdf = await renderPdfFromHtml(html, { format: 'A4', landscape: true });
+    const path = `${workspace.id}/${reportRow.id}.pdf`;
+    await uploadFile('reports', path, pdf, { contentType: 'application/pdf' });
+
+    const filename = `pulse-weekly-${fmt(today)}.pdf`;
+    await sendEmail({
+      to: recipient,
+      subject: `Your PULSE weekly · ${workspace.name}`,
+      html: `<p>Hi,</p><p>Your weekly PULSE intelligence brief for <strong>${workspace.name}</strong> is attached.</p>
+             ${brief.verdict?.title ? `<p><strong>${brief.verdict.title}</strong></p>` : ''}
+             <p>${brief.actionPlan.length} prioritised actions · ${brief.signals.length} signals
+                ${brief.intelScore ? `· Intel score ${brief.intelScore}/100` : ''}</p>
+             <p style="color:#888;font-size:12px;">— PULSE</p>`,
+      text: `Your weekly PULSE brief for ${workspace.name}.\n\n— PULSE`,
+      attachments: [{ filename, content: Buffer.from(pdf) }],
+    });
+
+    await supabase.update('reports', {
+      status: 'ready', pdf_path: path,
+      summary: {
+        verdict_title: brief.verdict?.title || null,
+        actions: brief.actionPlan.length,
+        signals: brief.signals.length,
+        intel_score: brief.intelScore || null,
+      },
+      emailed_at: new Date().toISOString(),
+    }, { eq: { id: reportRow.id } });
+
+    return { ok: true, recipient };
+  } catch (e) {
+    await supabase.update('reports',
+      { status: 'failed', error: e.message }, { eq: { id: reportRow.id } }
+    ).catch(() => {});
+    return { error: e.message };
+  }
 }
 
 async function runWorkspace(workspace) {
@@ -101,6 +214,16 @@ async function runWorkspace(workspace) {
     }
   }
 
+  // ── Weekly digest email (Sunday 06:00 local, opted-in) ──────────────
+  if (jobs.includes('weekly-digest')) {
+    try {
+      const r = await runWeeklyDigest(workspace);
+      result.steps.push({ step: 'weekly-digest', ...r });
+    } catch (e) {
+      result.steps.push({ step: 'weekly-digest', error: e.message });
+    }
+  }
+
   // ── Live signals (8 / 13 / 18 local) ─────────────────────────────────
   if (jobs.includes('live-signals')) {
     try {
@@ -123,7 +246,7 @@ export default async function handler(req, res) {
   }
 
   const workspaces = await supabase.select('workspaces', {
-    select: 'id,name,tier,timezone,account_age,zernio_profile_id',
+    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email',
   }).catch(() => []);
 
   // Sequential to stay under the 60s function budget. With 50ish workspaces

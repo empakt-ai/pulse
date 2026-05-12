@@ -11,5 +11,9 @@
     "dev": "vercel dev",
     "build": "echo 'Static SPA — no build step'",
     "start": "vercel dev"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "^131.0.0",
+    "puppeteer-core": "^23.11.0"
   }
 }
