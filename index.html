@@ -3340,9 +3340,43 @@ const OverviewScreen = ({ activePlatform }) => {
         </div>
 
         <div className="lg:col-span-8 space-y-4 sm:space-y-5">
-          <div className="grid grid-cols-2 gap-3 sm:gap-4">
-            <StatCard label={isAll ? 'Total reach 30d' : `${scopeLabel} · reach 30d`} value={formatNum(totalReach)} sparkData={null} icon="eye" />
-            <StatCard label="Avg eng. rate" value={`${avgEngRate}%`} sparkData={null} color="#FF2D6A" icon="heart" />
+          {/* When viewing All accounts, use the rich Brief cards (per-platform
+              breakdown + period-over-period delta + benchmark line) so the
+              top of Stats has the same weight as the rest of the screen.
+              When scoped to a single platform, fall back to scope-aware
+              local stats since briefMetrics is workspace-wide. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+            {isAll ? (
+              <>
+                <ReachCard />
+                <EngagementCard />
+              </>
+            ) : (
+              <>
+                <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+                  <div>
+                    <Eyebrow>{scopeLabel} · reach 30d</Eyebrow>
+                    <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{formatNum(totalReach)}</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark mt-1">{filtered.length} post{filtered.length === 1 ? '' : 's'} in window</div>
+                  </div>
+                  <div className="text-[11px] text-mute dark:text-muteDark font-mono mt-3">
+                    {filtered.length > 0 ? `Avg ${formatNum(Math.round(totalReach / filtered.length))} per post` : 'Awaiting posts'}
+                  </div>
+                </Card>
+                <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+                  <div>
+                    <Eyebrow color="text-magenta">{scopeLabel} · eng rate</Eyebrow>
+                    <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{avgEngRate}%</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark mt-1">Last 30 days</div>
+                  </div>
+                  {totalEngActs > 0 && (
+                    <div className="text-[11px] text-mute dark:text-muteDark font-mono mt-3">
+                      {formatNum(totalEngActs)} total engagement actions
+                    </div>
+                  )}
+                </Card>
+              </>
+            )}
           </div>
 
           <Card>
@@ -3813,6 +3847,54 @@ const GrowthScreen = ({ activePlatform }) => {
               </div>
             )}
           </Card>
+
+          {/* Best gain day + totals — derived from the same series the chart
+              renders. Each card hides when there's no data so the rail
+              shrinks gracefully on cold workspaces. */}
+          {(() => {
+            // Stitch every own-platform series into a flat array of
+            // { date, platform, gain } entries by diffing consecutive
+            // followers values. Then surface the single best day.
+            const own = data?.series?.own || {};
+            const gains = [];
+            for (const [k, points] of Object.entries(own)) {
+              if (!points || points.length < 2) continue;
+              if (!isAll && k !== activePlatform) continue;
+              for (let i = 1; i < points.length; i++) {
+                gains.push({
+                  date: points[i].date,
+                  platform: k,
+                  gain: (points[i].followers || 0) - (points[i - 1].followers || 0),
+                });
+              }
+            }
+            const best = gains.reduce((b, g) => (g.gain > (b?.gain ?? -Infinity) ? g : b), null);
+            const totalGain = gains.reduce((s, g) => s + g.gain, 0);
+
+            if (!best || best.gain <= 0) return null;
+            const dateLabel = (() => {
+              try { return new Date(best.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+              catch { return best.date; }
+            })();
+
+            return (
+              <Card>
+                <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Best gain day</h3>
+                <div className="flex items-baseline gap-2">
+                  <div className="font-display text-[28px] font-semibold tracking-tighter">+{formatNum(best.gain)}</div>
+                  <Plat p={best.platform} className="w-3.5 h-3.5" />
+                  <span className="text-[12px] text-mute dark:text-muteDark">{PLATFORM_LABEL[best.platform] || best.platform}</span>
+                </div>
+                <div className="text-[11px] font-mono text-mute dark:text-muteDark mt-1">{dateLabel}</div>
+                <div className="mt-3 pt-3 border-t border-line/60 dark:border-lineDark/60 flex items-baseline justify-between text-[11.5px]">
+                  <span className="text-mute dark:text-muteDark">Net followers · {days}d</span>
+                  <span className={cls('font-mono', totalGain >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                    {totalGain >= 0 ? '+' : ''}{formatNum(totalGain)}
+                  </span>
+                </div>
+              </Card>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -4175,25 +4257,46 @@ const ContentScreen = ({ activePlatform, activeBrand }) => {
 
           <div className="lg:col-span-4 space-y-4">
 
-            {/* Engagement breakdown */}
+            {/* Engagement breakdown — with peer-percentile badges so each
+                metric reads as "where this post sits in your catalogue" */}
             <Card>
-              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement breakdown</h3>
+              <div className="flex items-baseline justify-between mb-3">
+                <h3 className="font-display text-[15px] font-semibold tracking-tight">Engagement breakdown</h3>
+                {bm?.peer_count > 0 && (
+                  <span className="text-[10px] font-mono text-mute dark:text-muteDark">vs {bm.peer_count} peer{bm.peer_count === 1 ? '' : 's'}</span>
+                )}
+              </div>
               <div className="space-y-2">
                 {[
-                  { l: 'Likes',    v: p.likes,    i: 'heart' },
-                  { l: 'Comments', v: p.comments, i: 'message' },
-                  { l: 'Shares',   v: p.shares,   i: 'share' },
-                  { l: 'Saves',    v: p.saves,    i: 'bookmark' },
-                ].map(row => (
-                  <div key={row.l} className="flex items-center gap-3 py-1.5">
-                    <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
-                      <Icon name={row.i} className="w-3.5 h-3.5" />
+                  { l: 'Likes',    v: p.likes,    i: 'heart',    pct: null },
+                  { l: 'Comments', v: p.comments, i: 'message',  pct: null },
+                  { l: 'Shares',   v: p.shares,   i: 'share',    pct: bm?.shares?.percentile },
+                  { l: 'Saves',    v: p.saves,    i: 'bookmark', pct: null },
+                ].map(row => {
+                  const pct = row.pct;
+                  const pctTone = pct == null ? '' :
+                    pct >= 75 ? 'text-emerald-600 dark:text-lime' :
+                    pct >= 25 ? 'text-ultra dark:text-ultra' : 'text-magenta';
+                  return (
+                    <div key={row.l} className="flex items-center gap-3 py-1.5">
+                      <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
+                        <Icon name={row.i} className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="flex-1 text-[13px]">{row.l}</span>
+                      <span className="font-mono text-[12.5px]">{formatNum(row.v)}</span>
+                      {pct != null && (
+                        <span className={cls('font-mono text-[10.5px] w-12 text-right', pctTone)}>{pct}th</span>
+                      )}
                     </div>
-                    <span className="flex-1 text-[13px]">{row.l}</span>
-                    <span className="font-mono text-[12.5px]">{formatNum(row.v)}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+              {bm?.views?.avg != null && (
+                <div className="mt-3 pt-3 border-t border-line/60 dark:border-lineDark/60 text-[11px] font-mono text-mute dark:text-muteDark flex items-center justify-between">
+                  <span>Catalogue avg views</span>
+                  <span>{formatNum(bm.views.avg)}</span>
+                </div>
+              )}
             </Card>
 
             {/* Posting context */}
