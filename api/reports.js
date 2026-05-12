@@ -9,7 +9,7 @@
 //   POST /api/reports  {action:'email'}  → also email the PDF to the caller
 //   DELETE /api/reports?id=<reportId>    → delete a report + its PDF
 
-import { authenticate, json } from './_lib/auth.js';
+import { authenticate, json, trialLockoutEnvelope } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { renderReportHTML } from './_lib/report-template.js';
 import { renderPdfFromHtml } from './_lib/pdf.js';
@@ -99,6 +99,16 @@ export default async function handler(req, res) {
 
   // ── Generate mode ───────────────────────────────────────────────────
   if (req.method === 'POST') {
+    // Reports (PDF + email) are a paid feature. Refuse trial workspaces
+    // — locked or not — with a clear upgrade message. We allow GET so
+    // the empty list renders cleanly with the upgrade copy.
+    if (ws.trial_active || ws.trial_locked) {
+      return json(res, 402, {
+        error: 'PDF reports unlock after you upgrade from the trial.',
+        trial: true,
+        trial_locked: !!ws.trial_locked,
+      });
+    }
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const wantsEmail = body?.action === 'email';

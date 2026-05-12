@@ -17,14 +17,17 @@
 //     → 404 if account not found or not the caller's
 // ═════════════════════════════════════════════════════════════════════════
 
-import { authenticate, json } from '../_lib/auth.js';
+import { authenticate, json, trialLockoutEnvelope } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { runActor, estimateScrapeCost } from '../_lib/apify.js';
 import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
+import { TRIAL_LIMITS } from '../_lib/tiers.js';
 
 // How deep we go on a backfill. Apify actors top out around 100-200 posts
 // on a single sync run before timeouts bite; 100 is the practical sweet
-// spot for cost + reliability across IG/TikTok/FB.
+// spot for cost + reliability across IG/TikTok/FB. During trial we drop
+// to TRIAL_LIMITS.backfill_posts (10) — enough to populate a few stat
+// cards but a real differentiator on upgrade.
 const BACKFILL_LIMIT = 100;
 
 // Engagement-rate helpers — match sync.js so backfilled posts get the same
@@ -50,6 +53,12 @@ export default async function handler(req, res) {
   if (auth.error) return json(res, auth.status, { error: auth.error });
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
+
+  // Locked trials lose access to backfill; active trials get a shallower
+  // pull. Both branches still upsert with source='own' — same schema.
+  const locked = trialLockoutEnvelope(ws);
+  if (locked) return json(res, locked.status, locked.body);
+  const fetchLimit = ws.trial_active ? TRIAL_LIMITS.backfill_posts : BACKFILL_LIMIT;
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
@@ -87,11 +96,11 @@ export default async function handler(req, res) {
       if (!channelKey) {
         return json(res, 400, { error: 'Missing YouTube channel id on account' });
       }
-      const yt = await scrapeYouTubeChannel(channelKey, { maxResults: BACKFILL_LIMIT });
+      const yt = await scrapeYouTubeChannel(channelKey, { maxResults: fetchLimit });
       normalisedPosts = yt.posts || [];
       cost_cents = 0; // direct API — no Apify charge
     } else {
-      const result = await runActor(account.platform, handle, { limit: BACKFILL_LIMIT });
+      const result = await runActor(account.platform, handle, { limit: fetchLimit });
       normalisedPosts = result.posts || [];
       if (result.errors?.length) errors.push(...result.errors);
       cost_cents = estimateScrapeCost(account.platform);

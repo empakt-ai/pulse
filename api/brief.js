@@ -306,6 +306,17 @@ export default async function handler(req, res) {
       first_name: auth.user.user_metadata?.first_name || null,
     },
     tier: { ...tier, key: ws.tier || 'creator' },
+    // Trial state — populated by auth.js attachTrialState(). The UI uses
+    // this to render the banner, day-counter, locked-card teasers, and
+    // the full-screen paywall when trial_locked is true.
+    trial: {
+      active: !!ws.trial_active,
+      locked: !!ws.trial_locked,
+      days_left: ws.trial_days_left ?? null,
+      ends_at: ws.trial_ends_at || null,
+      intent_tier: ws.trial_intent_tier || ws.tier || null,
+      converted_at: ws.trial_converted_at || null,
+    },
     usage: { used: usage.used, limit: tier.runs_per_month },
     accounts: accounts || [],
     accountSummary,

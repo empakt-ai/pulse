@@ -12,10 +12,11 @@
 //   POST   /api/accounts                       → sync from Zernio + refresh followers
 //   DELETE /api/accounts?id=... | platform=... → disconnect (Zernio + local soft-delete)
 
-import { authenticate, json } from './_lib/auth.js';
+import { authenticate, json, trialLockoutEnvelope } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { zernio, extractFollowers } from './_lib/zernio.js';
 import { claimHandle, releaseHandle, isAvailable } from './_lib/handle-registry.js';
+import { checkAccountCap } from './_lib/tiers.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -35,6 +36,9 @@ export default async function handler(req, res) {
 
   // ── POST: sync from Zernio + refresh follower counts ──────────────────
   if (req.method === 'POST') {
+    // Locked trial — no new connections, no syncs.
+    const locked = trialLockoutEnvelope(ws);
+    if (locked) return json(res, locked.status, locked.body);
     if (!ws.zernio_profile_id) return json(res, 200, { synced: 0, accounts: [] });
 
     let remote;
@@ -92,6 +96,15 @@ export default async function handler(req, res) {
     }).catch(() => []);
     const existingIds = new Set((existing || []).map(r => r.zernio_account_id));
 
+    // Compute remaining slots under whatever cap applies (trial: 2, paid:
+    // tier total). Zernio's listAccounts may return more than we can
+    // accept; the surplus gets reported back as rejected with reason
+    // 'cap_exceeded' so the UI can tell the user to upgrade.
+    const capCheck = await checkAccountCap(ws);
+    const currentlyActive = capCheck.used;
+    const capLimit = (capCheck.limit === null || capCheck.limit === -1) ? Infinity : capCheck.limit;
+    let remainingSlots = Math.max(0, capLimit - currentlyActive);
+
     // Filter the rows we'd insert against the handle registry. Rows
     // that are taken by another workspace are dropped from the insert
     // and reported separately in the response so the UI can warn.
@@ -113,6 +126,18 @@ export default async function handler(req, res) {
           });
           continue;
         }
+        // Re-binding our own existing handle doesn't consume a fresh slot.
+        const isOwn = check.reason === 'already_yours';
+        if (!isOwn && remainingSlots <= 0) {
+          rejected.push({
+            platform: r.platform,
+            handle: r.platform_username,
+            reason: capCheck.source === 'trial' ? 'trial_cap' : 'cap_exceeded',
+            limit: capLimit === Infinity ? null : capLimit,
+          });
+          continue;
+        }
+        if (!isOwn) remainingSlots -= 1;
         claimableRows.push(r);
       } catch (e) {
         rejected.push({ platform: r.platform, handle: r.platform_username, reason: 'check_failed', error: e.message });

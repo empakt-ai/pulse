@@ -22,7 +22,7 @@
 //   POST /api/competitors  {action: 'sync'}    → trigger Apify scrape
 //   DELETE /api/competitors?id=...             → soft-delete (is_active=false)
 
-import { authenticate, json } from './_lib/auth.js';
+import { authenticate, json, trialLockoutEnvelope } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { checkCompetitorCap } from './_lib/tiers.js';
 import { syncCompetitorsForWorkspace } from './_lib/competitor-sync.js';
@@ -102,6 +102,10 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    // Locked trial — no new tracking, no scrapes.
+    const locked = trialLockoutEnvelope(ws);
+    if (locked) return json(res, locked.status, locked.body);
+
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
 
@@ -121,10 +125,14 @@ export default async function handler(req, res) {
 
     const cap = await checkCompetitorCap(ws);
     if (cap.exceeded) {
+      const msg = cap.source === 'trial'
+        ? `Trial allows tracking ${cap.limit} competitors. Upgrade to track more.`
+        : `Competitor limit reached (${cap.limit}). Upgrade plan to track more.`;
       return json(res, 429, {
-        error: `Competitor limit reached (${cap.limit}). Upgrade plan to track more.`,
+        error: msg,
         used: cap.used,
         limit: cap.limit,
+        trial: cap.source === 'trial',
       });
     }
 

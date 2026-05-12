@@ -92,3 +92,24 @@ export function json(res, status, body) {
   res.setHeader('Content-Type', 'application/json');
   res.send(JSON.stringify(body));
 }
+
+// Trial-lockout gate. Endpoints that mutate data or render the dashboard
+// pass the active workspace through this. Returns a truthy object when
+// the workspace is locked (caller should `return json(res, ...)` it),
+// or null when the request is allowed to proceed.
+//
+// We deliberately don't bake the response into this helper — different
+// endpoints want different shapes (some render HTML for OAuth callbacks,
+// most return JSON). Caller decides.
+export function trialLockoutEnvelope(workspace) {
+  if (!workspace?.trial_locked) return null;
+  return {
+    status: 402,
+    body: {
+      error: 'Trial ended. Upgrade to continue using PULSE.',
+      trial_locked: true,
+      trial_ends_at: workspace.trial_ends_at || null,
+      trial_intent_tier: workspace.trial_intent_tier || workspace.tier || null,
+    },
+  };
+}

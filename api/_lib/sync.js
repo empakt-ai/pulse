@@ -22,7 +22,7 @@ import { supabase } from './supabase.js';
 import { zernio, extractFollowers } from './zernio.js';
 import { scrapeChannel as scrapeYouTubeChannel } from './youtube.js';
 import { pullAds } from './ads.js';
-import { scrapeProfile as apifyScrapeProfile, ACTORS as APIFY_ACTORS } from './apify.js';
+import { scrapeProfile as apifyScrapeProfile, runActor as apifyRunActor, ACTORS as APIFY_ACTORS } from './apify.js';
 import { detectContent } from './content-detection.js';
 
 // ─── Depth selection for the first-connect backfill ──────────────────────
@@ -155,6 +155,14 @@ async function syncOneAccount(workspace, acct, mode) {
   let rows = [];
   let error = null;
 
+  // Trial workspaces never call Zernio /analytics — that endpoint is gated
+  // by the paid Analytics add-on and is the single biggest line item we
+  // need to keep off the trial cost line. Instead we route every platform
+  // through its scrape path (Apify for IG/TT/FB/X/LI, YouTube Data API
+  // for YT). The schema rows we produce are identical; downstream code
+  // doesn't know the difference.
+  const scrapeOnly = !!workspace?.trial_active;
+
   try {
     if (acct.platform === 'youtube') {
       // YouTube goes through the Data API; we always pull the latest N
@@ -167,6 +175,32 @@ async function syncOneAccount(workspace, acct, mode) {
         const rate = engagementRate(p);
         return { workspace_id: workspace.id, source: 'own', platform: 'youtube',
                  ...p, engagement_rate: rate, signal: signalFor(rate) };
+      }).filter(r => r.platform_post_id);
+    } else if (scrapeOnly && acct.platform_username) {
+      // Apify scrape using the account's public handle. Limit follows the
+      // same depth tiers we use for Zernio so trial cards aren't visibly
+      // shallower than paid ones (the difference is mostly under the hood).
+      const limit = mode === 'backfill' ? 30 : mode === 'deep' ? 24 : 12;
+      const result = await apifyRunActor(acct.platform, acct.platform_username, { limit });
+      rows = (result.posts || []).map(p => {
+        const rate = engagementRate(p);
+        return {
+          workspace_id: workspace.id,
+          source: 'own',
+          platform: acct.platform,
+          platform_post_id: p.platform_post_id,
+          post_type: p.post_type || null,
+          caption: p.caption || null,
+          posted_at: p.posted_at || null,
+          views: p.views || 0,
+          likes: p.likes || 0,
+          comments: p.comments || 0,
+          saves: p.saves || 0,
+          shares: p.shares || 0,
+          engagement_rate: rate,
+          signal: signalFor(rate),
+          raw_data: p.raw_data || {},
+        };
       }).filter(r => r.platform_post_id);
     } else {
       const analytics = await zernio.getAnalytics(acct.zernio_account_id, fromDate, toDate);
@@ -263,14 +297,20 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
   }
 
   // Ads — no-op when no ads are running. Same window as the deepest mode.
+  // Skipped entirely during trial since /ads is on the Zernio paid path
+  // and the Ads tab is upgrade-gated anyway.
   let ads = null;
-  try {
-    const { fromDate, toDate } = mode === 'backfill'
-      ? { fromDate: daysAgo(BACKFILL_DAYS[workspace?.account_age] || 90), toDate: daysAgo(0) }
-      : { fromDate: daysAgo(30), toDate: daysAgo(0) };
-    ads = await pullAds(workspace, scoped, { fromDate, toDate });
-  } catch (e) {
-    ads = { error: e.message };
+  if (workspace?.trial_active) {
+    ads = { skipped: 'trial' };
+  } else {
+    try {
+      const { fromDate, toDate } = mode === 'backfill'
+        ? { fromDate: daysAgo(BACKFILL_DAYS[workspace?.account_age] || 90), toDate: daysAgo(0) }
+        : { fromDate: daysAgo(30), toDate: daysAgo(0) };
+      ads = await pullAds(workspace, scoped, { fromDate, toDate });
+    } catch (e) {
+      ads = { error: e.message };
+    }
   }
 
   // Content-piece + series detection. Runs after posts are persisted so

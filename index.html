@@ -3671,6 +3671,21 @@ const AdsScreen = ({ activePlatform }) => {
   const isAll = activePlatform === 'all' || !activePlatform;
   const tierKey = (D.tier?.key || 'creator').toLowerCase();
   const adsAllowed = tierKey === 'brand' || tierKey === 'agency';
+  const trialActive = !!D.trial?.active;
+
+  // ── Trial users: scrape-only, no ad data — show locked teaser ─────────
+  if (trialActive) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <TrialLockedCard
+          featureLabel="Ad performance dashboard"
+          tier="brand"
+          sub="Live spend, impressions, clicks and CTR pulled from your Meta, TikTok and X ad accounts. Unlocks after you upgrade."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor: 'billing' } }))}
+        />
+      </div>
+    );
+  }
 
   // ── Tier-gate: Creator sees an upgrade prompt ─────────────────────────
   if (!adsAllowed) {
@@ -6294,6 +6309,24 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
       try {
         const synced = await api('/accounts', { method: 'POST' });
         setAccounts(synced.accounts || []);
+
+        // Surface any handles the server refused. Two reasons: another
+        // workspace already owns them (taken), or a previous trial that
+        // never converted is still holding the binding (trial_locked).
+        const rejForPlatform = (synced.rejected || []).filter(r => r.platform === platform);
+        if (rejForPlatform.length) {
+          const r0 = rejForPlatform[0];
+          const msg =
+            r0.reason === 'trial_locked'
+              ? `${r0.handle || 'That handle'} was used in another workspace's trial. Contact support if it's yours.`
+              : r0.reason === 'trial_cap'
+                ? `Trial allows ${r0.limit} accounts max. Upgrade for more.`
+                : r0.reason === 'cap_exceeded'
+                  ? `Account limit reached for your plan.`
+                  : `${r0.handle || 'That handle'} is already connected to another PULSE workspace.`;
+          showToast(msg, 'err');
+        }
+
         const justConnected = (synced.new_accounts || []).find(a => a.platform === platform);
         const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
         if (justConnected) {
@@ -7242,6 +7275,10 @@ const hydrateD = (brief) => {
   D.connectedPlatforms = Object.keys(a || {});
   // Ad performance summary — null when no ads running.
   D.ads = brief.ads && brief.ads.count > 0 ? brief.ads : null;
+  // Tier + trial state — drive the trial banner, locked-card teasers,
+  // and the full-screen paywall when trial.locked is true.
+  D.tier = brief.tier || { key: 'creator', label: 'Creator' };
+  D.trial = brief.trial || { active: false, locked: false };
 };
 
 // Empty-state UI (no accounts connected yet)
@@ -7284,7 +7321,104 @@ const BriefGenerating = ({ onGoToSettings }) => (
   </div>
 );
 
-Object.assign(window, { hydrateD, EmptyDashboardCTA, BriefGenerating });
+// ─── Trial UX primitives ────────────────────────────────────────────────
+// Three pieces:
+//   1. TrialBanner — top-of-app strip with day counter and upgrade CTA
+//   2. TrialLockedPaywall — full-screen takeover once the 7-day window
+//      elapses without conversion. Honors the user's intent_tier.
+//   3. TrialLockedCard — inline teaser for paid-only features (audience
+//      demos, ad performance, daily-only data) during the active trial.
+
+const TrialBanner = ({ trial, intentTier, onUpgrade }) => {
+  if (!trial?.active) return null;
+  const days = trial.days_left ?? 0;
+  const urgency = days <= 1 ? 'magenta' : days <= 3 ? 'amber' : 'ultra';
+  const colorMap = {
+    magenta: 'bg-magenta text-paper',
+    amber:   'bg-amber text-ink',
+    ultra:   'bg-ultra text-paper',
+  };
+  return (
+    <div className={cls(
+      'w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap',
+      colorMap[urgency]
+    )}>
+      <span>
+        Trial · {days === 0 ? 'last day' : days === 1 ? '1 day left' : `${days} days left`}
+        {intentTier && <> · upgrading to {intentTier.charAt(0).toUpperCase() + intentTier.slice(1)}</>}
+      </span>
+      <button
+        type="button"
+        onClick={onUpgrade}
+        className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-paper/15 hover:bg-paper/25 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
+      >
+        Upgrade now <Icon name="arrowRight" className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
+
+const TrialLockedPaywall = ({ trial, intentTier, onUpgrade }) => {
+  const planLabel = intentTier
+    ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
+    : 'a paid plan';
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper flex items-center justify-center px-5 py-16">
+      <div className="max-w-xl w-full text-center">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-magenta/15 text-magenta flex items-center justify-center mb-6">
+          <Icon name="lock" className="w-7 h-7" />
+        </div>
+        <Eyebrow color="text-magenta">Trial ended</Eyebrow>
+        <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+          Your data is waiting.
+        </h1>
+        <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8 leading-relaxed">
+          Your 7-day trial is over. Upgrade to {planLabel} to unlock every brief, signal, and competitor insight PULSE has been collecting.
+          Your accounts and competitor list are saved — they reconnect the moment you pay.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <Btn variant="ink" size="lg" onClick={onUpgrade}>
+            Upgrade to {planLabel} <Icon name="arrowRight" className="w-4 h-4" />
+          </Btn>
+          <a href="/pricing" className="text-[13px] text-mute dark:text-muteDark hover:underline px-2 py-2">
+            Compare plans →
+          </a>
+        </div>
+        <p className="text-[11.5px] font-mono text-mute dark:text-muteDark mt-8 uppercase tracking-[0.12em]">
+          Data retained for 30 days · cancel anytime after
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const TrialLockedCard = ({ featureLabel, tier = 'brand', sub, onUpgrade }) => {
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  return (
+    <Card className="!p-5 relative overflow-hidden">
+      <div className="absolute inset-0 backdrop-blur-[3px] bg-paper/30 dark:bg-ink/30 pointer-events-none" aria-hidden="true" />
+      <div className="relative flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-ultra/15 text-ultra flex items-center justify-center flex-shrink-0">
+          <Icon name="lock" className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Eyebrow color="text-ultra">{tierLabel} feature</Eyebrow>
+          <div className="font-display text-[17px] font-semibold tracking-tight mt-1.5 mb-1">{featureLabel}</div>
+          {sub && <p className="text-[12.5px] text-mute dark:text-muteDark mb-3 leading-snug">{sub}</p>}
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-mono uppercase tracking-[0.12em] bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90 transition"
+          >
+            Unlock with {tierLabel}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+Object.assign(window, { hydrateD, EmptyDashboardCTA, BriefGenerating, TrialBanner, TrialLockedPaywall, TrialLockedCard });
 
 </script>
 <script type="text/babel">
@@ -7777,8 +7911,28 @@ function App() {
         }} />
       )}
 
-      {route === 'app' && (
+      {/* Trial paywall — full-screen takeover. Bypasses TopBar/Account
+          bar/screens entirely so locked workspaces see nothing but the
+          upgrade path. Settings is still implicitly reachable via the
+          paywall CTA if we wire one (the on-upgrade handler routes
+          there). */}
+      {route === 'app' && briefData?.trial?.locked && (
+        <TrialLockedPaywall
+          trial={briefData.trial}
+          intentTier={briefData.trial?.intent_tier || briefData.tier?.key}
+          onUpgrade={() => { setSettingsAnchor('billing'); setTab('Settings'); /* fall through */ }}
+        />
+      )}
+
+      {route === 'app' && !briefData?.trial?.locked && (
         <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper">
+          {/* Trial banner sits above TopBar so it's the first thing the
+              user sees on every screen. Hidden once trial converts. */}
+          <TrialBanner
+            trial={briefData?.trial}
+            intentTier={briefData?.trial?.intent_tier || briefData?.tier?.key}
+            onUpgrade={() => { setSettingsAnchor('billing'); setTab('Settings'); }}
+          />
           <TopBar
             active={tab}
             setActive={setTab}

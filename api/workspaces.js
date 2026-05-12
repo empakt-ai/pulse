@@ -73,6 +73,18 @@ export default async function handler(req, res) {
     const name = (body?.name || '').trim();
     if (!name) return json(res, 400, { error: 'name is required' });
 
+    // Trial users get exactly one workspace. Any of the user's other
+    // workspaces being on an active trial is enough to refuse — the
+    // intent is to prevent fan-out before upgrading.
+    const userWorkspaces = auth.workspaces || [];
+    const onTrial = userWorkspaces.some(w => w.trial_active && !w.trial_converted_at);
+    if (onTrial) {
+      return json(res, 402, {
+        error: 'Additional workspaces unlock after you upgrade from the trial.',
+        trial: true,
+      });
+    }
+
     // Every new workspace enters a 7-day trial. tier here is the user's
     // *intent* — what they plan to upgrade to. We persist it in both
     // tier (so all existing tier-checks work) and trial_intent_tier (so
