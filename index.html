@@ -2454,7 +2454,7 @@ const TopBar = ({ active, setActive, navigateToSettings, onSignOut, userEmail, t
     if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
     setActive('Settings');
   };
-  const tabs = ['Brief','Stats','Growth','Content','Intel','Actions','Targets','Settings'];
+  const tabs = ['Brief','Stats','Growth','Content','Intel','Actions','Reports','Targets','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -2666,7 +2666,7 @@ const MobileNav = ({ active, setActive }) => {
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
     { id: 'Growth', icon: 'trending' }, { id: 'Content', icon: 'play' },
     { id: 'Intel', icon: 'sparkle' }, { id: 'Actions', icon: 'bolt' },
-    { id: 'Targets', icon: 'target' }
+    { id: 'Reports', icon: 'layers' }
   ];
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
@@ -4470,6 +4470,222 @@ Object.assign(window, { ActionsScreen });
 
 </script>
 <script type="text/babel">
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen — Reports & Export
+// Lists past PDFs for the workspace and lets the user generate a new one.
+// "Email me" optionally attaches the PDF to a transactional Resend email.
+// ─────────────────────────────────────────────────────────────────────────────
+const ReportsScreen = () => {
+  const [reports, setReports]     = React.useState(null);
+  const [loading, setLoading]     = React.useState(true);
+  const [generating, setGen]      = React.useState(false);
+  const [withEmail, setWithEmail] = React.useState(false);
+  const [toast, setToast]         = React.useState(null);
+
+  const fetchReports = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api('/reports');
+      setReports(r.reports || []);
+    } catch (e) {
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const showToast = (msg, tone = 'ok') => {
+    setToast({ msg, tone });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const generate = async () => {
+    setGen(true);
+    setToast(null);
+    try {
+      const body = withEmail ? { action: 'email' } : {};
+      const r = await api('/reports', { method: 'POST', body: JSON.stringify(body) });
+      if (r?.ok) {
+        showToast(
+          r.email?.sent
+            ? `Report generated and emailed to ${r.email.to}.`
+            : `Report ready.`
+        );
+        fetchReports();
+        // Auto-open the new PDF in a new tab — small UX win.
+        if (r.report?.signed_url) {
+          window.open(r.report.signed_url, '_blank', 'noopener');
+        }
+      } else {
+        showToast(r?.message || r?.error || 'Generation failed', 'err');
+      }
+    } catch (e) {
+      showToast(e.message || 'Generation failed', 'err');
+    } finally {
+      setGen(false);
+    }
+  };
+
+  const removeReport = async (id) => {
+    if (!confirm('Delete this report permanently?')) return;
+    try {
+      await api(`/reports?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      fetchReports();
+    } catch (e) {
+      showToast(e.message || 'Delete failed', 'err');
+    }
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    } catch { return iso; }
+  };
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-ultra" size="w-1.5 h-1.5" /> Executive PDFs</span>}
+        title="Reports & export"
+        sub="Export the current intelligence brief as a one-page executive PDF. History stays here for 50 reports per workspace."
+        right={
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-[12.5px] text-mute dark:text-muteDark cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={withEmail}
+                onChange={(e) => setWithEmail(e.target.checked)}
+                className="accent-ultra"
+              />
+              Email me
+            </label>
+            <button
+              onClick={generate}
+              disabled={generating}
+              className={cls(
+                'h-9 px-4 rounded-xl text-[13px] font-medium transition',
+                generating
+                  ? 'bg-ink/10 dark:bg-paper/10 text-mute dark:text-muteDark cursor-wait'
+                  : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90'
+              )}
+            >
+              {generating ? 'Generating…' : '+ Generate report'}
+            </button>
+          </div>
+        }
+      />
+
+      {toast && (
+        <div className={cls(
+          'mb-4 rounded-xl px-4 py-3 text-[13px] flex items-center gap-2',
+          toast.tone === 'err'
+            ? 'bg-magenta/10 text-magenta border border-magenta/25'
+            : 'bg-lime/15 text-limeDeep dark:text-lime border border-lime/30'
+        )}>
+          <Icon name={toast.tone === 'err' ? 'bolt' : 'sparkle'} className="w-3.5 h-3.5" />
+          {toast.msg}
+        </div>
+      )}
+
+      {loading ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">Loading reports…</div>
+        </Card>
+      ) : reports.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-ultra/15 text-ultra mx-auto mb-3 flex items-center justify-center">
+              <Icon name="layers" className="w-6 h-6" />
+            </div>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-2">No reports yet</h3>
+            <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
+              Click <strong>Generate report</strong> above to render the current brief into a one-page PDF you can share, archive, or email.
+            </p>
+            <p className="text-[11.5px] font-mono text-mute dark:text-muteDark">
+              Weekly digest? Enable in Settings → Workspace.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark bg-ink/5 dark:bg-paper/5 border-b border-line dark:border-lineDark">
+                <th className="px-4 py-3 font-medium">Generated</th>
+                <th className="px-4 py-3 font-medium">Period</th>
+                <th className="px-4 py-3 font-medium">Verdict</th>
+                <th className="px-4 py-3 font-medium">Kind</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map(r => {
+                const s = r.summary || {};
+                return (
+                  <tr key={r.id} className="border-b border-line dark:border-lineDark last:border-b-0">
+                    <td className="px-4 py-3 align-top whitespace-nowrap font-mono text-[11.5px]">{fmtDate(r.generated_at)}</td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap text-mute dark:text-muteDark text-[12px]">{r.period || '—'}</td>
+                    <td className="px-4 py-3 align-top max-w-[360px]">
+                      <div className="font-medium line-clamp-1">{s.verdict_title || '—'}</div>
+                      <div className="text-[11px] font-mono text-mute dark:text-muteDark mt-0.5">
+                        {s.actions || 0} actions · {s.signals || 0} signals
+                        {s.intel_score ? ` · ${s.intel_score}/100` : ''}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className={cls(
+                        'inline-flex items-center px-2 py-0.5 rounded text-[10.5px] font-mono border',
+                        r.kind === 'weekly'
+                          ? 'bg-ultra/10 text-ultra border-ultra/25'
+                          : 'bg-ink/5 dark:bg-paper/5 text-mute dark:text-muteDark border-line dark:border-lineDark'
+                      )}>{r.kind === 'weekly' ? 'Weekly digest' : 'On-demand'}</span>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className={cls(
+                        'inline-flex items-center px-2 py-0.5 rounded text-[10.5px] font-mono border',
+                        r.status === 'ready'     ? 'bg-lime/20 text-limeDeep dark:text-lime border-lime/30' :
+                        r.status === 'rendering' ? 'bg-amber/15 text-amber border-amber/25' :
+                                                   'bg-magenta/15 text-magenta border-magenta/25'
+                      )}>{r.status}</span>
+                    </td>
+                    <td className="px-4 py-3 align-top text-right whitespace-nowrap">
+                      {r.signed_url ? (
+                        <>
+                          <a
+                            href={r.signed_url}
+                            target="_blank"
+                            rel="noopener"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-ultra hover:bg-ultra/5 mr-1"
+                          ><Icon name="arrowRight" className="w-3 h-3" /> Open</a>
+                        </>
+                      ) : null}
+                      <button
+                        onClick={() => removeReport(r.id)}
+                        className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-mute dark:text-muteDark hover:text-magenta hover:bg-magenta/5"
+                      >Delete</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ReportsScreen });
+
+</script>
+<script type="text/babel">
 // Screen 6 — Targets & Actuals
 // Targets aren't backed by Supabase yet — there's no /api/targets endpoint
 // and no `targets` table. Showing fabricated cycles here would teach users
@@ -5009,10 +5225,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                           || 'CA',
           focus_regions: wsData.workspace.focus_regions || [],
           account_age:   wsData.workspace.account_age || '6-12mo',
+          weekly_digest_enabled: !!wsData.workspace.weekly_digest_enabled,
+          digest_email:  wsData.workspace.digest_email || '',
         });
       } catch (e) {
         // Not yet authenticated — show form with defaults
-        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo' });
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '' });
       } finally {
         setLoading(false);
       }
@@ -5582,6 +5800,44 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </div>
             </div>
 
+            {/* Weekly digest — opt-in Sunday-morning email with the brief PDF attached */}
+            <div className="mt-5 pt-5 border-t border-line dark:border-lineDark">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <label className="block text-[13.5px] font-semibold">Weekly digest email</label>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
+                    Sunday morning, you'll get the freshly-generated brief as a PDF attached to a short email. Off by default.
+                  </p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer select-none flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!form.weekly_digest_enabled}
+                    onChange={e => setForm(f => ({ ...f, weekly_digest_enabled: e.target.checked }))}
+                  />
+                  <div className="w-10 h-6 rounded-full bg-ink/10 dark:bg-paper/15 peer-checked:bg-lime relative transition">
+                    <div className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                  </div>
+                </label>
+              </div>
+              {form.weekly_digest_enabled && (
+                <div className="mt-3 space-y-1.5">
+                  <label className="block text-[12px] text-mute dark:text-muteDark">
+                    Send to <span className="text-[11px] font-mono">(leave blank to use your account email)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={form.digest_email || ''}
+                    onChange={e => setForm(f => ({ ...f, digest_email: e.target.value }))}
+                    placeholder="reports@youragency.com"
+                    className="w-full sm:max-w-md h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                    style={{ WebkitAppearance: 'none' }}
+                  />
+                </div>
+              )}
+            </div>
+
             <div className="mt-5 flex justify-end">
               <Btn
                 onClick={saveWorkspace}
@@ -6044,6 +6300,7 @@ function App() {
     Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
     Actions:  <ActionsScreen activePlatform={activePlatform} />,
+    Reports:  <ReportsScreen />,
     Targets:  <TargetsScreen />,
     Settings: <SettingsScreen scrollAnchor={settingsAnchor} onAnchorConsumed={() => setSettingsAnchor(null)} />
   };

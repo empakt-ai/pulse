@@ -30,7 +30,7 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 
-const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone'];
+const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone', 'weekly_digest_enabled', 'digest_email'];
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
