@@ -3381,6 +3381,7 @@ const SettingsScreen = () => {
   // Create-workspace form
   const [newWsName, setNewWsName] = React.useState('');
   const [creatingWs, setCreatingWs] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
   // Tracks the in-flight OAuth poll so the postMessage handler can cancel it.
   const pollerRef = React.useRef(null);
 
@@ -3682,15 +3683,29 @@ const SettingsScreen = () => {
                 <Btn
                   variant="outline"
                   size="sm"
+                  disabled={syncing}
                   onClick={async () => {
+                    setSyncing(true);
                     try {
+                      // Account refresh (followers + handles) — fast.
                       const synced = await api('/accounts', { method: 'POST' });
                       setAccounts(synced.accounts || []);
-                      showToast(`Synced ${synced.synced} accounts ✓`);
-                    } catch (e) { showToast(e.message, 'err'); }
+                      // Full analytics + AI brief — slower, runs in the
+                      // background. We don't await it before showing the
+                      // toast so the user isn't stuck staring at a spinner.
+                      api('/analytics/refresh', { method: 'POST' })
+                        .then(r => showToast(`Refreshed ${r.posts || 0} posts ✓`))
+                        .catch(e => showToast(`Analytics: ${e.message}`, 'warn'));
+                      showToast(`Synced ${synced.synced} accounts — refreshing analytics…`);
+                    } catch (e) {
+                      showToast(e.message, 'err');
+                    } finally {
+                      setSyncing(false);
+                    }
                   }}
                 >
-                  <Icon name="refresh" className="w-3.5 h-3.5" /> Sync all
+                  <Icon name="refresh" className={cls('w-3.5 h-3.5', syncing && 'animate-spin')} />
+                  {syncing ? 'Syncing…' : 'Sync all'}
                 </Btn>
               )}
             </div>
@@ -4171,14 +4186,15 @@ function App() {
     } catch (e) { /* silent — empty state will render */ }
   }, []);
 
+  // Fetch the brief once on app entry, and again whenever the user switches
+  // to a non-Settings tab (catches data that arrived during a connect flow).
+  // Collapsed into one effect — two separate effects both fire on mount and
+  // cause a double-fetch/remount blink.
   React.useEffect(() => {
-    if (route === 'app') refreshBrief();
-  }, [route, refreshBrief]);
-
-  // Refetch when switching to a dashboard tab (catches data that arrived during connect)
-  React.useEffect(() => {
-    if (route === 'app' && tab !== 'Settings') refreshBrief();
-  }, [tab, route, refreshBrief]);
+    if (route !== 'app') return;
+    if (tab === 'Settings') return;
+    refreshBrief();
+  }, [route, tab, refreshBrief]);
 
   React.useEffect(() => {
     document.documentElement.classList.toggle('dark', t.theme === 'dark');
