@@ -263,27 +263,72 @@ tailwind.config = {
   window.addEventListener('unhandledrejection', function (e) {
     __pulse_errors.push('promise: ' + (e.reason?.message || String(e.reason)));
   });
+  // Build the diagnostic panel that takes over the splash when React fails
+  // to mount. Errors stay selectable; nothing dismisses on accidental clicks.
+  function pulseRenderDiagnostic() {
+    var splash = document.getElementById('pulse-splash');
+    if (!splash) return;
+    // Force splash to stay visible and become interactive even if data-ready
+    // got set earlier by some other code path.
+    splash.style.opacity = '1';
+    splash.style.pointerEvents = 'auto';
+    document.documentElement.removeAttribute('data-ready');
+
+    var details = __pulse_errors.length
+      ? __pulse_errors.slice(0, 5).map(function (s) { return s.slice(0, 200); }).join('\n')
+      : 'No errors captured — React or Babel may have failed to load.';
+    var safeDetails = details.replace(/[<>&]/g, function (c) {
+      return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
+    });
+
+    var inner = document.getElementById('pulse-splash-inner');
+    if (!inner) return;
+    inner.innerHTML =
+      '<div id="pulse-splash-logo">Couldn\'t start Pulse</div>' +
+      '<pre id="pulse-diag-errors" style="font-family:Geist Mono,ui-monospace,monospace;font-size:11px;color:rgba(10,10,11,0.7);max-width:560px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;text-align:left;padding:12px;margin:0;background:rgba(10,10,11,0.04);border-radius:10px;user-select:text;-webkit-user-select:text;">' + safeDetails + '</pre>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;">' +
+        '<button type="button" id="pulse-diag-copy" style="padding:9px 14px;border-radius:10px;background:#6B5BFF;color:#fff;border:none;font-family:Geist,system-ui,sans-serif;font-size:13px;cursor:pointer;">Copy errors</button>' +
+        '<button type="button" id="pulse-diag-reset" style="padding:9px 14px;border-radius:10px;background:#0A0A0B;color:#F5F1E8;border:none;font-family:Geist,system-ui,sans-serif;font-size:13px;cursor:pointer;">Reset & retry</button>' +
+      '</div>';
+
+    var copyBtn = document.getElementById('pulse-diag-copy');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', function () {
+        var t = document.getElementById('pulse-diag-errors');
+        var txt = t ? t.innerText : details;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(txt).then(function () {
+            copyBtn.textContent = 'Copied ✓';
+          }).catch(function () {
+            copyBtn.textContent = 'Copy failed';
+          });
+        } else {
+          // Fallback for clipboard-API-less environments: select the text.
+          var range = document.createRange();
+          range.selectNodeContents(t);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+          copyBtn.textContent = 'Selected — Cmd/Ctrl+C';
+        }
+      });
+    }
+    var resetBtn = document.getElementById('pulse-diag-reset');
+    if (resetBtn) {
+      resetBtn.addEventListener('click', function () {
+        try { localStorage.clear(); sessionStorage.clear(); } catch (e) {}
+        location.reload();
+      });
+    }
+  }
+  // Expose for manual recovery from the console too.
+  window.__pulseDiagnose = pulseRenderDiagnostic;
+
   setTimeout(function () {
     var root = document.getElementById('root');
     var mounted = root && root.children.length > 0;
     if (mounted) return;
-
-    // React hasn't mounted. Repurpose the splash into a diagnostic screen
-    // rather than fading out into nothing. The user gets actionable info
-    // and a reset button.
-    var splash = document.getElementById('pulse-splash');
-    if (!splash) return;
-    document.documentElement.removeAttribute('data-ready'); // keep splash visible
-    var inner = document.getElementById('pulse-splash-inner');
-    if (inner) {
-      var details = __pulse_errors.length
-        ? __pulse_errors.slice(0, 3).map(function (s) { return s.slice(0, 140); }).join('\n')
-        : 'No errors captured — React or Babel may have failed to load.';
-      inner.innerHTML =
-        '<div id="pulse-splash-logo">Couldn\'t start Pulse</div>' +
-        '<div style="font-family:Geist Mono,ui-monospace,monospace;font-size:11px;color:rgba(10,10,11,0.6);max-width:520px;white-space:pre-wrap;text-align:left;padding:12px;background:rgba(10,10,11,0.04);border-radius:10px;">' + details.replace(/[<>&]/g, function(c){return {'<':'&lt;','>':'&gt;','&':'&amp;'}[c];}) + '</div>' +
-        '<button onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}location.reload()" style="margin-top:8px;padding:9px 18px;border-radius:10px;background:#0A0A0B;color:#F5F1E8;border:none;font-family:Geist,system-ui,sans-serif;font-size:13px;cursor:pointer;">Reset & retry</button>';
-    }
+    pulseRenderDiagnostic();
   }, 6000);
 
   // Reveal the "Reset session" link on the splash after 3 seconds so the
@@ -294,14 +339,10 @@ tailwind.config = {
     if (btn) btn.style.display = 'inline-block';
   }, 3000);
 
-  // Double-click anywhere on the splash to force-dismiss it. Belt + braces.
-  window.addEventListener('DOMContentLoaded', function () {
-    var splash = document.getElementById('pulse-splash');
-    if (!splash) return;
-    splash.addEventListener('dblclick', function () {
-      document.documentElement.setAttribute('data-ready', '1');
-    });
-  });
+  // Removed the double-click force-dismiss escape — it conflicted with the
+  // user trying to select error text in the diagnostic panel. The Reset
+  // button + the 6s pre-React fallback cover the same need without the
+  // collision.
 </script>
 
 <!-- Order matters: utilities → icons → data → tweaks → screens → app -->
