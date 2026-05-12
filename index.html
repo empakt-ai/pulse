@@ -4743,15 +4743,19 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
 
           <div className="h-px bg-line dark:bg-lineDark" />
 
-          {/* Intelligence Layer — choose Claude or Gemini per workspace */}
-          <ModelSwitcher
-            workspaceId={workspace?.id}
-            tier={tier}
-            onSwitched={(model) => showToast(`Intelligence switched to ${model === 'gemini' ? 'Gemini (Google)' : 'Claude (Anthropic)'}`)}
-            onError={(msg) => showToast(msg, 'err')}
-          />
-
-          <div className="h-px bg-line dark:bg-lineDark" />
+          {/* Intelligence Layer — agency-only (internal model-comparison tool).
+              Other tiers always get the default provider chosen server-side. */}
+          {tier === 'agency' && (
+            <>
+              <ModelSwitcher
+                workspaceId={workspace?.id}
+                tier={tier}
+                onSwitched={(model) => showToast(`Intelligence switched to ${model === 'gemini' ? 'Gemini (Google)' : 'Claude (Anthropic)'}`)}
+                onError={(msg) => showToast(msg, 'err')}
+              />
+              <div className="h-px bg-line dark:bg-lineDark" />
+            </>
+          )}
 
           {/* Competitors — comparative accounts pulled via Apify (or YouTube
               direct). Nothing is scraped unless the user adds at least one. */}
