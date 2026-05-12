@@ -2746,48 +2746,325 @@ Object.assign(window, { OverviewScreen });
 </script>
 <script type="text/babel">
 // Screen 3 — Growth
+// Platform palette for the trajectory chart. Keeping these inline so the
+// SVG paths can reference them without a Tailwind class lookup.
+const PLATFORM_COLOR = {
+  ig: '#FF2D6A', tt: '#010101', yt: '#FF0000',
+  fb: '#1877F2', li: '#0A66C2', x: '#000000', sc: '#FFFC00',
+};
+const PLATFORM_LABEL = {
+  ig: 'Instagram', tt: 'TikTok', yt: 'YouTube',
+  fb: 'Facebook', li: 'LinkedIn', x: 'X', sc: 'Snapchat',
+};
+
+// Multi-series line chart used by the Growth screen. Pure SVG, no deps.
+// Each series is { key, label, color, points: [{date, value}], dashed? }.
+// Renders an x-axis of date ticks (first / mid / last) and a y-axis with
+// min/max labels. Hover dots highlight the value at the cursor's x.
+const TrajectoryChart = ({ series, height = 260 }) => {
+  const containerRef = React.useRef(null);
+  const [width, setWidth] = React.useState(600);
+  const [hoverX, setHoverX] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      const w = Math.max(320, entries[0].contentRect.width);
+      setWidth(w);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const padding = { top: 16, right: 16, bottom: 28, left: 48 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  // Flatten all points to find global x range (dates) + y range (values).
+  const allPoints = series.flatMap(s => s.points || []);
+  if (!allPoints.length) {
+    return (
+      <div ref={containerRef} className="flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark" style={{ height }}>
+        Not enough follower history yet — Pulse builds the trajectory from daily snapshots.
+      </div>
+    );
+  }
+
+  const dates = [...new Set(allPoints.map(p => p.date))].sort();
+  const minTs = new Date(dates[0]).getTime();
+  const maxTs = new Date(dates[dates.length - 1]).getTime();
+  const tsRange = Math.max(1, maxTs - minTs);
+
+  let yMin = Math.min(...allPoints.map(p => p.value));
+  let yMax = Math.max(...allPoints.map(p => p.value));
+  if (yMin === yMax) { yMin = yMin * 0.95; yMax = yMax * 1.05 || 1; }
+  // Round to nicer bounds
+  const yPad = (yMax - yMin) * 0.08;
+  yMin = Math.max(0, yMin - yPad);
+  yMax = yMax + yPad;
+
+  const x = (date) => padding.left + ((new Date(date).getTime() - minTs) / tsRange) * chartW;
+  const y = (val)  => padding.top  + (1 - (val - yMin) / (yMax - yMin)) * chartH;
+
+  const pathFor = (points) => {
+    if (!points.length) return '';
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  };
+
+  // Y-axis tick values — min, mid, max
+  const yTicks = [yMin, (yMin + yMax) / 2, yMax];
+  // X-axis tick dates — first, mid, last
+  const xTicks = [dates[0], dates[Math.floor(dates.length / 2)], dates[dates.length - 1]];
+
+  // Hover: find the closest date for the current cursor x.
+  const hoverDate = React.useMemo(() => {
+    if (hoverX == null) return null;
+    let best = null, bestDist = Infinity;
+    for (const d of dates) {
+      const dist = Math.abs(x(d) - hoverX);
+      if (dist < bestDist) { bestDist = dist; best = d; }
+    }
+    return bestDist < 30 ? best : null;
+  }, [hoverX, dates, width]);
+
+  const formatTickDate = (d) => {
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <svg
+        width={width}
+        height={height}
+        onMouseMove={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHoverX(e.clientX - r.left);
+        }}
+        onMouseLeave={() => setHoverX(null)}
+        className="overflow-visible block"
+      >
+        {/* Y gridlines */}
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={padding.left} x2={width - padding.right} y1={y(t)} y2={y(t)}
+                  stroke="currentColor" strokeOpacity="0.08" strokeWidth="1" />
+            <text x={padding.left - 8} y={y(t) + 4} textAnchor="end"
+                  className="fill-current text-mute dark:text-muteDark" fontSize="10" fontFamily="ui-monospace,monospace">
+              {formatNum(Math.round(t))}
+            </text>
+          </g>
+        ))}
+        {/* X tick labels */}
+        {xTicks.map((d, i) => (
+          <text key={i} x={x(d)} y={height - 8} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}
+                className="fill-current text-mute dark:text-muteDark" fontSize="10" fontFamily="ui-monospace,monospace">
+            {formatTickDate(d)}
+          </text>
+        ))}
+        {/* Series paths */}
+        {series.map(s => (
+          <path key={s.key} d={pathFor(s.points)} fill="none"
+                stroke={s.color} strokeWidth={s.dashed ? 1.5 : 2.25}
+                strokeDasharray={s.dashed ? '4 4' : ''}
+                strokeLinecap="round" strokeLinejoin="round" opacity={s.dashed ? 0.65 : 1} />
+        ))}
+        {/* Hover crosshair + dots */}
+        {hoverDate && (
+          <>
+            <line x1={x(hoverDate)} x2={x(hoverDate)} y1={padding.top} y2={height - padding.bottom}
+                  stroke="currentColor" strokeOpacity="0.18" strokeWidth="1" />
+            {series.map(s => {
+              const pt = s.points.find(p => p.date === hoverDate);
+              if (!pt) return null;
+              return <circle key={s.key} cx={x(hoverDate)} cy={y(pt.value)} r="3.5"
+                             fill={s.color} stroke="white" strokeWidth="1.5" />;
+            })}
+          </>
+        )}
+      </svg>
+      {/* Hover tooltip */}
+      {hoverDate && (
+        <div className="absolute pointer-events-none text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-ink/95 text-paper dark:bg-paper dark:text-ink shadow-pop"
+             style={{ left: Math.min(width - 160, x(hoverDate) + 8), top: padding.top }}>
+          <div className="opacity-60 mb-0.5">{formatTickDate(hoverDate)}</div>
+          {series.map(s => {
+            const pt = s.points.find(p => p.date === hoverDate);
+            if (!pt) return null;
+            return (
+              <div key={s.key} className="flex items-center gap-2 whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: s.color }} />
+                <span>{s.label}</span>
+                <span className="ml-auto opacity-80">{formatNum(pt.value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { TrajectoryChart });
+
+const VELOCITY_TONE = {
+  surging:   { label: 'Surging',   tone: 'text-magenta' },
+  climbing:  { label: 'Climbing',  tone: 'text-ultra'   },
+  steady:    { label: 'Steady',    tone: 'text-emerald-600 dark:text-lime' },
+  declining: { label: 'Declining', tone: 'text-mute dark:text-muteDark' },
+  unknown:   { label: 'Building',  tone: 'text-mute dark:text-muteDark' },
+};
+
 const GrowthScreen = () => {
+  const [data,    setData]    = React.useState(null);
+  const [days,    setDays]    = React.useState(30);
+  const [loading, setLoading] = React.useState(true);
+  const [showCompetitors, setShowCompetitors] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api(`/growth?days=${days}`)
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  // Series for the trajectory chart. Own platforms always shown; competitor
+  // lines toggleable to keep the view readable when many handles are tracked.
+  const series = React.useMemo(() => {
+    if (!data) return [];
+    const out = [];
+    const own = data.series?.own || {};
+    for (const [k, points] of Object.entries(own)) {
+      if (!points.length) continue;
+      out.push({
+        key: `own-${k}`,
+        label: `${PLATFORM_LABEL[k] || k} (you)`,
+        color: PLATFORM_COLOR[k] || '#6B5BFF',
+        points: points.map(p => ({ date: p.date, value: p.followers })),
+      });
+    }
+    if (showCompetitors) {
+      for (const c of (data.series?.competitors || [])) {
+        if (!c.points?.length) continue;
+        out.push({
+          key: `comp-${c.platform}-${c.handle}`,
+          label: `@${c.handle.replace(/^@/, '')}`,
+          color: PLATFORM_COLOR[c.platform] || '#9A958A',
+          points: c.points.map(p => ({ date: p.date, value: p.followers })),
+          dashed: true,
+        });
+      }
+    }
+    return out;
+  }, [data, showCompetitors]);
+
+  const velocity = data?.velocity || [];
+  const competitors = data?.series?.competitors || [];
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
-      <ScreenHeader eyebrow="Trajectory" title="Growth strategy" sub="Engineer your ascent from creator to market authority." />
+      <ScreenHeader
+        eyebrow="Trajectory"
+        title="Growth strategy"
+        sub="Daily follower trajectory across your platforms, with optional competitor overlay."
+        right={
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-xl border border-line dark:border-lineDark p-0.5 bg-chalk dark:bg-coalsoft">
+              {[30, 90].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDays(d)}
+                  className={cls(
+                    'h-8 px-3 rounded-lg text-[12.5px] font-medium transition',
+                    days === d
+                      ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
+                      : 'text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
+                  )}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+            {competitors.length > 0 && (
+              <button
+                onClick={() => setShowCompetitors(v => !v)}
+                className={cls(
+                  'h-8 px-3 rounded-xl text-[12.5px] font-medium border transition',
+                  showCompetitors
+                    ? 'border-ultra/40 bg-ultraSoft text-ultra'
+                    : 'border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
+                )}
+              >
+                Competitors {showCompetitors ? 'on' : 'off'}
+              </button>
+            )}
+          </div>
+        }
+      />
 
+      {/* Top StatCards — driven by /api/growth */}
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
-        <div className="lg:col-span-4"><StatCard label="IG followers" value={formatNum(D.accounts.ig.followers)} delta={4.2} sparkData={[2,3,3,4,3,5,4]} icon="users" /></div>
-        <div className="lg:col-span-4"><StatCard label="TikTok followers" value={formatNum(D.accounts.tt.followers)} delta={22.9} sparkData={[1,2,3,2,4,5,5]} color="#FF2D6A" icon="users" /></div>
-        <div className="lg:col-span-4"><StatCard label="YouTube subs" value={formatNum(D.accounts.yt.subs)} delta={4.1} sparkData={[2,3,3,4,3,4,5]} color="#FF0000" icon="play" /></div>
+        {velocity.slice(0, 3).map(v => (
+          <div key={v.platform} className="lg:col-span-4">
+            <StatCard
+              label={`${PLATFORM_LABEL[v.platform] || v.platform} followers`}
+              value={formatNum(v.latest || 0)}
+              delta={v.wow_pct ?? 0}
+              sparkData={(data?.series?.own?.[v.platform] || []).slice(-7).map(p => p.followers)}
+              color={PLATFORM_COLOR[v.platform]}
+              icon="users"
+            />
+          </div>
+        ))}
+        {/* Fill empty slots when fewer than 3 platforms are connected */}
+        {Array.from({ length: Math.max(0, 3 - velocity.length) }).map((_, i) => (
+          <div key={`empty-${i}`} className="lg:col-span-4">
+            <Card className="h-full flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark min-h-[112px]">
+              Connect more platforms to compare
+            </Card>
+          </div>
+        ))}
       </div>
 
       <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
         <div className="lg:col-span-7 space-y-4 sm:space-y-5">
+
+          {/* Trajectory chart — the headline view */}
           <Card>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-display text-[18px] font-semibold tracking-tight">Milestone tracker</h3>
-              <Pill color="ultraSoft">Q3 active</Pill>
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Follower trajectory</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">
+                  Daily snapshots · {days}-day window {competitors.length > 0 && showCompetitors ? `· ${competitors.length} competitor${competitors.length === 1 ? '' : 's'} overlaid` : ''}
+                </p>
+              </div>
             </div>
-            <div className="space-y-5">
-              {[
-                { p: 'ig', l: '60K IG Followers', cur: 48200, tgt: 60000, c: '#FF2D6A', days: '14 days' },
-                { p: 'yt', l: '20K YT Subscribers', cur: 12400, tgt: 20000, c: '#6B5BFF', days: '42 days' },
-                { p: 'tt', l: '150K TikTok Followers', cur: 102000, tgt: 150000, c: '#010101', days: '28 days' }
-              ].map(m => {
-                const pct = (m.cur / m.tgt) * 100;
-                return (
-                  <div key={m.l}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-2"><Plat p={m.p} className="w-3.5 h-3.5" /><span className="text-[13px] font-medium">{m.l}</span></div>
-                      <span className="font-mono text-[12.5px]">{formatNum(m.cur)} <span className="text-mute dark:text-muteDark">/ {formatNum(m.tgt)}</span></span>
-                    </div>
-                    <Progress value={pct} color={pct > 60 ? 'bg-ultra' : 'bg-magenta'} />
-                    <div className="flex justify-between mt-1.5 text-[11px] text-mute dark:text-muteDark"><span>Phase: {pct > 60 ? 'Scale' : 'Build'}</span><span>Est. {m.days}</span></div>
+            {loading ? (
+              <div className="h-[260px] flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark">Loading…</div>
+            ) : (
+              <TrajectoryChart series={series} height={260} />
+            )}
+            {/* Legend */}
+            {series.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 text-[11.5px]">
+                {series.map(s => (
+                  <div key={s.key} className="flex items-center gap-1.5">
+                    {s.dashed
+                      ? <span className="inline-block w-3" style={{ borderTop: `1.5px dashed ${s.color}` }} />
+                      : <span className="inline-block w-3 h-0.5 rounded-full" style={{ background: s.color }} />}
+                    <span className={cls(s.dashed && 'text-mute dark:text-muteDark')}>{s.label}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           <Card>
             <h3 className="font-display text-[18px] font-semibold tracking-tight mb-1">Posting rhythm</h3>
-            <p className="text-[12px] text-mute dark:text-muteDark mb-4">Engagement heatmap by weekday × time window <span className="font-mono text-[10.5px]">· ET</span></p>
+            <p className="text-[12px] text-mute dark:text-muteDark mb-4">Engagement heatmap by weekday × time window <span className="font-mono text-[10.5px]">· UTC</span></p>
             <div className="grid grid-cols-[44px_1fr] gap-x-2">
               <div /> {/* spacer above day columns */}
               <div className="grid grid-cols-7 gap-1 mb-1.5">
@@ -2817,68 +3094,73 @@ const GrowthScreen = () => {
               </div>
               <span>Peak</span>
             </div>
-            <p className="text-[12px] text-mute dark:text-muteDark mt-4">⚡ Optimal: <strong className="text-ink dark:text-paper">Tue / Wed / Thu · 18:00–21:00 ET</strong> · High resonance for long-form insight posts.</p>
           </Card>
 
           <Card>
             <h3 className="font-display text-[18px] font-semibold tracking-tight mb-4">Competitor comparison</h3>
-            <div className="space-y-2">
-              {D.competitors.map(c => (
-                <div key={c.handle} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
-                  <Plat p={c.platform} className="w-5 h-5" />
-                  <span className="flex-1 text-[13px] font-medium">{c.handle}</span>
-                  <span className="font-mono text-[12px] text-mute dark:text-muteDark">{formatNum(c.followers)}</span>
-                  <span className={cls('font-mono text-[12px] w-14 text-right', c.delta > 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>{c.delta > 0 ? '↑' : '↓'} {Math.abs(c.delta)}%</span>
-                </div>
-              ))}
-            </div>
+            {competitors.length === 0 ? (
+              <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
+                No competitors yet. Add comparison accounts in Settings → Competitors.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {competitors.map(c => (
+                  <div key={`${c.platform}-${c.handle}`} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
+                    <Plat p={c.platform} className="w-5 h-5" />
+                    <span className="flex-1 text-[13px] font-medium">
+                      @{c.handle.replace(/^@/, '')}
+                      {c.display_name && c.display_name !== c.handle && (
+                        <span className="text-mute dark:text-muteDark font-normal ml-2 text-[12px]">· {c.display_name}</span>
+                      )}
+                    </span>
+                    <span className="font-mono text-[12px] text-mute dark:text-muteDark">{c.latest != null ? formatNum(c.latest) : '—'}</span>
+                    <span className={cls('font-mono text-[12px] w-16 text-right', c.wow_pct == null ? 'text-mute dark:text-muteDark' : c.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                      {c.wow_pct == null ? '—' : `${c.wow_pct >= 0 ? '↑' : '↓'} ${Math.abs(c.wow_pct)}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
 
         <div className="lg:col-span-5 space-y-4 sm:space-y-5">
-          <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
-            <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-ultra/30 blur-2xl" />
-            <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Authority verdict</Pill>
-            <h3 className="font-display text-[26px] font-semibold tracking-tighter leading-tight mt-4 mb-3">Focus on platform cross-pollination.</h3>
-            <p className="text-[13.5px] text-paper/70 mb-5 leading-relaxed">IG momentum surging at 12% w-o-w. Divert 20% of production to YouTube Shorts to bridge the early-adoption gap. Current trajectory leads to "industry authority" status by Q3.</p>
-            <Btn variant="lime" size="sm">Recalibrate path</Btn>
-          </Card>
+          {/* Authority verdict — driven by the AI verdict already in D */}
+          {D.verdict && (
+            <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+              <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-ultra/30 blur-2xl" />
+              <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Authority verdict</Pill>
+              <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
+              <p className="text-[13.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+            </Card>
+          )}
+
+          {/* Growth velocity — real data from /api/growth */}
           <Card>
             <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Growth velocity</h3>
-            <div className="space-y-2.5">
-              {[
-                { p: 'ig', label: 'Instagram', state: 'Surging', delta: 12.4, c: 'text-magenta' },
-                { p: 'tt', label: 'TikTok', state: 'Surging', delta: 22.9, c: 'text-magenta' },
-                { p: 'yt', label: 'YouTube', state: 'Early', delta: 4.1, c: 'text-ultra' },
-                { p: 'li', label: 'LinkedIn', state: 'Steady', delta: 0.8, c: 'text-mute' }
-              ].map(r => (
-                <div key={r.label} className="flex items-center gap-3 py-2">
-                  <Plat p={r.p} className="w-7 h-7" />
-                  <div className="flex-1">
-                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{r.label}</div>
-                    <div className={cls('font-display text-[16px] font-semibold tracking-tight', r.c)}>{r.state}</div>
-                  </div>
-                  <span className="font-mono text-[12.5px]">+{r.delta}%</span>
-                </div>
-              ))}
-            </div>
-          </Card>
-          <Card>
-            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">YouTube videos</h3>
-            <div className="space-y-2">
-              {[
-                { t: 'Omni-Channel API tutorial', v: 125400, l: 18290 },
-                { t: 'Future of Work explained', v: 84200, l: 9810 },
-                { t: 'Slow Tech movement', v: 31400, l: 2100 },
-                { t: 'AI Strategy in 60s', v: 4820, l: 420 }
-              ].map((v,i) => (
-                <div key={i} className="flex items-center gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
-                  <div className="w-10 h-7 rounded bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center text-white"><Icon name="play" className="w-3 h-3" /></div>
-                  <span className="flex-1 text-[12.5px] truncate">{v.t}</span>
-                  <span className="font-mono text-[11px] text-mute dark:text-muteDark">{formatNum(v.v)}</span>
-                </div>
-              ))}
-            </div>
+            {velocity.length === 0 ? (
+              <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
+                Velocity appears once we have at least two daily snapshots — usually after the second nightly sync.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {velocity.map(v => {
+                  const tone = VELOCITY_TONE[v.state] || VELOCITY_TONE.unknown;
+                  return (
+                    <div key={v.platform} className="flex items-center gap-3 py-2">
+                      <Plat p={v.platform} className="w-7 h-7" />
+                      <div className="flex-1">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{PLATFORM_LABEL[v.platform] || v.platform}</div>
+                        <div className={cls('font-display text-[16px] font-semibold tracking-tight', tone.tone)}>{tone.label}</div>
+                      </div>
+                      <span className={cls('font-mono text-[12.5px]', v.wow_pct == null ? 'text-mute dark:text-muteDark' : v.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                        {v.wow_pct == null ? '—' : `${v.wow_pct >= 0 ? '+' : ''}${v.wow_pct}%`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Card>
         </div>
       </div>
