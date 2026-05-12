@@ -479,6 +479,7 @@ const D = {
   todayActions: [],
   actionPlan: [],
   formula: null,
+  marketContext: null,
   competitors: [],
   // 6 rows × 7 cols, all zero. Real values come from /api/brief.heatmap.
   heatmap: Array.from({ length: 6 }, () => Array(7).fill(0)),
@@ -4155,6 +4156,9 @@ const IntelScreen = ({ activePlatform }) => {
           {/* Content Formula — the AI-derived "do this exact thing" playbook */}
           <ContentFormulaCard />
 
+          {/* Market context — country-level TAM + platform reference */}
+          <MarketContextCard />
+
           {/* Stream — every other signal in the current scope */}
           {rest.length > 0 && (
             <>
@@ -4223,7 +4227,55 @@ const ContentFormulaCard = () => {
   );
 };
 
-Object.assign(window, { IntelScreen, ContentFormulaCard });
+// MarketContextCard — TAM, platform usage, and a one-line "what travels"
+// editorial note for the workspace's country. Hidden when country isn't
+// set on the workspace, or when we don't have reference data for it.
+const MarketContextCard = () => {
+  const m = D.marketContext;
+  if (!m) return null;
+
+  const fmtM = (n) => n == null ? null : (n >= 100 ? Math.round(n) : n.toFixed(1).replace(/\.0$/, ''));
+  // Sort platforms by user count desc — biggest first.
+  const platforms = Object.entries(m.platforms || {})
+    .map(([key, p]) => ({ key, ...p }))
+    .sort((a, b) => (b.users_m || 0) - (a.users_m || 0));
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[20px] leading-none">{m.flag}</span>
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Market context · {m.name}</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        TAM signals and how content travels in your home market. Population: <strong className="text-ink dark:text-paper">{fmtM(m.population_m)}M</strong>.
+      </p>
+
+      <div className="grid sm:grid-cols-2 gap-2.5 mb-4">
+        {platforms.map(p => (
+          <div key={p.key} className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft px-3.5 py-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Plat p={p.key === 'youtube' ? 'yt' : p.key === 'tiktok' ? 'tt' : p.key === 'instagram' ? 'ig' : p.key === 'facebook' ? 'fb' : p.key === 'linkedin' ? 'li' : p.key === 'snapchat' ? 'sc' : p.key} className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                {platformLabel[p.key === 'youtube' ? 'yt' : p.key === 'tiktok' ? 'tt' : p.key === 'instagram' ? 'ig' : p.key === 'facebook' ? 'fb' : p.key === 'linkedin' ? 'li' : 'sc'] || p.key}
+              </span>
+              <span className="ml-auto font-display text-[15px] font-semibold tracking-tight">{fmtM(p.users_m)}M</span>
+            </div>
+            <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed line-clamp-2">{p.note}</p>
+          </div>
+        ))}
+      </div>
+
+      {m.hot_topic && (
+        <div className="rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/25 px-3.5 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-1">What travels here</div>
+          <p className="text-[12.5px] leading-relaxed">{m.hot_topic}</p>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+Object.assign(window, { IntelScreen, ContentFormulaCard, MarketContextCard });
 
 </script>
 <script type="text/babel">
@@ -5596,6 +5648,8 @@ const hydrateD = (brief) => {
   }
   // Distilled content formula — null until brief regenerates with the new schema.
   D.formula = brief.formula || null;
+  // Market context — country-level TAM + platform usage reference.
+  D.marketContext = brief.marketContext || null;
   // Which platforms are actually connected (keys of accountSummary).
   // Used by AccountBar to hide ghost tabs and by Brief's Pipeline status.
   D.connectedPlatforms = Object.keys(a || {});

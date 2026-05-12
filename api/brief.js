@@ -12,6 +12,7 @@
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
+import { getMarketContext } from './_lib/market-context.js';
 
 const PLATFORM_TO_ICON = {
   instagram: 'ig', tiktok: 'tt', youtube: 'yt',
@@ -219,6 +220,9 @@ export default async function handler(req, res) {
       const v = (signals || []).find(s => s.kind === 'verdict' && !s.is_read);
       return v?.metadata?.formula || null;
     })(),
+    // Market context — TAM + platform usage signals for the workspace's
+    // country. Null when country isn't set or isn't in our reference set.
+    marketContext: getMarketContext(ws.country),
     // Full action plan — every action from the current brief, sorted by
     // the urgency order the model returned them in. The Action Plan screen
     // groups these by `when` into Now/Today/This week/This month buckets.
