@@ -6828,6 +6828,33 @@ function App() {
       hydrateD(data);
       setBriefData(data);
       setDataKey(k => k + 1);
+
+      // If the workspace doesn't have an explicit timezone yet (or is
+      // still on the schema default 'UTC'), detect the browser timezone
+      // and persist it. This drives:
+      //   • The "generated at" line on the brief
+      //   • The hourly cron's 6 AM local dispatch
+      //   • The Sunday-morning weekly digest delivery time
+      // Fire-and-forget; the response next time around will reflect the
+      // new value. Guarded by a session flag so we only PATCH once.
+      try {
+        const wsTz = data?.workspace?.timezone;
+        if ((!wsTz || wsTz === 'UTC') && !window.__pulseTzPersisted) {
+          const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (browserTz && browserTz !== 'UTC') {
+            window.__pulseTzPersisted = true;
+            fetch('/api/workspaces', {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.__pulseToken}`,
+                ...(wsId ? { 'x-workspace-id': wsId } : {}),
+              },
+              body: JSON.stringify({ timezone: browserTz }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
     } catch (e) {
       setBriefError({ status: 0, message: e?.message || 'Network error' });
     }
