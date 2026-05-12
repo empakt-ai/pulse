@@ -5584,7 +5584,7 @@ const TONE_META = {
   strategic:  { label: 'Strategic',  sub: 'Balanced data + recommendations. The default.',   accent: '#6B5BFF' },
   executive:  { label: 'Executive',  sub: 'Short, direct, action items only.',                accent: '#FF2D6A' },
 };
-const ToneSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
+const ToneSwitcher = ({ workspaceId, tier, onSwitched, onRegenerated, onError }) => {
   const [active, setActive]   = React.useState(null);
   const [switching, setSwitching] = React.useState(null);
   // Manual brief regenerate state — explicit diagnostic surface so the user
@@ -5629,11 +5629,9 @@ const ToneSwitcher = ({ workspaceId, tier, onSwitched, onError }) => {
     try {
       const r = await api('/intelligence/generate', { method: 'POST' });
       setGenerateResult(r);
-      // On success the inline result panel below this button already
-      // shows the full response, so no toast is needed. Only surface
-      // skip/error cases via the error channel.
       if (r?.skipped) onError?.(`Skipped: ${r.skipped}`);
       else if (r?.error && !r?.ok) onError?.(`Brief error: ${r.message || r.error}`);
+      else if (r?.ok) onRegenerated?.(r);
     } catch (e) {
       onError?.(e.message);
       setGenerateResult({ error: 'request_failed', message: e.message });
@@ -6170,9 +6168,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                 onSwitched={(tone) => {
                   const label = { analytical: 'Analytical', strategic: 'Strategic', executive: 'Executive' }[tone] || tone;
                   showToast(`Brief tone switched to ${label}`);
-                  // Switching triggers a fresh regeneration which writes a
-                  // new usage_log row — refresh the workspace state so the
-                  // monthly counter on this same page advances right away.
+                }}
+                // After a Regenerate writes a fresh usage_log row, pull the
+                // workspace + usage state again so the "Monthly Data
+                // Refreshes" counter on this page bumps up live.
+                onRegenerated={() => {
+                  showToast('Brief regenerated ✓');
                   api('/workspaces').then(d => {
                     if (d?.workspace) setWorkspace(d.workspace);
                     if (d?.usage) setUsage(d.usage);

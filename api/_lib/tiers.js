@@ -44,22 +44,44 @@ export function tierFor(workspace) {
 }
 
 // Count usage_log entries this calendar month for the workspace.
-// Previously this built a URLSearchParams locally and never passed it to
-// supabase.select — so it actually counted lifetime usage, which is why
-// the dashboard counter looked "static". Now uses the proper gte filter
-// on created_at against the start of the current UTC month.
+// usage_log pre-dates our migration history, so we don't assume the
+// timestamp column is named `created_at`. Pull every row for the
+// workspace, then filter in JS against whichever timestamp-looking
+// field exists — robust to schemas that use logged_at / run_at / etc.
+// Only 'intelligence' rows count toward the brief quota; competitor
+// scrapes and other run types are tracked separately.
 export async function getMonthlyUsage(workspaceId) {
   const start = new Date();
   start.setUTCDate(1);
   start.setUTCHours(0, 0, 0, 0);
+  const startMs = start.getTime();
 
   const rows = await supabase.select('usage_log', {
-    select: 'id,cost_cents,status,created_at',
+    select: '*',
     eq:  { workspace_id: workspaceId },
-    gte: { created_at: start.toISOString() },
+    order: 'id.desc',
+    limit: 1000,
   }).catch(() => []);
-  const used = (rows || []).filter(r => r.status !== 'failed').length;
-  const cost_cents = (rows || []).reduce((s, r) => s + (r.cost_cents || 0), 0);
+
+  const pickTs = (r) => {
+    const v = r.created_at || r.logged_at || r.run_at || r.inserted_at || r.timestamp;
+    if (!v) return 0;
+    const t = new Date(v).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
+
+  const inMonth = (rows || []).filter(r => {
+    if (r.status === 'failed') return false;
+    // Only count brief generations against the monthly quota — competitor
+    // scrapes and other runs are operationally interesting but don't
+    // affect the displayed counter.
+    if (r.run_type && r.run_type !== 'intelligence') return false;
+    const ts = pickTs(r);
+    return ts === 0 ? false : ts >= startMs;
+  });
+
+  const used = inMonth.length;
+  const cost_cents = inMonth.reduce((s, r) => s + (r.cost_cents || 0), 0);
   return { used, cost_cents };
 }
 
