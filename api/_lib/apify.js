@@ -260,3 +260,24 @@ export function estimateScrapeCost(platform) {
   const base = { instagram: 6, tiktok: 4, youtube: 3, linkedin: 8, snapchat: 4, facebook: 4, x: 3 };
   return base[platform] || 5;
 }
+
+// Profile-only scrape — skips the posts actor when we just need follower
+// counts (e.g. own-account follower refresh while Zernio's analytics add-on
+// isn't active). About half the cost and latency of a full runActor call.
+export async function scrapeProfile(platform, handle, opts = {}) {
+  const cfg = ACTORS[platform];
+  if (!cfg) throw new Error(`No Apify actor configured for platform: ${platform}`);
+
+  // Prefer a dedicated profile actor when one exists; otherwise fall back to
+  // the posts actor's profile-from-posts extractor (used for TikTok, where
+  // a single actor returns both).
+  if (cfg.profile) {
+    const items = await callActor(cfg.profile.id, cfg.profile.input(handle), cfg.profile.timeout, opts.signal);
+    return cfg.profile.normalise(items) || {};
+  }
+  if (cfg.posts?.normaliseProfile) {
+    const items = await callActor(cfg.posts.id, cfg.posts.input(handle), cfg.posts.timeout, opts.signal);
+    return cfg.posts.normaliseProfile(items) || {};
+  }
+  throw new Error(`No profile extractor available for: ${platform}`);
+}

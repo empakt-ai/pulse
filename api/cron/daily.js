@@ -6,6 +6,7 @@
 
 import { supabase } from '../_lib/supabase.js';
 import { zernio, extractFollowers } from '../_lib/zernio.js';
+import { scrapeProfile as apifyScrapeProfile, ACTORS as APIFY_ACTORS } from '../_lib/apify.js';
 import { json } from '../_lib/auth.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
@@ -66,25 +67,41 @@ async function refreshWorkspace(ws) {
 
   if (!accounts?.length) return { workspace_id: ws.id, accounts: 0, posts: 0 };
 
-  // 1.5) refresh follower counts via batched /accounts/follower-stats.
-  // Best-effort — silently skips when the Analytics add-on isn't active.
+  // 1.5) refresh follower counts. Same fallback chain as analytics/refresh:
+  // Zernio /follower-stats → metadata deep walk → Apify profile scrape.
   {
-    const ids = accounts.filter(a => a.platform !== 'youtube' && a.zernio_account_id)
-                       .map(a => a.zernio_account_id);
-    if (ids.length) {
-      const fr = await zernio.getFollowerCountsByAccount(ids);
-      await Promise.all(accounts.map(async (acct) => {
-        const fromStats = fr.counts[acct.zernio_account_id];
-        const fromMeta  = extractFollowers(acct.metadata);
-        const followers = (fromStats != null ? fromStats : fromMeta) ?? null;
-        if (followers != null && followers !== acct.followers) {
-          acct.followers = followers;
-          await supabase.update('connected_accounts',
-            { followers, last_synced_at: new Date().toISOString() },
-            { eq: { id: acct.id } }).catch(() => {});
-        }
-      }));
-    }
+    const ownAccounts = accounts.filter(a => a.platform !== 'youtube' && a.zernio_account_id);
+    const ids = ownAccounts.map(a => a.zernio_account_id);
+    let fromZernio = { counts: {}, addonRequired: false };
+    if (ids.length) fromZernio = await zernio.getFollowerCountsByAccount(ids);
+
+    const needsApify = ownAccounts.filter(a => {
+      const fromStats = fromZernio.counts[a.zernio_account_id];
+      const fromMeta  = extractFollowers(a.metadata);
+      return (fromStats == null) && (fromMeta == null) && a.platform_username && APIFY_ACTORS[a.platform];
+    });
+    const apifyResults = await Promise.all(needsApify.map(async (a) => {
+      try {
+        const profile = await apifyScrapeProfile(a.platform, a.platform_username);
+        return { id: a.id, followers: profile?.followers ?? null };
+      } catch (e) {
+        return { id: a.id, followers: null, error: e.message };
+      }
+    }));
+    const apifyById = new Map(apifyResults.map(r => [r.id, r]));
+
+    await Promise.all(ownAccounts.map(async (acct) => {
+      const fromStats = fromZernio.counts[acct.zernio_account_id];
+      const fromMeta  = extractFollowers(acct.metadata);
+      const fromApify = apifyById.get(acct.id)?.followers;
+      const followers = fromStats ?? fromMeta ?? fromApify ?? null;
+      if (followers != null && followers !== acct.followers) {
+        acct.followers = followers;
+        await supabase.update('connected_accounts',
+          { followers, last_synced_at: new Date().toISOString() },
+          { eq: { id: acct.id } }).catch(() => {});
+      }
+    }));
   }
 
   // 2) refresh analytics per account

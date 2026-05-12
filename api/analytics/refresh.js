@@ -5,6 +5,7 @@ import { checkUsageCap } from '../_lib/tiers.js';
 import { generateBrief } from '../_lib/intelligence.js';
 import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
 import { pullAds } from '../_lib/ads.js';
+import { scrapeProfile as apifyScrapeProfile, ACTORS as APIFY_ACTORS } from '../_lib/apify.js';
 
 function daysAgo(n) {
   const d = new Date();
@@ -56,27 +57,47 @@ export default async function handler(req, res) {
   const failures = [];
   const snapshots = [];
 
-  // Refresh follower counts via Zernio's batched /accounts/follower-stats.
-  // Requires the Analytics add-on subscription — if unavailable we silently
-  // skip rather than failing the whole refresh.
+  // Refresh follower counts. Try Zernio first (free, fast — but currently
+  // gated behind their Analytics add-on for this workspace). If it 403s with
+  // requiresAddon, fall back to a parallel Apify profile scrape per account.
   {
-    const ids = (accounts || [])
-      .filter(a => a.platform !== 'youtube' && a.zernio_account_id)
-      .map(a => a.zernio_account_id);
+    const ownAccounts = (accounts || []).filter(a => a.platform !== 'youtube' && a.zernio_account_id);
+    const ids = ownAccounts.map(a => a.zernio_account_id);
+    let fromZernio = { counts: {}, addonRequired: false };
     if (ids.length) {
-      const fr = await zernio.getFollowerCountsByAccount(ids);
-      await Promise.all((accounts || []).map(async (acct) => {
-        const fromStats = fr.counts[acct.zernio_account_id];
-        const fromMeta  = extractFollowers(acct.metadata);
-        const followers = (fromStats != null ? fromStats : fromMeta) ?? null;
-        if (followers != null && followers !== acct.followers) {
-          acct.followers = followers;
-          await supabase.update('connected_accounts',
-            { followers, last_synced_at: new Date().toISOString() },
-            { eq: { id: acct.id } }).catch(() => {});
-        }
-      }));
+      fromZernio = await zernio.getFollowerCountsByAccount(ids);
     }
+
+    // Identify accounts still missing followers after Zernio attempt and run
+    // Apify for those (parallel — keeps us under the function budget when
+    // multiple accounts need refreshing).
+    const needsApify = ownAccounts.filter(a => {
+      const fromStats = fromZernio.counts[a.zernio_account_id];
+      const fromMeta  = extractFollowers(a.metadata);
+      return (fromStats == null) && (fromMeta == null) && a.platform_username && APIFY_ACTORS[a.platform];
+    });
+    const apifyResults = await Promise.all(needsApify.map(async (a) => {
+      try {
+        const profile = await apifyScrapeProfile(a.platform, a.platform_username);
+        return { id: a.id, followers: profile?.followers ?? null, profile };
+      } catch (e) {
+        return { id: a.id, followers: null, error: e.message };
+      }
+    }));
+    const apifyById = new Map(apifyResults.map(r => [r.id, r]));
+
+    await Promise.all(ownAccounts.map(async (acct) => {
+      const fromStats = fromZernio.counts[acct.zernio_account_id];
+      const fromMeta  = extractFollowers(acct.metadata);
+      const fromApify = apifyById.get(acct.id)?.followers;
+      const followers = fromStats ?? fromMeta ?? fromApify ?? null;
+      if (followers != null && followers !== acct.followers) {
+        acct.followers = followers;
+        await supabase.update('connected_accounts',
+          { followers, last_synced_at: new Date().toISOString() },
+          { eq: { id: acct.id } }).catch(() => {});
+      }
+    }));
   }
 
   for (const acct of accounts) {
