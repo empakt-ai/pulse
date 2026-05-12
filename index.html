@@ -5054,21 +5054,40 @@ function App() {
     return null;
   });
   const [briefData, setBriefData]       = React.useState(null);
+  const [briefError, setBriefError]     = React.useState(null);
   const [dataKey, setDataKey]           = React.useState(0);  // remount trigger
 
   // Fetch the live brief whenever the user is in the app tab.
+  // Sends x-workspace-id so the response matches the currently-active
+  // workspace selected in the TopBar dropdown (not just the oldest one
+  // we own). On failure, sets briefError so the UI can show an actionable
+  // fallback rather than spinning forever.
   const refreshBrief = React.useCallback(async () => {
     if (!window.__pulseToken) return;
+    let wsId = null;
+    try { wsId = localStorage.getItem('pulse:workspaceId') || null; } catch {}
     try {
-      const data = await fetch('/api/brief', {
-        headers: { 'Authorization': `Bearer ${window.__pulseToken}` }
-      }).then(r => r.json());
-      if (!data?.error) {
-        hydrateD(data);
-        setBriefData(data);
-        setDataKey(k => k + 1);
+      const res = await fetch('/api/brief', {
+        headers: {
+          'Authorization': `Bearer ${window.__pulseToken}`,
+          ...(wsId ? { 'x-workspace-id': wsId } : {}),
+        },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.error) {
+        setBriefError({
+          status: res.status,
+          message: data?.error || `HTTP ${res.status}`,
+        });
+        return;
       }
-    } catch (e) { /* silent — empty state will render */ }
+      setBriefError(null);
+      hydrateD(data);
+      setBriefData(data);
+      setDataKey(k => k + 1);
+    } catch (e) {
+      setBriefError({ status: 0, message: e?.message || 'Network error' });
+    }
   }, []);
 
   // Fetch the brief once on app entry, and again whenever the user switches
@@ -5128,23 +5147,25 @@ function App() {
 
   // Dismiss the initial splash once we have something real to show.
   // "Ready" means: the user is past the loading state AND either we have
-  // brief data, OR we're on a non-app route (landing/signin/onboarding
-  // need no brief), OR the user has no accounts connected (we'll render
-  // the empty-state CTA). Hard 4-second timeout guarantees the splash
-  // never lingers if a fetch hangs.
+  // brief data, OR /api/brief returned an error (we show an error fallback
+  // instead of spinning), OR we're on a non-app route (landing/signin/
+  // onboarding need no brief), OR we're on Settings (renders without
+  // brief data). Hard 4-second timeout guarantees the splash never lingers
+  // if a fetch hangs entirely.
   React.useEffect(() => {
     if (route === 'loading') return;
     const onAppRoute = route === 'app';
-    const briefReady = onAppRoute ? (briefData !== null || tab === 'Settings') : true;
+    const briefReady = onAppRoute
+      ? (briefData !== null || briefError !== null || tab === 'Settings')
+      : true;
     if (!briefReady) {
-      // Fall-through timeout so a slow /api/brief doesn't strand the splash.
       const t = setTimeout(() => {
         document.documentElement.setAttribute('data-ready', '1');
       }, 4000);
       return () => clearTimeout(t);
     }
     document.documentElement.setAttribute('data-ready', '1');
-  }, [route, briefData, tab]);
+  }, [route, briefData, briefError, tab]);
 
   // Scroll-to-top on every tab + route change. Window scroll is the common
   // case; on layouts where overflow lives on documentElement/body or a main
@@ -5316,6 +5337,40 @@ function App() {
             {(() => {
               // Settings always renders (it's how you connect accounts in the first place)
               if (tab === 'Settings') return screens.Settings;
+              // Brief errored — show an actionable fallback so the user
+              // doesn't sit on a spinner forever.
+              if (briefError && !briefData) return (
+                <div className="max-w-md mx-auto px-5 py-24 text-center">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-magenta/15 text-magenta flex items-center justify-center mb-4">
+                    <Icon name="x" className="w-5 h-5" />
+                  </div>
+                  <h2 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Couldn't load your brief</h2>
+                  <p className="text-[13px] text-mute dark:text-muteDark mb-5">
+                    {briefError.message || 'Something went wrong fetching your data.'}
+                    {briefError.status ? <span className="block mt-1 font-mono text-[11px] opacity-70">HTTP {briefError.status}</span> : null}
+                  </p>
+                  <div className="flex flex-col gap-2 items-center">
+                    <Btn variant="ink" size="sm" onClick={() => { setBriefError(null); refreshBrief(); }}>
+                      <Icon name="refresh" className="w-3.5 h-3.5" /> Try again
+                    </Btn>
+                    <Btn variant="outline" size="sm" onClick={() => setTab('Settings')}>
+                      Open Settings
+                    </Btn>
+                    <button
+                      onClick={() => {
+                        try {
+                          localStorage.removeItem('pulse:workspaceId');
+                          localStorage.removeItem('pulse_session');
+                        } catch {}
+                        window.location.reload();
+                      }}
+                      className="text-[12px] text-mute dark:text-muteDark hover:text-magenta transition mt-2"
+                    >
+                      Reset session & reload
+                    </button>
+                  </div>
+                </div>
+              );
               // Brief still loading
               if (!briefData) return (
                 <div className="max-w-2xl mx-auto px-5 py-24 text-center">
