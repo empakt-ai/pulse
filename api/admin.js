@@ -27,9 +27,13 @@
 //   GET    ?action=sources                    → source health aggregates (read-only)
 //   GET    ?action=reports                    → reports queue list (read-only)
 //
-// Phase 3 actions (this commit):
+// Phase 3 actions:
 //   POST   ?action=self-tier-override         → set/clear caller's tier_override
 //                                               (only honored when caller is admin)
+//
+// Phase 5 actions (this commit):
+//   GET    ?action=overview                   → cross-module roll-up for the
+//                                               Overview dashboard landing tile
 //
 // Every write goes through requireAdmin → requireReason → mutation → log.
 // The reason field is mandatory at both the API and DB layers.
@@ -1003,6 +1007,86 @@ export default async function handler(req, res) {
       failed:    out.filter(r => r.status === 'failed').length,
     };
     return json(res, 200, { reports: out, totals });
+  }
+
+  // ── Overview (cross-module roll-up) ──────────────────────────────────
+  // One round-trip for the Overview dashboard. Every read here is also
+  // available individually elsewhere — this just consolidates so the
+  // landing tile doesn't fan out five HTTP calls. Parallelised internally.
+  if (action === 'overview' && req.method === 'GET') {
+    const since24h = new Date(Date.now() - 86400_000).toISOString();
+    const [workspaces, handles, runs24h, reports, recentAudit, settings] = await Promise.all([
+      supabase.select('workspaces', {
+        select: 'id,tier,trial_started_at,trial_ends_at,trial_converted_at',
+        limit: 5000,
+      }).catch(() => []),
+      supabase.select('social_handles', {
+        select: 'id,workspace_id,released_at',
+        limit: 5000,
+      }).catch(() => []),
+      supabase.select('usage_log', {
+        select: 'id,run_type,status,run_at,cost_cents',
+        gte: { run_at: since24h },
+        limit: 5000,
+      }).catch(() => []),
+      supabase.select('reports', {
+        select: 'id,status',
+        limit: 2000,
+      }).catch(() => []),
+      supabase.select('admin_audit_log', {
+        select: '*',
+        order: 'created_at.desc',
+        limit: 10,
+      }).catch(() => []),
+      getPlatformSettings({ force: true }),
+    ]);
+
+    // Workspace totals — same shape as the Health endpoint we already
+    // expose elsewhere, but kept inline here so the dashboard doesn't
+    // need to know about both endpoints.
+    const wsTotals = { total: (workspaces || []).length, trial_active: 0, trial_locked: 0, converted: 0, none: 0, by_tier: {} };
+    for (const w of workspaces || []) {
+      const s = deriveTrialState(w).state;
+      if (s === 'active')    wsTotals.trial_active += 1;
+      else if (s === 'locked')    wsTotals.trial_locked += 1;
+      else if (s === 'converted') wsTotals.converted   += 1;
+      else                        wsTotals.none        += 1;
+      const t = w.tier || 'creator';
+      wsTotals.by_tier[t] = (wsTotals.by_tier[t] || 0) + 1;
+    }
+
+    const handleTotals = {
+      total: (handles || []).length,
+      bound: (handles || []).filter(h => !h.released_at && !!h.workspace_id).length,
+      released: (handles || []).filter(h => !!h.released_at).length,
+    };
+
+    const runTotals = {
+      last_24h: (runs24h || []).length,
+      failed_24h: (runs24h || []).filter(r => r.status === 'failed').length,
+      briefs_24h: (runs24h || []).filter(r => r.run_type === 'intelligence').length,
+      cost_cents_24h: (runs24h || []).reduce((s, r) => s + (r.cost_cents || 0), 0),
+    };
+
+    const reportTotals = {
+      total: (reports || []).length,
+      rendering: (reports || []).filter(r => r.status === 'rendering').length,
+      ready: (reports || []).filter(r => r.status === 'ready').length,
+      failed: (reports || []).filter(r => r.status === 'failed').length,
+    };
+
+    return json(res, 200, {
+      workspaces: wsTotals,
+      handles:    handleTotals,
+      runs:       runTotals,
+      reports:    reportTotals,
+      settings: {
+        ai_provider: settings?.ai_provider || 'gemini',
+        flag_count:  Object.keys(settings?.feature_flags || {}).length,
+        prompt_version: settings?.brief_prompt_version || 'v1',
+      },
+      recent_audit: recentAudit || [],
+    });
   }
 
   return json(res, 400, { error: 'Unknown or unsupported action', action });

@@ -2179,10 +2179,128 @@ const ReportsScreen = ({ setToast }) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════
+// Overview screen — landing dashboard. Cross-module roll-up backed by
+// /api/admin?action=overview. Stat grids + recent admin activity feed.
+// Click-through hooks let the user jump straight to the relevant detail
+// module from any tile.
+// ═════════════════════════════════════════════════════════════════════════
+const OverviewScreen = ({ setToast, onNavigate }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=overview');
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (loading && !data) return <div className="max-w-[1200px] mx-auto p-8 text-muteDark text-[13px]">Loading overview…</div>;
+  if (!data) return null;
+
+  // Deep-link helper. The sidebar's setActive lives in the App shell —
+  // we pass a navigator down so tiles can become click-targets.
+  const Linkable = ({ to, children }) => (
+    <button onClick={() => onNavigate?.(to)} className="text-left w-full">
+      {children}
+    </button>
+  );
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Overview</h1>
+          <p className="text-[14px] text-muteDark mt-1">Cross-module snapshot. Click any tile to drill into the source.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </Btn>
+      </div>
+
+      <Card title="Platform settings" sub="Active provider + flag count. Edit on Platform Settings.">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Linkable to="settings"><Stat label="AI provider"    value={data.settings.ai_provider} /></Linkable>
+          <Linkable to="flags">   <Stat label="Feature flags"  value={data.settings.flag_count} /></Linkable>
+          <Linkable to="settings"><Stat label="Prompt version" value={data.settings.prompt_version} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Workspaces" sub={`${data.workspaces.total} total · grouped by trial state and tier.`}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <Linkable to="trials"><Stat label="Trial active" value={data.workspaces.trial_active} /></Linkable>
+          <Linkable to="trials"><Stat label="Trial locked" value={data.workspaces.trial_locked} tone={data.workspaces.trial_locked > 0 ? 'warn' : 'normal'} /></Linkable>
+          <Linkable to="trials"><Stat label="Converted"    value={data.workspaces.converted} tone="good" /></Linkable>
+          <Linkable to="workspaces"><Stat label="No trial state" value={data.workspaces.none} /></Linkable>
+        </div>
+        <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">By tier</div>
+        <div className="flex flex-wrap gap-2">
+          {['creator', 'brand', 'agency'].map(t => (
+            <span key={t} className="inline-flex items-center gap-2 px-3 h-7 rounded-full border border-lineDark bg-ink text-[11.5px] font-mono">
+              <span className="uppercase tracking-[0.14em] text-muteDark">{t}</span>
+              <span>{data.workspaces.by_tier[t] || 0}</span>
+            </span>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Handles" sub="Global registry binding state.">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Linkable to="handles"><Stat label="Total"    value={data.handles.total} /></Linkable>
+          <Linkable to="handles"><Stat label="Bound"    value={data.handles.bound} /></Linkable>
+          <Linkable to="handles"><Stat label="Released" value={data.handles.released} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Runs (last 24h)" sub="usage_log activity in the last day.">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Linkable to="sync">  <Stat label="Total runs" value={data.runs.last_24h} /></Linkable>
+          <Linkable to="briefs"><Stat label="Briefs"     value={data.runs.briefs_24h} /></Linkable>
+          <Linkable to="sync">  <Stat label="Failed"     value={data.runs.failed_24h} tone={data.runs.failed_24h > 0 ? 'warn' : 'good'} /></Linkable>
+          <Linkable to="sync">  <Stat label="Cost"       value={`${(data.runs.cost_cents_24h / 100).toFixed(2)}¢`} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Reports queue" sub="All-time totals across all workspaces.">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Linkable to="reports"><Stat label="Total"     value={data.reports.total} /></Linkable>
+          <Linkable to="reports"><Stat label="Rendering" value={data.reports.rendering} /></Linkable>
+          <Linkable to="reports"><Stat label="Ready"     value={data.reports.ready} tone="good" /></Linkable>
+          <Linkable to="reports"><Stat label="Failed"    value={data.reports.failed} tone={data.reports.failed > 0 ? 'warn' : 'normal'} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Recent admin activity" right={<button onClick={() => onNavigate?.('audit')} className="text-[11px] text-muteDark hover:text-paper">View full audit log →</button>}>
+        {(data.recent_audit?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions yet.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.recent_audit.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark">· {e.target_type}{e.target_id ? `/${shortId(e.target_id)}` : ''}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
 // Sidebar + shell
 // ═════════════════════════════════════════════════════════════════════════
 const NAV = [
-  { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 5 },
+  { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 0 },
   { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 0 },
   { id: 'users',        label: 'Users',            section: 'control',     phase: 0 },
   { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 0 },
@@ -2258,7 +2376,7 @@ const Sidebar = ({ active, setActive, onSignOut, identity }) => {
 // ═════════════════════════════════════════════════════════════════════════
 const App = () => {
   const [state, setState] = React.useState({ route: 'loading', identity: null, error: null });
-  const [active, setActive] = React.useState('settings');
+  const [active, setActive] = React.useState('overview');
   const [toast, setToast] = React.useState(null);
 
   const bootstrap = async () => {
@@ -2360,7 +2478,7 @@ const App = () => {
       case 'briefs':     return <BriefsScreen setToast={setToast} />;
       case 'sync':       return <SourcesScreen setToast={setToast} />;
       case 'reports':    return <ReportsScreen setToast={setToast} />;
-      case 'overview':   return <Stub title="Overview" plannedIn="Phase 5" sub="Health snapshot + recent activity across every module." />;
+      case 'overview':   return <OverviewScreen setToast={setToast} onNavigate={setActive} />;
       case 'billing':    return <Stub title="Billing" plannedIn="Phase 4" sub="Stripe customer state + force-refresh from upstream." />;
       default:           return <Stub title="Coming soon" plannedIn="future phase" />;
     }
