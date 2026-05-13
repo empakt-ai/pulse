@@ -131,9 +131,12 @@ export const createCheckoutSession = ({
       'subscription_data[metadata][workspace_id]': workspaceId,
       ...(trialDays ? { 'subscription_data[trial_period_days]': String(trialDays) } : {}),
       ...(promoCode ? { 'discounts[0][promotion_code]': promoCode } : {}),
-      // Tax + adjustable quantity left at Stripe defaults; we can revisit
-      // when we add per-seat pricing or international tax handling.
-      allow_promotion_codes: trialDays ? false : true,
+      // Allow the user to enter a promo on the Stripe-hosted Checkout
+      // UI only when (a) we didn't already attach one server-side, and
+      // (b) we're not running a Stripe-side trial. The combo of explicit
+      // `discounts[…]` AND `allow_promotion_codes:true` is rejected by
+      // Stripe with `parameter_invalid_string`.
+      allow_promotion_codes: !promoCode && !trialDays,
     },
   });
 

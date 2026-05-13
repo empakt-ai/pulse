@@ -267,17 +267,34 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
   }
 
   // Build today's account_snapshots (one row per own account).
+  // The avg_views_30d / avg_eng_rate_30d / total_views_30d columns are
+  // a true 30-day window aggregated from the posts table (including the
+  // batch we just upserted) — NOT a summary of the current sync batch.
+  // Incremental syncs only pull 1–2 days of posts, so the previous
+  // approach of averaging r.rows produced a misleading "30d" label.
   const today = daysAgo(0);
+  const since30dIso = new Date(Date.now() - 30 * 86400000).toISOString();
   const snapshots = [];
   for (const r of results) {
-    if (r.error || !r.rows.length) continue;
+    if (r.error) continue;
     const acct = scoped.find(a => a.id === r.account_id);
     if (!acct) continue;
-    const totalViews = r.rows.reduce((s, x) => s + (x.views || 0), 0);
-    const avgViews = r.rows.length ? Math.round(totalViews / r.rows.length) : 0;
-    const avgEng = r.rows.length
-      ? Math.round((r.rows.reduce((s, x) => s + (x.engagement_rate || 0), 0) / r.rows.length) * 100) / 100
+
+    // Query the freshly-merged posts table for this account's last 30 days.
+    // Service-role bypasses RLS so this is cheap; one query per account.
+    const recent = await supabase.select('posts', {
+      select: 'views,engagement_rate',
+      eq: { workspace_id: workspace.id, platform: acct.platform, source: 'own' },
+      gte: { posted_at: since30dIso },
+      limit: 1000,
+    }).catch(() => []);
+
+    const totalViews30 = (recent || []).reduce((s, x) => s + (x.views || 0), 0);
+    const avgViews30   = (recent || []).length ? Math.round(totalViews30 / recent.length) : 0;
+    const avgEng30     = (recent || []).length
+      ? Math.round((recent.reduce((s, x) => s + (x.engagement_rate || 0), 0) / recent.length) * 100) / 100
       : 0;
+
     snapshots.push({
       workspace_id: workspace.id,
       platform: acct.platform,
@@ -285,9 +302,9 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
       handle: acct.platform_username,
       snapshot_date: today,
       followers: acct.followers,
-      avg_views_30d: avgViews,
-      avg_eng_rate_30d: avgEng,
-      total_views_30d: totalViews,
+      avg_views_30d: avgViews30,
+      avg_eng_rate_30d: avgEng30,
+      total_views_30d: totalViews30,
     });
   }
   if (snapshots.length) {

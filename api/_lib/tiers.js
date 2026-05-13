@@ -100,7 +100,7 @@ export async function getMonthlyUsage(workspaceId) {
     select: '*',
     eq:  { workspace_id: workspaceId },
     order: 'id.desc',
-    limit: 1000,
+    limit: 5000,
   }).catch(() => []);
 
   const pickTs = (r) => {
@@ -125,14 +125,19 @@ export async function getMonthlyUsage(workspaceId) {
   return { used, cost_cents };
 }
 
+// Use effectiveLimits() rather than tierFor() so trial state is honored:
+// trial_locked → limit 0, trial_active → trial_limits, otherwise the
+// tier's runs_per_month. Calling tierFor() directly would let a locked
+// trial workspace run intelligence at the tier's natural cap.
 export async function checkUsageCap(workspace) {
-  const tier = tierFor(workspace);
-  const limit = tier.runs_per_month;
+  const limits = effectiveLimits(workspace);
+  const limit = limits.runs_per_month;
   const { used } = await getMonthlyUsage(workspace.id);
   return {
     used,
     limit,
     exceeded: limit !== -1 && used >= limit,
+    source: limits.source,
   };
 }
 

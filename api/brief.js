@@ -22,22 +22,42 @@ const PLATFORM_TO_ICON = {
 
 function platformKey(p) { return PLATFORM_TO_ICON[p] || p; }
 
-function buildHeatmap(posts) {
-  // 6 rows (06-09, 09-12, 12-15, 15-18, 18-21, 21-00) × 7 cols (Mon..Sun)
-  // Values 0-4: scaled engagement-rate average per bucket.
+// Hour-in-zone helper. Intl handles all the timezone math for us. If the
+// zone is missing or unrecognised we fall back to UTC, so a missing
+// workspace.timezone never causes the function to throw.
+function localHour(date, timeZone) {
+  if (!timeZone || timeZone === 'UTC') return date.getUTCHours();
+  try {
+    return parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone }).format(date), 10);
+  } catch { return date.getUTCHours(); }
+}
+const DAY_MAP = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+function localDay(date, timeZone) {
+  if (!timeZone || timeZone === 'UTC') return date.getUTCDay();
+  try {
+    const name = new Intl.DateTimeFormat('en-US', { weekday: 'short', timeZone }).format(date);
+    return DAY_MAP[name] ?? date.getUTCDay();
+  } catch { return date.getUTCDay(); }
+}
+
+// Heatmap is 6 × 7 (6 three-hour buckets covering 06:00–24:00 × Mon..Sun)
+// in the WORKSPACE'S local timezone. Workspaces in UTC+5/+6 (Pakistan,
+// India, KSA, UAE — our core markets) post heavily in their morning,
+// which lands at midnight-ish UTC. Using local time keeps those rows in
+// the right bucket. Posts before 06:00 local (rare) clamp into the first
+// bucket rather than getting silently dropped.
+function buildHeatmap(posts, timeZone) {
   const buckets = Array.from({ length: 6 }, () => Array(7).fill(0));
-  const counts = Array.from({ length: 6 }, () => Array(7).fill(0));
+  const counts  = Array.from({ length: 6 }, () => Array(7).fill(0));
   for (const p of posts) {
     if (!p.posted_at) continue;
     const d = new Date(p.posted_at);
-    const h = d.getUTCHours();
-    if (h < 6) continue;
-    const row = Math.min(5, Math.floor((h - 6) / 3));
-    const col = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
+    const h = localHour(d, timeZone);
+    const row = h < 6 ? 0 : Math.min(5, Math.floor((h - 6) / 3));
+    const col = (localDay(d, timeZone) + 6) % 7; // Mon=0..Sun=6
     buckets[row][col] += p.engagement_rate || 0;
     counts[row][col] += 1;
   }
-  // Normalize → 0-4 scale
   let max = 0;
   for (let r = 0; r < 6; r++) for (let c = 0; c < 7; c++) {
     if (counts[r][c]) buckets[r][c] /= counts[r][c];
@@ -275,8 +295,14 @@ export default async function handler(req, res) {
     };
   })();
 
-  // Top posts for Content / Stats screens (last 30 days, sorted by views).
-  const topPosts = [...ownPosts]
+  // Top posts for Content / Stats screens — last 30 days, sorted by views.
+  // Filtering here matches the comment + the `briefMetrics.reach.total_30d`
+  // window so the dashboard's "Top posts" reflects the same period as the
+  // headline metrics. Pre-filter window left at NOW_MS - D30 (defined
+  // upstream for the per-platform aggregates).
+  const topPostsCutoff = Date.now() - 30 * 86400000;
+  const topPosts = ownPosts
+    .filter(p => p.posted_at && new Date(p.posted_at).getTime() >= topPostsCutoff)
     .sort((a, b) => (b.views || 0) - (a.views || 0))
     .slice(0, 12)
     .map(p => ({
@@ -447,7 +473,7 @@ export default async function handler(req, res) {
       return v?.metadata?.intel_score || null;
     })(),
     lastSync,
-    heatmap: buildHeatmap(ownPosts),
+    heatmap: buildHeatmap(ownPosts, ws.timezone),
     state: {
       hasAccounts: (accounts || []).length > 0,
       hasPosts: ownPosts.length > 0,
