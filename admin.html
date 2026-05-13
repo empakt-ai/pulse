@@ -379,11 +379,19 @@ const SettingsScreen = ({ setToast }) => {
       </div>
 
       <Card title="AI provider" sub="Active provider for brief generation. Toggle persists immediately; the next brief call picks it up.">
-        <ReasonField value={reason} onChange={setReason} placeholder="e.g. switching to Anthropic for tone comparison" />
-        <div className="flex flex-wrap items-center gap-2">
-          <Pill active={provider === 'gemini'}    onClick={() => saveProvider('gemini')}    disabled={saving}>Gemini · 2.5 Flash</Pill>
-          <Pill active={provider === 'anthropic'} onClick={() => saveProvider('anthropic')} disabled={saving}>Anthropic · Claude Sonnet 4.6</Pill>
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Pill active={draftProvider === 'gemini'}    onClick={() => setDraftProvider('gemini')}    disabled={saving}>Gemini · 2.5 Flash</Pill>
+          <Pill active={draftProvider === 'anthropic'} onClick={() => setDraftProvider('anthropic')} disabled={saving}>Anthropic · Claude Sonnet 4.6</Pill>
           <span className="ml-auto text-[12px] font-mono text-muteDark">Active: {provider}</span>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. switching to Anthropic for tone comparison" />
+        <div className="flex justify-end">
+          <Btn
+            onClick={() => saveProvider(draftProvider)}
+            disabled={saving || draftProvider === provider}
+          >
+            {saving ? 'Saving…' : draftProvider === provider ? 'No change' : `Switch to ${draftProvider}`}
+          </Btn>
         </div>
       </Card>
 
@@ -452,9 +460,7 @@ const FlagsScreen = ({ setToast }) => {
         <p className="text-[14px] text-muteDark mt-1">Boolean gates on unreleased features. PULSE reads <code className="font-mono">D.flags[key]</code> after Phase 3.</p>
       </div>
 
-      <Card title="Flags" sub="Toggle and save in one atomic write. Reason is captured on every save.">
-        <ReasonField value={reason} onChange={setReason} placeholder="e.g. enabling growth_v2 for internal review" />
-
+      <Card title="Flags" sub="Edit the list, then capture a reason before saving. One audit row per save, regardless of how many flags changed.">
         {entries.length === 0 && (
           <div className="text-[13px] text-muteDark mb-3">No flags defined. Add one below.</div>
         )}
@@ -491,7 +497,7 @@ const FlagsScreen = ({ setToast }) => {
           ))}
         </div>
 
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-5">
           <TextInput
             type="text"
             value={newKey}
@@ -516,10 +522,13 @@ const FlagsScreen = ({ setToast }) => {
           >Add</Btn>
         </div>
 
-        <div className="flex justify-end">
-          <Btn onClick={() => save(flags)} disabled={saving}>
-            {saving ? 'Saving…' : 'Save flags'}
-          </Btn>
+        <div className="border-t border-lineDark pt-4">
+          <ReasonField value={reason} onChange={setReason} placeholder="e.g. enabling growth_v2 for internal review" />
+          <div className="flex justify-end">
+            <Btn onClick={() => save(flags)} disabled={saving}>
+              {saving ? 'Saving…' : 'Save flags'}
+            </Btn>
+          </div>
         </div>
       </Card>
     </div>
