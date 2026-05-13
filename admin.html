@@ -325,26 +325,38 @@ const Stub = ({ title, plannedIn, sub }) => (
 );
 
 // ── Settings screen ─────────────────────────────────────────────────────
-const SettingsScreen = ({ setToast }) => {
+const SettingsScreen = ({ setToast, currentUserId }) => {
   const [settings, setSettings] = React.useState(null);
   const [loading, setLoading]   = React.useState(true);
   const [saving, setSaving]     = React.useState(false);
   const [reason, setReason]     = React.useState('');
   const [draftProvider, setDraftProvider] = React.useState(null);
 
+  // Personal tier_override state lives on the admin's profile row.
+  const [tierOverride, setTierOverride]       = React.useState(null);   // current persisted value
+  const [draftTier, setDraftTier]             = React.useState('');     // staged value
+  const [tierReason, setTierReason]           = React.useState('');
+  const [savingTier, setSavingTier]           = React.useState(false);
+
   const load = async () => {
     setLoading(true);
     try {
-      const r = await api('/admin?action=settings');
-      setSettings(r.settings || {});
-      setDraftProvider(r.settings?.ai_provider || 'gemini');
+      const [s, me] = await Promise.all([
+        api('/admin?action=settings'),
+        currentUserId ? api(`/admin?action=user-detail&id=${encodeURIComponent(currentUserId)}`).catch(() => null) : Promise.resolve(null),
+      ]);
+      setSettings(s.settings || {});
+      setDraftProvider(s.settings?.ai_provider || 'gemini');
+      const current = me?.profile?.tier_override || null;
+      setTierOverride(current);
+      setDraftTier(current || '');
     } catch (e) {
       setToast({ message: e.message, tone: 'err' });
     } finally {
       setLoading(false);
     }
   };
-  React.useEffect(() => { load(); }, []);
+  React.useEffect(() => { load(); }, [currentUserId]);
 
   const saveProvider = async (provider) => {
     if (!reason.trim()) {
@@ -403,6 +415,47 @@ const SettingsScreen = ({ setToast }) => {
       <Card title="Caps" sub="Global safety knobs (rate limits, cost budgets). Empty by default.">
         <pre className="diff text-muteDark bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(settings?.caps || {}, null, 2)}</pre>
         <p className="text-[12px] text-muteDark mt-2">Editor lands in Phase 2 alongside the Sync & Sources panel.</p>
+      </Card>
+
+      <Card
+        title="Your view-as tier"
+        sub="Run as a different tier to preview the gated experience. Persists on your profile row. Only honored when your is_admin flag is true."
+      >
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Pill active={draftTier === ''}         onClick={() => setDraftTier('')}>None (real tier)</Pill>
+          <Pill active={draftTier === 'creator'}  onClick={() => setDraftTier('creator')}>Creator</Pill>
+          <Pill active={draftTier === 'brand'}    onClick={() => setDraftTier('brand')}>Brand</Pill>
+          <Pill active={draftTier === 'agency'}   onClick={() => setDraftTier('agency')}>Agency</Pill>
+          <span className="ml-auto text-[12px] font-mono text-muteDark">
+            Current: {tierOverride || 'none'}
+          </span>
+        </div>
+        <ReasonField value={tierReason} onChange={setTierReason} placeholder="e.g. testing the Brand tier upgrade flow" />
+        <div className="flex justify-end">
+          <Btn
+            onClick={async () => {
+              if (!tierReason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+              setSavingTier(true);
+              try {
+                const next = draftTier || null;
+                const r = await api('/admin?action=self-tier-override', {
+                  method: 'POST',
+                  body: JSON.stringify({ tier_override: next, reason: tierReason.trim() }),
+                });
+                setTierOverride(r.tier_override || null);
+                setTierReason('');
+                setToast({ message: `View-as set to ${r.tier_override || 'none'}. Reload PULSE to see the change.`, tone: 'ok' });
+              } catch (e) {
+                setToast({ message: e.message, tone: 'err' });
+              } finally {
+                setSavingTier(false);
+              }
+            }}
+            disabled={savingTier || (draftTier || null) === tierOverride}
+          >
+            {savingTier ? 'Saving…' : (draftTier || null) === tierOverride ? 'No change' : 'Save view-as tier'}
+          </Btn>
+        </div>
       </Card>
     </div>
   );
@@ -2297,7 +2350,7 @@ const App = () => {
 
   const screen = (() => {
     switch (active) {
-      case 'settings':   return <SettingsScreen setToast={setToast} />;
+      case 'settings':   return <SettingsScreen setToast={setToast} currentUserId={state.identity?.user?.id} />;
       case 'flags':      return <FlagsScreen setToast={setToast} />;
       case 'audit':      return <AuditScreen setToast={setToast} />;
       case 'workspaces': return <WorkspacesScreen setToast={setToast} />;

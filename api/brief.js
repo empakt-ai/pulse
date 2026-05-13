@@ -13,6 +13,7 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 import { getMarketContext } from './_lib/market-context.js';
+import { getPlatformSettings } from './_lib/platform-settings.js';
 
 const PLATFORM_TO_ICON = {
   instagram: 'ig', tiktok: 'tt', youtube: 'yt',
@@ -75,7 +76,17 @@ export default async function handler(req, res) {
   const ownPosts = (posts || []).filter(p => p.source === 'own' && p.post_type !== 'ad');
   const ownAds = (posts || []).filter(p => p.source === 'own' && p.post_type === 'ad');
   const tier = tierFor(ws);
-  const usage = await getMonthlyUsage(ws.id).catch(() => ({ used: 0, cost_cents: 0 }));
+  // Pull usage + platform settings in parallel — both feed the response
+  // body. Settings provides feature_flags + ai_provider for the SPA to
+  // gate experimental UI; usage is the monthly run counter.
+  const [usage, platformSettings] = await Promise.all([
+    getMonthlyUsage(ws.id).catch(() => ({ used: 0, cost_cents: 0 })),
+    getPlatformSettings().catch(() => ({})),
+  ]);
+  const featureFlags = (platformSettings && typeof platformSettings.feature_flags === 'object'
+                        && !Array.isArray(platformSettings.feature_flags))
+    ? platformSettings.feature_flags
+    : {};
 
   // Aggregate ad performance for the dashboard. Only meaningful when ads exist.
   const totalSpend = ownAds.reduce((s, p) => s + Number(p.raw_data?.spend || 0), 0);
@@ -294,6 +305,14 @@ export default async function handler(req, res) {
   return json(res, 200, {
     workspace: ws,
     workspaces: auth.workspaces || [],
+    // Admin context. is_admin/as_tier/flags are read from the admin
+    // module's settings + the caller's profile. Non-admin tokens see
+    // is_admin=false and an as_tier of null; flags are visible to
+    // everyone (that's the whole point — flags gate features by ID,
+    // not by audience).
+    is_admin: !!auth.isAdmin,
+    as_tier:  auth.asTier || null,
+    flags:    featureFlags,
     user: {
       id: auth.user.id,
       email: auth.user.email,

@@ -515,6 +515,12 @@ const D = {
   ads: null,
   verdict: null,
   connectedPlatforms: [],
+  // Admin-controlled runtime context populated by hydrateD(). Defaults
+  // mean no flags honored, no admin UI activated, no tier override —
+  // bit-identical to pre-Phase-3 behavior until /api/brief returns.
+  isAdmin: false,
+  asTier:  null,
+  flags:   {},
 };
 
 const formatNum = (n) => {
@@ -7387,6 +7393,15 @@ const hydrateD = (brief) => {
   // and the full-screen paywall when trial.locked is true.
   D.tier = brief.tier || { key: 'creator', label: 'Creator' };
   D.trial = brief.trial || { active: false, locked: false };
+
+  // Admin-controlled runtime context. flags is read everywhere (every
+  // user gets the same flag set); is_admin / as_tier only flip true for
+  // mnawaz@gmail.com (or any future profile with profiles.is_admin=true).
+  // Nothing in core PULSE branches on these today — wiring is here so
+  // future gated features can lazily start reading D.flags[key].
+  D.isAdmin = !!brief.is_admin;
+  D.asTier  = brief.as_tier || null;
+  D.flags   = (brief.flags && typeof brief.flags === 'object') ? brief.flags : {};
 };
 
 // Empty-state UI (no accounts connected yet)

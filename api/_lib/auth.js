@@ -21,16 +21,17 @@ export async function authenticate(req) {
     return { error: 'Invalid token', status: 401 };
   }
 
-  // Profile + workspace fetch in parallel. Profile is read for the admin
-  // flag (gates /api/admin) and — once Phase 3 lands — tier_override and
-  // is_disabled. Until then this is a one-field lookup that PULSE-side
-  // code doesn't react to.
+  // Profile + workspace fetch in parallel. Profile reads three admin-
+  // managed fields:
+  //   - is_admin       → gates /api/admin
+  //   - is_disabled    → blocks every API call for the user
+  //   - tier_override  → admin-only "view as" tier (honored only for admins)
   const requestedWsId =
     req.headers?.['x-workspace-id'] || req.headers?.['X-Workspace-Id'] || null;
 
   const [profileRow, ownedResult] = await Promise.all([
     supabase.select('profiles', {
-      select: 'is_admin',
+      select: 'is_admin,is_disabled,disabled_reason,tier_override',
       eq: { id: user.id },
       single: true,
     }).catch(() => null),
@@ -42,6 +43,18 @@ export async function authenticate(req) {
   ]);
   const owned = ownedResult || [];
   const isAdmin = profileRow?.is_admin === true;
+
+  // Hard gate: a disabled profile cannot transact at all. We deliberately
+  // surface the disabled_reason so the user understands why; the SPA
+  // shows it on the sign-in screen.
+  if (profileRow?.is_disabled === true) {
+    return {
+      error: 'Account disabled.',
+      status: 403,
+      disabled: true,
+      disabled_reason: profileRow.disabled_reason || null,
+    };
+  }
 
   let workspace = null;
   if (requestedWsId) {
@@ -59,7 +72,34 @@ export async function authenticate(req) {
   if (workspace) attachTrialState(workspace);
   for (const w of owned) attachTrialState(w);
 
-  return { user, workspace, token, workspaces: owned, isAdmin };
+  // Admin-only tier override. Reads from the admin's own profile row, so
+  // there's no way a non-admin gets a tier upgrade by writing into their
+  // own row — auth.js refuses to honor it unless is_admin=true. Applies
+  // to every workspace the admin owns (including the active one) so the
+  // gated experience is uniform across the dashboard.
+  const tierOverride = (isAdmin && typeof profileRow?.tier_override === 'string'
+    && ['creator', 'brand', 'agency'].includes(profileRow.tier_override))
+    ? profileRow.tier_override
+    : null;
+  if (tierOverride) {
+    if (workspace) {
+      workspace.tier = tierOverride;
+      workspace.tier_overridden = true;
+    }
+    for (const w of owned) {
+      w.tier = tierOverride;
+      w.tier_overridden = true;
+    }
+  }
+
+  return {
+    user,
+    workspace,
+    token,
+    workspaces: owned,
+    isAdmin,
+    asTier: tierOverride,
+  };
 }
 
 // Compute and attach trial flags to a workspace row. Idempotent and

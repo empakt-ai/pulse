@@ -19,13 +19,17 @@
 //   POST   ?action=handle-release             → release a handle
 //   POST   ?action=handle-reassign            → bind to a different workspace
 //
-// Phase 2 actions (this commit):
+// Phase 2 actions:
 //   GET    ?action=users                      → list with workspace + sign-in counts
 //   GET    ?action=user-detail&id=…           → profile, workspaces, sign-in history
 //   POST   ?action=user-set                   → toggle is_admin / is_disabled
 //   GET    ?action=briefs                     → brief generation history (read-only)
 //   GET    ?action=sources                    → source health aggregates (read-only)
 //   GET    ?action=reports                    → reports queue list (read-only)
+//
+// Phase 3 actions (this commit):
+//   POST   ?action=self-tier-override         → set/clear caller's tier_override
+//                                               (only honored when caller is admin)
 //
 // Every write goes through requireAdmin → requireReason → mutation → log.
 // The reason field is mandatory at both the API and DB layers.
@@ -920,6 +924,49 @@ export default async function handler(req, res) {
       sources: Object.values(grouped).sort((a, b) => a.run_type.localeCompare(b.run_type)),
       per_workspace_fallbacks: per_workspace,
     });
+  }
+
+  // ── Self tier-override ───────────────────────────────────────────────
+  // Sets / clears the caller's own profiles.tier_override. We restrict
+  // to "self" so one admin can't surreptitiously rewrite another
+  // admin's view. Reason required, audit-logged. auth.js only honors
+  // tier_override when the row's is_admin=true, so a non-admin row with
+  // an override (set via SQL) still gets ignored at request time.
+  if (action === 'self-tier-override' && req.method === 'POST') {
+    const body = parseBody(req);
+    const r = requireReason(body);
+    if (r.envelope) return json(res, r.envelope.status, r.envelope.body);
+
+    const raw = body?.tier_override;
+    let next = null;
+    if (raw === null || raw === '') {
+      next = null;
+    } else if (typeof raw === 'string' && ['creator', 'brand', 'agency'].includes(raw.toLowerCase())) {
+      next = raw.toLowerCase();
+    } else {
+      return json(res, 400, { error: "tier_override must be 'creator' | 'brand' | 'agency' | null" });
+    }
+
+    const before = await supabase.select('profiles', {
+      select: 'tier_override',
+      eq: { id: auth.user.id },
+      single: true,
+    }).catch(() => null);
+
+    const rows = await supabase.update('profiles', { tier_override: next }, { eq: { id: auth.user.id } });
+    const after = rows?.[0] || null;
+
+    await logAdminAction({
+      actor: auth.user.id,
+      action: 'user.tier_override.update',
+      targetType: 'user',
+      targetId: auth.user.id,
+      before: { tier_override: before?.tier_override ?? null },
+      after:  { tier_override: after?.tier_override ?? null },
+      reason: r.reason,
+    });
+
+    return json(res, 200, { tier_override: after?.tier_override ?? null });
   }
 
   // ── Reports queue (read-only) ──────────────────────────────────────
