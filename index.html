@@ -1338,9 +1338,9 @@ const HeroGradient = ({ onSignUp }) => (
             Start your 7-day free trial
             <Icon name="arrowRight" className="w-4 h-4" />
           </Btn>
-          <Btn variant="outline" size="lg">
-            <Icon name="play" className="w-3.5 h-3.5" /> Watch 2-min tour
-          </Btn>
+          {/* "Watch 2-min tour" button hidden until the actual video is
+              produced. Add back once the asset exists; don't ship a CTA
+              that does nothing. */}
           <span className="text-[12px] text-mute dark:text-muteDark ml-2">No credit card · Cancel anytime</span>
         </div>
 
