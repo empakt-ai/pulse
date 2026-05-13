@@ -21,19 +21,27 @@ export async function authenticate(req) {
     return { error: 'Invalid token', status: 401 };
   }
 
-  // Workspace selection: a user may own multiple workspaces (one per
-  // subscription). The client picks the active workspace via the
-  // `x-workspace-id` header (stored in localStorage). If absent or invalid,
-  // fall back to the oldest workspace the user owns — that's their original
-  // signup workspace, auto-created by the Supabase trigger.
+  // Profile + workspace fetch in parallel. Profile is read for the admin
+  // flag (gates /api/admin) and — once Phase 3 lands — tier_override and
+  // is_disabled. Until then this is a one-field lookup that PULSE-side
+  // code doesn't react to.
   const requestedWsId =
     req.headers?.['x-workspace-id'] || req.headers?.['X-Workspace-Id'] || null;
 
-  const owned = await supabase.select('workspaces', {
-    select: '*',
-    eq: { owner_id: user.id },
-    order: 'created_at.asc',
-  }) || [];
+  const [profileRow, ownedResult] = await Promise.all([
+    supabase.select('profiles', {
+      select: 'is_admin',
+      eq: { id: user.id },
+      single: true,
+    }).catch(() => null),
+    supabase.select('workspaces', {
+      select: '*',
+      eq: { owner_id: user.id },
+      order: 'created_at.asc',
+    }).catch(() => []),
+  ]);
+  const owned = ownedResult || [];
+  const isAdmin = profileRow?.is_admin === true;
 
   let workspace = null;
   if (requestedWsId) {
@@ -51,7 +59,7 @@ export async function authenticate(req) {
   if (workspace) attachTrialState(workspace);
   for (const w of owned) attachTrialState(w);
 
-  return { user, workspace, token, workspaces: owned };
+  return { user, workspace, token, workspaces: owned, isAdmin };
 }
 
 // Compute and attach trial flags to a workspace row. Idempotent and

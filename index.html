@@ -2090,6 +2090,17 @@ const checkMagicLinkHash = async (onAuthed) => {
     const session = { access_token: accessToken, refresh_token: refreshToken, user };
     sbAuth.saveSession(session);
 
+    // Log this sign-in for the admin user-history view. Best-effort; the
+    // user is signed in whether or not the log call succeeds.
+    fetch('/api/auth-log', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ method: 'magic_link', session_id: accessToken.slice(0, 32) }),
+    }).catch(() => {});
+
     // Clean URL
     window.history.replaceState({}, document.title, window.location.pathname);
     onAuthed(session);
@@ -2215,6 +2226,17 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
       } else {
         data = await sbAuth.signIn(email, password);
         sbAuth.saveSession(data);
+        // Log the sign-in event. Same dedup key shape as the magic-link
+        // path so the user_sign_in_log doesn't double-count if the user
+        // happens to re-sign-in within the same token window.
+        fetch('/api/auth-log', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${data.access_token}`,
+          },
+          body: JSON.stringify({ method: 'password', session_id: (data.access_token || '').slice(0, 32) }),
+        }).catch(() => {});
         onAuthed(data);
       }
     } catch (err) {

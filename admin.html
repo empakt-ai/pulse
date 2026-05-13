@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>PULSE — Admin Console</title>
+<meta name="robots" content="noindex,nofollow" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans:    ['Geist', 'system-ui', 'sans-serif'],
+          mono:    ['Geist Mono', 'ui-monospace', 'monospace'],
+          display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
+        },
+        colors: {
+          ink:      '#0A0A0B',
+          inksoft:  '#15151B',
+          paper:    '#F5F1E8',
+          chalk:    '#FBFAF6',
+          line:     '#E5E1D6',
+          lineDark: '#1F1F26',
+          mute:     '#6F6B62',
+          muteDark: '#A19E94',
+          ultra:    '#6B5BFF',
+          lime:     '#D6FF3E',
+          magenta:  '#FF3D8A',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { background: #0A0A0B; color: #F5F1E8; font-family: 'Geist', system-ui, sans-serif; }
+  /* Compact scrollbar in the audit log / lists */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #1F1F26; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2A2A33; }
+  pre.diff { font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel">
+// ═════════════════════════════════════════════════════════════════════════
+// PULSE Admin Console — standalone SPA. Independent React tree, own auth,
+// own state. Only shared concept with PULSE is the Supabase session in
+// localStorage ('pulse_session') — if you're already signed in to PULSE
+// in this browser, admin picks up the session automatically.
+// ═════════════════════════════════════════════════════════════════════════
+
+const SUPABASE_URL  = 'https://gyiiccstlrgzfbwgtuww.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aWljY3N0bHJnemZid2d0dXd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTcyOTEsImV4cCI6MjA5NDA5MzI5MX0.mC7iQ73NhSsER1c22zT63ntRXwsVLwq6Pv-oRv15kDA';
+
+const sbHeaders = () => ({
+  'Content-Type':  'application/json',
+  'apikey':        SUPABASE_ANON,
+  'Authorization': `Bearer ${SUPABASE_ANON}`,
+});
+
+const sbAuth = {
+  signInWithOtp: async (email) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
+      method: 'POST',
+      headers: sbHeaders(),
+      body: JSON.stringify({ email, create_user: false, options: { emailRedirectTo: window.location.origin + '/admin' } }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Could not send link');
+    return data;
+  },
+  refresh: async (refreshToken) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: sbHeaders(),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Token refresh failed');
+    return data;
+  },
+  getSession: () => {
+    try { return JSON.parse(localStorage.getItem('pulse_session') || 'null'); }
+    catch { return null; }
+  },
+  saveSession: (s) => { localStorage.setItem('pulse_session', JSON.stringify(s)); },
+  clearSession: () => { localStorage.removeItem('pulse_session'); },
+};
+
+// Magic-link callback handler — drops access_token + refresh_token into
+// the URL hash. We persist the session, strip the hash, and let the
+// normal session-check path render the console.
+const consumeMagicLinkHash = () => {
+  const hash = window.location.hash || '';
+  if (!hash.includes('access_token')) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const access_token  = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if (!access_token) return null;
+  const session = { access_token, refresh_token, persisted_at: Date.now() };
+  sbAuth.saveSession(session);
+  history.replaceState({}, '', window.location.pathname + window.location.search);
+  return session;
+};
+
+// ── API wrapper ─────────────────────────────────────────────────────────
+const api = async (path, opts = {}) => {
+  const session = sbAuth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`/api${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+  return data;
+};
+
+// ── Common UI atoms ─────────────────────────────────────────────────────
+const cls = (...parts) => parts.filter(Boolean).join(' ');
+
+const Card = ({ title, sub, right, children }) => (
+  <section className="rounded-2xl border border-lineDark bg-inksoft p-6 mb-5">
+    {(title || right) && (
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          {title && <h2 className="font-display text-[20px] font-semibold tracking-tight">{title}</h2>}
+          {sub && <p className="text-[13px] text-muteDark mt-1">{sub}</p>}
+        </div>
+        {right}
+      </div>
+    )}
+    {children}
+  </section>
+);
+
+const Pill = ({ active, children, onClick, disabled }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cls(
+      'h-9 px-4 rounded-lg text-[13px] font-medium border transition',
+      active ? 'bg-paper text-ink border-paper' : 'bg-inksoft border-lineDark hover:border-paper/30',
+      disabled && 'opacity-50 cursor-not-allowed',
+    )}
+  >
+    {children}
+  </button>
+);
+
+const TextInput = (props) => (
+  <input
+    {...props}
+    className={cls(
+      'h-9 px-3 rounded-lg border border-lineDark bg-ink text-[13px] focus:outline-none focus:border-paper/50',
+      props.className,
+    )}
+  />
+);
+
+const ReasonField = ({ value, onChange, placeholder = 'Why are you making this change?' }) => (
+  <div className="mb-3">
+    <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">
+      Reason (required)
+    </label>
+    <TextInput
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full"
+    />
+  </div>
+);
+
+const Stat = ({ label, value, tone }) => (
+  <div className={cls(
+    'rounded-xl border px-4 py-3',
+    tone === 'warn'  ? 'border-magenta/40 bg-magenta/5'
+    : tone === 'good' ? 'border-lime/40 bg-lime/5'
+    : 'border-lineDark bg-ink',
+  )}>
+    <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark">{label}</div>
+    <div className="font-display text-[22px] font-semibold mt-1">{value}</div>
+  </div>
+);
+
+const Btn = ({ children, onClick, disabled, variant = 'primary', size = 'md' }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cls(
+      'rounded-lg font-medium transition border',
+      size === 'sm' ? 'h-8 px-3 text-[12px]' : 'h-9 px-4 text-[13px]',
+      variant === 'primary' ? 'bg-paper text-ink border-paper hover:opacity-90'
+      : variant === 'danger'  ? 'bg-magenta/10 text-magenta border-magenta/40 hover:bg-magenta/20'
+      : 'bg-inksoft text-paper border-lineDark hover:border-paper/30',
+      disabled && 'opacity-50 cursor-not-allowed',
+    )}
+  >
+    {children}
+  </button>
+);
+
+const Toast = ({ message, tone, onDone }) => {
+  React.useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [message]);
+  if (!message) return null;
+  return (
+    <div className={cls(
+      'fixed bottom-6 right-6 z-50 rounded-xl px-4 py-3 text-[13px] shadow-2xl border',
+      tone === 'err' ? 'bg-magenta/10 border-magenta/40 text-magenta'
+                     : 'bg-lime/10 border-lime/40 text-lime',
+    )}>
+      {message}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sign-in card. Magic-link only — keeps the admin login surface narrow.
+// ═════════════════════════════════════════════════════════════════════════
+const SignIn = ({ onSent }) => {
+  const [email, setEmail]     = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent]       = React.useState(false);
+  const [error, setError]     = React.useState(null);
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (!email.includes('@')) { setError('Enter a valid email.'); return; }
+    setSending(true); setError(null);
+    try {
+      await sbAuth.signInWithOtp(email.trim());
+      setSent(true);
+      onSent?.();
+    } catch (err) {
+      setError(err.message || 'Could not send sign-in link.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div className="inline-block px-2 py-1 rounded-full bg-magenta/15 text-magenta text-[10px] font-mono uppercase tracking-[0.18em] mb-3">Admin Console</div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">PULSE Admin</h1>
+          <p className="text-[13px] text-muteDark mt-2">
+            Magic-link sign-in. Only profiles flagged <code className="font-mono">is_admin</code> in Supabase can proceed past this screen.
+          </p>
+        </div>
+
+        {sent ? (
+          <div className="rounded-2xl border border-lime/40 bg-lime/5 p-5 text-[13px] text-lime">
+            Check your inbox for a sign-in link. After clicking, you'll be returned here.
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <TextInput
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full"
+              autoFocus
+            />
+            {error && <div className="text-[12px] text-magenta">{error}</div>}
+            <Btn onClick={submit} disabled={sending || !email}>
+              {sending ? 'Sending…' : 'Send sign-in link'}
+            </Btn>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Phase 0 screens. Settings, Flags, Audit log are wired to live endpoints.
+// The other modules render a "coming soon" stub so the navigation tree is
+// in place from day one and screens get fleshed out in subsequent phases.
+// ═════════════════════════════════════════════════════════════════════════
+
+const Stub = ({ title, plannedIn, sub }) => (
+  <div className="max-w-[1000px] mx-auto">
+    <div className="mb-6">
+      <h1 className="font-display text-[32px] font-semibold tracking-tight">{title}</h1>
+      {sub && <p className="text-[14px] text-muteDark mt-1">{sub}</p>}
+    </div>
+    <Card>
+      <div className="text-center py-12">
+        <div className="inline-block px-3 py-1 rounded-full bg-lineDark text-muteDark text-[11px] font-mono uppercase tracking-[0.14em]">
+          Planned for {plannedIn}
+        </div>
+        <p className="text-[13px] text-muteDark mt-4 max-w-md mx-auto">
+          The endpoint and UI for this screen will land in a future commit. Phase 0 shipped only the auth shell, navigation, and the modules whose actions feed the audit story (settings, flags, audit log).
+        </p>
+      </div>
+    </Card>
+  </div>
+);
+
+// ── Settings screen ─────────────────────────────────────────────────────
+const SettingsScreen = ({ setToast }) => {
+  const [settings, setSettings] = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [saving, setSaving]     = React.useState(false);
+  const [reason, setReason]     = React.useState('');
+  const [draftProvider, setDraftProvider] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=settings');
+      setSettings(r.settings || {});
+      setDraftProvider(r.settings?.ai_provider || 'gemini');
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const saveProvider = async (provider) => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required before saving.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await api('/admin?action=settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ai_provider: provider, reason: reason.trim() }),
+      });
+      setSettings(r.settings || {});
+      setDraftProvider(r.settings?.ai_provider || provider);
+      setReason('');
+      setToast({ message: `AI provider set to ${provider}.`, tone: 'ok' });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-muteDark text-[14px]">Loading settings…</div>;
+
+  const provider = settings?.ai_provider || 'gemini';
+  return (
+    <div className="max-w-[1000px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Platform settings</h1>
+        <p className="text-[14px] text-muteDark mt-1">Global runtime configuration. Reads are cached for 60s per Vercel instance — propagation is near-immediate.</p>
+      </div>
+
+      <Card title="AI provider" sub="Active provider for brief generation. Toggle persists immediately; the next brief call picks it up.">
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. switching to Anthropic for tone comparison" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Pill active={provider === 'gemini'}    onClick={() => saveProvider('gemini')}    disabled={saving}>Gemini · 2.5 Flash</Pill>
+          <Pill active={provider === 'anthropic'} onClick={() => saveProvider('anthropic')} disabled={saving}>Anthropic · Claude Sonnet 4.6</Pill>
+          <span className="ml-auto text-[12px] font-mono text-muteDark">Active: {provider}</span>
+        </div>
+      </Card>
+
+      <Card title="Prompt version" sub="Tag every brief generation with a version string so the AI Brief Monitor can group by prompt.">
+        <div className="text-[12px] font-mono text-muteDark">Current: {settings?.brief_prompt_version || 'v1'}</div>
+        <p className="text-[12px] text-muteDark mt-2">Edit endpoint exists; UI editor lands with the AI Brief Monitor in Phase 2.</p>
+      </Card>
+
+      <Card title="Caps" sub="Global safety knobs (rate limits, cost budgets). Empty by default.">
+        <pre className="diff text-muteDark bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(settings?.caps || {}, null, 2)}</pre>
+        <p className="text-[12px] text-muteDark mt-2">Editor lands in Phase 2 alongside the Sync & Sources panel.</p>
+      </Card>
+    </div>
+  );
+};
+
+// ── Feature flags screen ───────────────────────────────────────────────
+const FlagsScreen = ({ setToast }) => {
+  const [flags, setFlags]   = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason] = React.useState('');
+  const [newKey, setNewKey] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=flags');
+      setFlags(r.flags || {});
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const save = async (next) => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required before saving.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await api('/admin?action=flags', {
+        method: 'PATCH',
+        body: JSON.stringify({ flags: next, reason: reason.trim() }),
+      });
+      setFlags(r.flags || {});
+      setReason('');
+      setToast({ message: 'Feature flags saved.', tone: 'ok' });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-muteDark text-[14px]">Loading flags…</div>;
+
+  const entries = Object.entries(flags);
+  return (
+    <div className="max-w-[1000px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Feature flags</h1>
+        <p className="text-[14px] text-muteDark mt-1">Boolean gates on unreleased features. PULSE reads <code className="font-mono">D.flags[key]</code> after Phase 3.</p>
+      </div>
+
+      <Card title="Flags" sub="Toggle and save in one atomic write. Reason is captured on every save.">
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. enabling growth_v2 for internal review" />
+
+        {entries.length === 0 && (
+          <div className="text-[13px] text-muteDark mb-3">No flags defined. Add one below.</div>
+        )}
+        <div className="space-y-2 mb-4">
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+              <div>
+                <div className="font-mono text-[13px]">{key}</div>
+                <div className="text-[11px] text-muteDark">{value ? 'enabled' : 'disabled'}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-[12px] text-muteDark">
+                  <input
+                    type="checkbox"
+                    checked={!!value}
+                    onChange={(e) => setFlags(prev => ({ ...prev, [key]: e.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  toggle
+                </label>
+                <button
+                  onClick={() => {
+                    const next = { ...flags };
+                    delete next[key];
+                    setFlags(next);
+                  }}
+                  className="text-[11px] text-muteDark hover:text-magenta"
+                  title="Remove flag from draft (save to apply)"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 mb-3">
+          <TextInput
+            type="text"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+            placeholder="flag_key_snake_case"
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newKey.trim()) {
+                setFlags(prev => ({ ...prev, [newKey.trim()]: false }));
+                setNewKey('');
+              }
+            }}
+          />
+          <Btn
+            variant="secondary"
+            onClick={() => {
+              const k = newKey.trim();
+              if (!k) return;
+              setFlags(prev => ({ ...prev, [k]: false }));
+              setNewKey('');
+            }}
+          >Add</Btn>
+        </div>
+
+        <div className="flex justify-end">
+          <Btn onClick={() => save(flags)} disabled={saving}>
+            {saving ? 'Saving…' : 'Save flags'}
+          </Btn>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── Audit log screen ───────────────────────────────────────────────────
+const AuditScreen = ({ setToast }) => {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter]   = React.useState({ target_type: '', action_name: '' });
+  const [open, setOpen]       = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (filter.target_type) q.set('target_type', filter.target_type);
+      if (filter.action_name) q.set('action_name', filter.action_name);
+      q.set('limit', '200');
+      const r = await api(`/admin?action=audit-log&${q.toString()}`);
+      setEntries(r.entries || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [filter.target_type, filter.action_name]);
+
+  return (
+    <div className="max-w-[1100px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Audit log</h1>
+        <p className="text-[14px] text-muteDark mt-1">Every admin write, with actor, before/after diff, and reason.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={filter.target_type}
+            onChange={(e) => setFilter({ ...filter, target_type: e.target.value })}
+            className="h-9 px-3 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All target types</option>
+            <option value="platform_settings">platform_settings</option>
+            <option value="workspace">workspace</option>
+            <option value="user">user</option>
+            <option value="handle">handle</option>
+            <option value="subscription">subscription</option>
+            <option value="report">report</option>
+          </select>
+          <TextInput
+            type="text"
+            value={filter.action_name}
+            onChange={(e) => setFilter({ ...filter, action_name: e.target.value })}
+            placeholder="action name (e.g. settings.ai_provider.update)"
+            className="flex-1 min-w-[260px]"
+          />
+          <Btn variant="secondary" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+        </div>
+
+        {entries.length === 0 && !loading ? (
+          <div className="text-center py-10 text-[13px] text-muteDark">
+            No audit entries match this filter yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Actor</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Action</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Target</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Reason</th>
+                  <th className="py-2 pr-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(e => (
+                  <React.Fragment key={e.id}>
+                    <tr className="border-b border-lineDark/60 hover:bg-ink/40">
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</td>
+                      <td className="py-2 pr-3 font-mono whitespace-nowrap">{shortId(e.actor_user_id)}</td>
+                      <td className="py-2 pr-3 font-mono">{e.action}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark">{e.target_type}{e.target_id ? ` · ${shortId(e.target_id)}` : ''}</td>
+                      <td className="py-2 pr-3 max-w-[280px] truncate" title={e.reason}>{e.reason}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <button
+                          onClick={() => setOpen(open === e.id ? null : e.id)}
+                          className="text-[11px] text-muteDark hover:text-paper"
+                        >
+                          {open === e.id ? 'Hide' : 'Diff'}
+                        </button>
+                      </td>
+                    </tr>
+                    {open === e.id && (
+                      <tr className="bg-ink/30">
+                        <td colSpan={6} className="p-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1">Before</div>
+                              <pre className="diff text-magenta bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(e.before, null, 2)}</pre>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1">After</div>
+                              <pre className="diff text-lime bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(e.after, null, 2)}</pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+const fmtTs = (s) => {
+  if (!s) return '';
+  const d = new Date(s);
+  return d.toLocaleString();
+};
+const shortId = (id) => id ? String(id).slice(0, 8) : '—';
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sidebar + shell
+// ═════════════════════════════════════════════════════════════════════════
+const NAV = [
+  { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 5 },
+  { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 1 },
+  { id: 'users',        label: 'Users',            section: 'control',     phase: 2 },
+  { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 1 },
+  { id: 'briefs',       label: 'AI brief monitor', section: 'operations',  phase: 2 },
+  { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 2 },
+  { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 2 },
+  { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 1 },
+  { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 4 },
+  { id: 'flags',        label: 'Feature flags',    section: 'config',      phase: 0 },
+  { id: 'settings',     label: 'Platform settings',section: 'config',      phase: 0 },
+  { id: 'audit',        label: 'Audit log',        section: 'audit',       phase: 0 },
+];
+const SECTION_LABEL = {
+  monitoring: 'Monitoring',
+  control:    'Control',
+  operations: 'Operations',
+  config:     'Config',
+  audit:      'Audit',
+};
+
+const Sidebar = ({ active, setActive, onSignOut, identity }) => {
+  const grouped = {};
+  for (const n of NAV) (grouped[n.section] ||= []).push(n);
+  return (
+    <aside className="w-[240px] shrink-0 border-r border-lineDark bg-inksoft min-h-screen p-4 flex flex-col">
+      <div className="mb-6 px-2">
+        <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-magenta mb-1">Admin Console</div>
+        <div className="font-display text-[18px] font-semibold tracking-tight">PULSE</div>
+      </div>
+      <nav className="flex-1 overflow-y-auto">
+        {Object.entries(grouped).map(([section, items]) => (
+          <div key={section} className="mb-5">
+            <div className="px-2 text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">
+              {SECTION_LABEL[section] || section}
+            </div>
+            <ul className="space-y-0.5">
+              {items.map(n => (
+                <li key={n.id}>
+                  <button
+                    onClick={() => setActive(n.id)}
+                    className={cls(
+                      'w-full text-left px-2.5 py-1.5 rounded-md text-[13px] flex items-center justify-between gap-2 transition',
+                      active === n.id ? 'bg-paper/10 text-paper' : 'text-muteDark hover:text-paper hover:bg-paper/5',
+                    )}
+                  >
+                    <span>{n.label}</span>
+                    {n.phase > 0 && (
+                      <span className="text-[9px] font-mono uppercase tracking-[0.12em] text-muteDark/70">
+                        P{n.phase}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+      <div className="border-t border-lineDark pt-3 mt-3 px-2">
+        <div className="text-[10px] font-mono text-muteDark mb-1">Signed in as</div>
+        <div className="text-[12.5px] truncate" title={identity?.user?.email}>{identity?.user?.email || '—'}</div>
+        <button
+          onClick={onSignOut}
+          className="mt-2 text-[12px] text-magenta hover:underline"
+        >Sign out</button>
+      </div>
+    </aside>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// App root
+// ═════════════════════════════════════════════════════════════════════════
+const App = () => {
+  const [state, setState] = React.useState({ route: 'loading', identity: null, error: null });
+  const [active, setActive] = React.useState('settings');
+  const [toast, setToast] = React.useState(null);
+
+  const bootstrap = async () => {
+    // 1. Drain any magic-link hash before anything else.
+    consumeMagicLinkHash();
+
+    // 2. If no session at all, go to sign-in.
+    const session = sbAuth.getSession();
+    if (!session?.access_token) {
+      setState({ route: 'signin', identity: null, error: null });
+      return;
+    }
+
+    // 3. Ask the backend who we are and whether we're admin.
+    try {
+      const me = await api('/admin?action=me');
+      if (!me.is_admin) {
+        setState({
+          route: 'denied',
+          identity: me,
+          error: 'Your account is not flagged is_admin in profiles.',
+        });
+        return;
+      }
+
+      // 4. Log this sign-in for the user history table. Best-effort.
+      const sessionKey = (session.access_token || '').slice(0, 32);
+      fetch('/api/auth-log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ method: 'restored', session_id: sessionKey }),
+      }).catch(() => {});
+
+      setState({ route: 'app', identity: me, error: null });
+    } catch (e) {
+      // 401 → token expired. Try refresh once. Anything else → sign out
+      // so the user gets a clear screen instead of a stuck spinner.
+      if (e.status === 401 && session.refresh_token) {
+        try {
+          const refreshed = await sbAuth.refresh(session.refresh_token);
+          sbAuth.saveSession({
+            ...session,
+            access_token: refreshed.access_token,
+            refresh_token: refreshed.refresh_token,
+          });
+          return bootstrap();
+        } catch {
+          sbAuth.clearSession();
+          setState({ route: 'signin', identity: null, error: null });
+          return;
+        }
+      }
+      setState({ route: 'signin', identity: null, error: e.message });
+    }
+  };
+
+  React.useEffect(() => { bootstrap(); }, []);
+
+  const onSignOut = () => {
+    sbAuth.clearSession();
+    setState({ route: 'signin', identity: null, error: null });
+  };
+
+  if (state.route === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muteDark text-[13px] font-mono">Loading admin console…</div>
+      </div>
+    );
+  }
+  if (state.route === 'signin') return <SignIn />;
+  if (state.route === 'denied') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <div className="inline-block px-2 py-1 rounded-full bg-magenta/15 text-magenta text-[10px] font-mono uppercase tracking-[0.18em] mb-3">Access denied</div>
+          <h1 className="font-display text-[24px] font-semibold tracking-tight mb-2">Not an admin account</h1>
+          <p className="text-[13px] text-muteDark mb-5">
+            Signed in as <span className="font-mono">{state.identity?.user?.email || 'unknown'}</span>, but the <code className="font-mono">profiles.is_admin</code> flag isn't set on this user. Have an existing admin flip it in Supabase, or sign out and try a different account.
+          </p>
+          <Btn onClick={onSignOut} variant="secondary">Sign out</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const screen = (() => {
+    switch (active) {
+      case 'settings':   return <SettingsScreen setToast={setToast} />;
+      case 'flags':      return <FlagsScreen setToast={setToast} />;
+      case 'audit':      return <AuditScreen setToast={setToast} />;
+      case 'overview':   return <Stub title="Overview" plannedIn="Phase 5" sub="Health snapshot + recent activity across every module." />;
+      case 'workspaces': return <Stub title="Workspaces" plannedIn="Phase 1" sub="Search, drill-down, tier + trial controls." />;
+      case 'users':      return <Stub title="Users" plannedIn="Phase 2" sub="Sign-in history, admin flag, disable/reactivate." />;
+      case 'trials':     return <Stub title="Trial command" plannedIn="Phase 1" sub="Extend / end / convert / reset trials in bulk or by id." />;
+      case 'briefs':     return <Stub title="AI brief monitor" plannedIn="Phase 2" sub="Generation history with model, prompt version, fallback diagnostics." />;
+      case 'sync':       return <Stub title="Sync & sources" plannedIn="Phase 2" sub="Zernio + Apify + YouTube API health. Per-workspace fallback usage." />;
+      case 'reports':    return <Stub title="Reports queue" plannedIn="Phase 2" sub="Queued / running / failed / completed reports across workspaces." />;
+      case 'handles':    return <Stub title="Handle registry" plannedIn="Phase 1" sub="Manual release / reassign with claim history." />;
+      case 'billing':    return <Stub title="Billing" plannedIn="Phase 4" sub="Stripe customer state + force-refresh from upstream." />;
+      default:           return <Stub title="Coming soon" plannedIn="future phase" />;
+    }
+  })();
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active={active} setActive={setActive} onSignOut={onSignOut} identity={state.identity} />
+      <main className="flex-1 p-8 overflow-x-hidden">{screen}</main>
+      <Toast
+        message={toast?.message}
+        tone={toast?.tone}
+        onDone={() => setToast(null)}
+      />
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+</script>
+</body>
+</html>

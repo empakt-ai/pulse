@@ -15,7 +15,8 @@
     { "source": "/contact",  "destination": "/contact.html"  },
     { "source": "/privacy",  "destination": "/privacy.html"  },
     { "source": "/terms",    "destination": "/terms.html"    },
-    { "source": "/((?!api/|features|pricing|about|contact|privacy|terms).*)", "destination": "/index.html" }
+    { "source": "/admin",    "destination": "/admin.html"    },
+    { "source": "/((?!api/|features|pricing|about|contact|privacy|terms|admin).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/cron/hourly", "schedule": "0 * * * *" }
