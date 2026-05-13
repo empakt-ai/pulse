@@ -19,6 +19,14 @@
 //   POST   ?action=handle-release             → release a handle
 //   POST   ?action=handle-reassign            → bind to a different workspace
 //
+// Phase 2 actions (this commit):
+//   GET    ?action=users                      → list with workspace + sign-in counts
+//   GET    ?action=user-detail&id=…           → profile, workspaces, sign-in history
+//   POST   ?action=user-set                   → toggle is_admin / is_disabled
+//   GET    ?action=briefs                     → brief generation history (read-only)
+//   GET    ?action=sources                    → source health aggregates (read-only)
+//   GET    ?action=reports                    → reports queue list (read-only)
+//
 // Every write goes through requireAdmin → requireReason → mutation → log.
 // The reason field is mandatory at both the API and DB layers.
 // ═════════════════════════════════════════════════════════════════════════
@@ -581,6 +589,373 @@ export default async function handler(req, res) {
     });
 
     return json(res, 200, { handle: after });
+  }
+
+  // ── Users list ───────────────────────────────────────────────────────
+  // Joins auth.users + profiles + workspace count + sign-in stats.
+  // Returns one row per auth.users entry. Search and ordering happen
+  // client-side — cardinality stays manageable until we cross several
+  // hundred users, at which point we'll add a server-side search param.
+  if (action === 'users' && req.method === 'GET') {
+    const [users, profiles, workspaces, signins] = await Promise.all([
+      listAuthUsers({}),
+      supabase.select('profiles', {
+        select: 'id,is_admin,is_disabled,disabled_at,disabled_reason,tier_override',
+        limit: 5000,
+      }).catch(() => []),
+      supabase.select('workspaces', { select: 'owner_id', limit: 5000 }).catch(() => []),
+      supabase.select('user_sign_in_log', {
+        select: 'user_id,signed_in_at',
+        order: 'signed_in_at.desc',
+        limit: 10000,
+      }).catch(() => []),
+    ]);
+
+    const profileById = indexBy(profiles, 'id');
+    const wsCount = new Map();
+    for (const w of workspaces || []) {
+      wsCount.set(w.owner_id, (wsCount.get(w.owner_id) || 0) + 1);
+    }
+    const signinStats = new Map(); // user_id → { count, last }
+    for (const e of signins || []) {
+      const s = signinStats.get(e.user_id) || { count: 0, last: null };
+      s.count += 1;
+      if (!s.last || e.signed_in_at > s.last) s.last = e.signed_in_at;
+      signinStats.set(e.user_id, s);
+    }
+
+    const out = (users || []).map(u => {
+      const p = profileById.get(u.id) || {};
+      const s = signinStats.get(u.id) || { count: 0, last: null };
+      return {
+        id: u.id,
+        email: u.email,
+        created_at: u.created_at,
+        last_sign_in_at: u.last_sign_in_at || s.last || null,
+        sign_in_count: s.count,
+        workspace_count: wsCount.get(u.id) || 0,
+        is_admin: !!p.is_admin,
+        is_disabled: !!p.is_disabled,
+        disabled_at: p.disabled_at || null,
+        disabled_reason: p.disabled_reason || null,
+        tier_override: p.tier_override || null,
+      };
+    });
+    // Newest sign-up at the top — easiest to spot new accounts.
+    out.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    return json(res, 200, { users: out });
+  }
+
+  // ── User detail ─────────────────────────────────────────────────────
+  // Single profile row + every workspace they own + every sign-in event
+  // we've recorded for them.
+  if (action === 'user-detail' && req.method === 'GET') {
+    const id = (req.query?.id || '').toString();
+    if (!id) return json(res, 400, { error: 'id required' });
+
+    const userList = await listAuthUsers({ ids: [id] });
+    const user = userList?.[0] || null;
+    if (!user) return json(res, 404, { error: 'User not found' });
+
+    const [profile, owned, signins, auditRows] = await Promise.all([
+      supabase.select('profiles', {
+        select: '*', eq: { id }, single: true,
+      }).catch(() => null),
+      supabase.select('workspaces', {
+        select: 'id,name,tier,trial_ends_at,trial_converted_at,created_at',
+        eq: { owner_id: id },
+        order: 'created_at.asc',
+      }).catch(() => []),
+      supabase.select('user_sign_in_log', {
+        select: '*', eq: { user_id: id }, order: 'signed_in_at.desc', limit: 200,
+      }).catch(() => []),
+      supabase.select('admin_audit_log', {
+        select: '*',
+        eq: { target_type: 'user', target_id: id },
+        order: 'created_at.desc',
+        limit: 50,
+      }).catch(() => []),
+    ]);
+
+    return json(res, 200, {
+      user: {
+        id: user.id,
+        email: user.email,
+        created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
+        confirmed_at: user.confirmed_at,
+      },
+      profile: profile || {},
+      workspaces: (owned || []).map(w => ({
+        ...w,
+        trial_state: deriveTrialState(w).state,
+      })),
+      sign_ins: signins || [],
+      audit_log: auditRows || [],
+    });
+  }
+
+  // ── User-set (toggle is_admin / is_disabled) ────────────────────────
+  // Two fields admin can flip on a profile. Reason required, audit-
+  // logged with before/after. We deliberately don't allow editing the
+  // tier_override here — that's a self-managed knob the admin sets on
+  // their own profile via a future Settings → "View as" surface.
+  if (action === 'user-set' && req.method === 'POST') {
+    const body = parseBody(req);
+    const r = requireReason(body);
+    if (r.envelope) return json(res, r.envelope.status, r.envelope.body);
+
+    const userId = String(body?.user_id || '').trim();
+    if (!userId) return json(res, 400, { error: 'user_id is required' });
+
+    const patch = {};
+    if (typeof body.is_admin === 'boolean')    patch.is_admin = body.is_admin;
+    if (typeof body.is_disabled === 'boolean') {
+      patch.is_disabled = body.is_disabled;
+      patch.disabled_at = body.is_disabled ? new Date().toISOString() : null;
+      patch.disabled_reason = body.is_disabled ? r.reason : null;
+    }
+    if (!Object.keys(patch).length) {
+      return json(res, 400, { error: 'Nothing to update — provide is_admin and/or is_disabled' });
+    }
+
+    // Self-protection: an admin can't disable themselves or revoke their
+    // own is_admin (would lock everyone out of the console). Use a
+    // different admin account if a second exists.
+    if (userId === auth.user.id) {
+      if (patch.is_admin === false) {
+        return json(res, 400, { error: "You can't revoke your own admin flag. Use another admin account." });
+      }
+      if (patch.is_disabled === true) {
+        return json(res, 400, { error: "You can't disable your own account." });
+      }
+    }
+
+    const before = await supabase.select('profiles', {
+      select: 'is_admin,is_disabled,disabled_at,disabled_reason',
+      eq: { id: userId },
+      single: true,
+    }).catch(() => null);
+    if (!before) return json(res, 404, { error: 'Profile not found' });
+
+    let rows;
+    try {
+      rows = await supabase.update('profiles', patch, { eq: { id: userId } });
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+    const after = rows?.[0] || null;
+
+    // Two audit entries when both fields change — keeps the action name
+    // namespace clean (`user.admin.update` vs `user.disabled.update`).
+    if ('is_admin' in patch) {
+      await logAdminAction({
+        actor: auth.user.id,
+        action: 'user.admin.update',
+        targetType: 'user',
+        targetId: userId,
+        before: { is_admin: before.is_admin },
+        after:  { is_admin: after?.is_admin },
+        reason: r.reason,
+      });
+    }
+    if ('is_disabled' in patch) {
+      await logAdminAction({
+        actor: auth.user.id,
+        action: 'user.disabled.update',
+        targetType: 'user',
+        targetId: userId,
+        before: {
+          is_disabled: before.is_disabled,
+          disabled_reason: before.disabled_reason,
+        },
+        after: {
+          is_disabled: after?.is_disabled,
+          disabled_reason: after?.disabled_reason,
+        },
+        reason: r.reason,
+      });
+    }
+
+    return json(res, 200, { profile: after });
+  }
+
+  // ── Briefs (read-only diagnostic) ───────────────────────────────────
+  // Joins signals (verdicts) with usage_log (intelligence runs) for
+  // status / failures. Useful for "why did this brief fail?" support
+  // questions. Filter by workspace_id, model, or status.
+  if (action === 'briefs' && req.method === 'GET') {
+    const q = req.query || {};
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
+
+    const filter = {
+      select: 'id,workspace_id,title,model_used,latency_ms,tokens_used,generated_at,metadata',
+      eq: { kind: 'verdict' },
+      order: 'generated_at.desc',
+      limit,
+    };
+    if (q.workspace_id) filter.eq.workspace_id = q.workspace_id;
+    const verdicts = await supabase.select('signals', filter).catch(() => []);
+
+    // Pull recent failed intelligence runs for the same window so the
+    // UI can show "12 succeeded, 3 failed in the last 200" cleanly.
+    const usageFilter = {
+      select: 'id,workspace_id,status,cost_cents,run_at,records_fetched',
+      eq: { run_type: 'intelligence' },
+      order: 'id.desc',
+      limit,
+    };
+    if (q.workspace_id) usageFilter.eq.workspace_id = q.workspace_id;
+    const runs = await supabase.select('usage_log', usageFilter).catch(() => []);
+
+    // Map workspace_id → name for display.
+    const wsIds = [...new Set([
+      ...(verdicts || []).map(v => v.workspace_id),
+      ...(runs || []).map(r => r.workspace_id),
+    ].filter(Boolean))];
+    const workspaces = wsIds.length ? await supabase.select('workspaces', {
+      select: 'id,name', in: { id: wsIds },
+    }).catch(() => []) : [];
+    const wsById = indexBy(workspaces, 'id');
+    const nameOf = (id) => wsById.get(id)?.name || null;
+
+    // Apply post-filters that PostgREST can't trivially express.
+    let entries = (verdicts || []).map(v => ({
+      id: v.id,
+      workspace_id: v.workspace_id,
+      workspace_name: nameOf(v.workspace_id),
+      title: v.title,
+      model_used: v.model_used || v.metadata?.model || null,
+      latency_ms: v.latency_ms,
+      tokens_used: v.tokens_used,
+      generated_at: v.generated_at,
+      prompt_version: v.metadata?.prompt_version || null,
+      score_factors: v.metadata?.score_factors || [],
+    }));
+    if (q.model) entries = entries.filter(e => (e.model_used || '').toLowerCase() === String(q.model).toLowerCase());
+
+    const failed_runs = (runs || []).filter(r => r.status === 'failed').map(r => ({
+      ...r,
+      workspace_name: nameOf(r.workspace_id),
+    }));
+    const totals = {
+      verdicts: entries.length,
+      failed_runs: failed_runs.length,
+      total_runs: (runs || []).length,
+    };
+
+    return json(res, 200, { briefs: entries, failed_runs, totals });
+  }
+
+  // ── Sources (read-only diagnostic) ──────────────────────────────────
+  // Aggregates usage_log into a per-source health view. Keyed by
+  // run_type (intelligence / sync / scrape / backfill / etc.) and
+  // bucketed by 1h / 24h / 7d windows. Each bucket reports counts +
+  // failure rate so a regression is visible without grep.
+  if (action === 'sources' && req.method === 'GET') {
+    const sinceHour = new Date(Date.now() - 3600_000).toISOString();
+    const sinceDay  = new Date(Date.now() - 86400_000).toISOString();
+    const sinceWeek = new Date(Date.now() - 7 * 86400_000).toISOString();
+
+    const rows = await supabase.select('usage_log', {
+      select: 'run_type,status,run_at,workspace_id,cost_cents',
+      gte: { run_at: sinceWeek },
+      order: 'id.desc',
+      limit: 5000,
+    }).catch(() => []);
+
+    // Group counts by run_type + status. Walk once, distribute into the
+    // three windows by timestamp comparison.
+    const grouped = {};
+    const ensure = (rt) => {
+      if (!grouped[rt]) {
+        grouped[rt] = {
+          run_type: rt,
+          window_1h:  { total: 0, failed: 0 },
+          window_24h: { total: 0, failed: 0 },
+          window_7d:  { total: 0, failed: 0 },
+          cost_cents_7d: 0,
+        };
+      }
+      return grouped[rt];
+    };
+    for (const r of rows || []) {
+      const rt = r.run_type || 'unknown';
+      const g = ensure(rt);
+      const ts = r.run_at;
+      const failed = r.status === 'failed';
+      const inc = (b) => { b.total += 1; if (failed) b.failed += 1; };
+      if (ts >= sinceWeek) { inc(g.window_7d); g.cost_cents_7d += (r.cost_cents || 0); }
+      if (ts >= sinceDay)  inc(g.window_24h);
+      if (ts >= sinceHour) inc(g.window_1h);
+    }
+
+    // Per-workspace fallback usage: workspaces with the most failed
+    // intelligence runs in 24h. Useful "who's hurting?" lens.
+    const fallbackByWs = new Map();
+    for (const r of rows || []) {
+      if (r.run_type !== 'intelligence') continue;
+      if (r.run_at < sinceDay) continue;
+      const cur = fallbackByWs.get(r.workspace_id) || { total: 0, failed: 0 };
+      cur.total += 1;
+      if (r.status === 'failed') cur.failed += 1;
+      fallbackByWs.set(r.workspace_id, cur);
+    }
+    const wsIds = [...fallbackByWs.keys()];
+    const workspaces = wsIds.length ? await supabase.select('workspaces', {
+      select: 'id,name', in: { id: wsIds },
+    }).catch(() => []) : [];
+    const wsById = indexBy(workspaces, 'id');
+    const per_workspace = [...fallbackByWs.entries()]
+      .map(([id, stats]) => ({
+        workspace_id: id,
+        workspace_name: wsById.get(id)?.name || '—',
+        ...stats,
+      }))
+      .filter(r => r.failed > 0)
+      .sort((a, b) => b.failed - a.failed)
+      .slice(0, 20);
+
+    return json(res, 200, {
+      sources: Object.values(grouped).sort((a, b) => a.run_type.localeCompare(b.run_type)),
+      per_workspace_fallbacks: per_workspace,
+    });
+  }
+
+  // ── Reports queue (read-only) ──────────────────────────────────────
+  // Lists every report with status filter. Joins workspace name for the
+  // display. Mutating actions (retry / cancel) land in a follow-up — the
+  // existing /api/reports POST creates new reports rather than retrying,
+  // so retry needs its own thinking.
+  if (action === 'reports' && req.method === 'GET') {
+    const q = req.query || {};
+    const limit = Math.min(500, Math.max(1, Number(q.limit) || 200));
+    const filter = {
+      select: 'id,workspace_id,kind,period,status,error,generated_at,emailed_at,summary',
+      order: 'generated_at.desc',
+      limit,
+    };
+    if (q.status) filter.eq = { ...(filter.eq || {}), status: q.status };
+    if (q.kind)   filter.eq = { ...(filter.eq || {}), kind: q.kind };
+    const reports = await supabase.select('reports', filter).catch(() => []);
+
+    const wsIds = [...new Set((reports || []).map(r => r.workspace_id).filter(Boolean))];
+    const workspaces = wsIds.length ? await supabase.select('workspaces', {
+      select: 'id,name', in: { id: wsIds },
+    }).catch(() => []) : [];
+    const wsById = indexBy(workspaces, 'id');
+
+    const out = (reports || []).map(r => ({
+      ...r,
+      workspace_name: wsById.get(r.workspace_id)?.name || null,
+    }));
+    const totals = {
+      total:     out.length,
+      rendering: out.filter(r => r.status === 'rendering').length,
+      ready:     out.filter(r => r.status === 'ready').length,
+      failed:    out.filter(r => r.status === 'failed').length,
+    };
+    return json(res, 200, { reports: out, totals });
   }
 
   return json(res, 400, { error: 'Unknown or unsupported action', action });

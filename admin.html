@@ -1435,16 +1435,707 @@ const HandlesScreen = ({ setToast }) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════
+// Users screen + detail. Same drill-down pattern as Workspaces. Detail
+// holds the toggles for is_admin / is_disabled with reason capture.
+// ═════════════════════════════════════════════════════════════════════════
+const UsersScreen = ({ setToast, currentUserId }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [query, setQuery]       = React.useState('');
+  const [statusF, setStatusF]   = React.useState('');
+  const [selected, setSelected] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=users');
+      setRows(r.users || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selected) {
+    return <UserDetail id={selected} onBack={() => setSelected(null)} setToast={setToast} onMutated={load} currentUserId={currentUserId} />;
+  }
+
+  const q = query.trim().toLowerCase();
+  const filtered = (rows || []).filter(u => {
+    if (q && !(u.email || '').toLowerCase().includes(q)) return false;
+    if (statusF === 'admin'    && !u.is_admin)     return false;
+    if (statusF === 'disabled' && !u.is_disabled)  return false;
+    if (statusF === 'no_workspace' && u.workspace_count !== 0) return false;
+    return true;
+  });
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Users</h1>
+        <p className="text-[14px] text-muteDark mt-1">All authenticated accounts with workspace + sign-in stats. Click a row to drill in.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <TextInput
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by email"
+            className="flex-1 min-w-[260px]"
+          />
+          <select
+            value={statusF}
+            onChange={(e) => setStatusF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All users</option>
+            <option value="admin">Admins only</option>
+            <option value="disabled">Disabled only</option>
+            <option value="no_workspace">No workspace</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {loading && !rows ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading users…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No users match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Email</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Joined</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last sign-in</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Sign-ins</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspaces</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u => (
+                  <tr
+                    key={u.id}
+                    onClick={() => setSelected(u.id)}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                  >
+                    <td className="py-2 pr-3 font-mono">{u.email || '—'}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(u.created_at)}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(u.last_sign_in_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{u.sign_in_count}</td>
+                    <td className="py-2 pr-3 font-mono">{u.workspace_count}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-1">
+                        {u.is_admin && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-magenta/10 text-magenta border border-magenta/30 text-[10px] font-mono uppercase tracking-[0.14em]">Admin</span>
+                        )}
+                        {u.is_disabled && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[10px] font-mono uppercase tracking-[0.14em]">Disabled</span>
+                        )}
+                        {u.tier_override && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-paper/10 text-paper border border-paper/30 text-[10px] font-mono uppercase tracking-[0.14em]" title="View-as override">
+                            as {u.tier_override}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+const UserDetail = ({ id, onBack, setToast, onMutated, currentUserId }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason]   = React.useState('');
+  const [saving, setSaving]   = React.useState(false);
+  const [draft, setDraft]     = React.useState({ is_admin: null, is_disabled: null });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=user-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+      setDraft({ is_admin: !!r.profile?.is_admin, is_disabled: !!r.profile?.is_disabled });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const apply = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    const patch = { user_id: id, reason: reason.trim() };
+    if (draft.is_admin    !== !!data.profile?.is_admin)    patch.is_admin = draft.is_admin;
+    if (draft.is_disabled !== !!data.profile?.is_disabled) patch.is_disabled = draft.is_disabled;
+    if (!('is_admin' in patch) && !('is_disabled' in patch)) {
+      setToast({ message: 'No changes staged.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=user-set', {
+        method: 'POST',
+        body: JSON.stringify(patch),
+      });
+      setReason('');
+      setToast({ message: 'Profile updated.', tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to users</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const isSelf = id === currentUserId;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to users</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{data.user.email}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{data.user.id}</div>
+          <div className="text-[13px] text-muteDark mt-2">
+            Joined {fmtTs(data.user.created_at)} · Last sign-in {fmtTs(data.user.last_sign_in_at)}
+          </div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-1.5">
+          {data.profile?.is_admin && (
+            <span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/10 text-magenta border border-magenta/30 text-[11px] font-mono uppercase tracking-[0.14em]">Admin</span>
+          )}
+          {data.profile?.is_disabled && (
+            <span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[11px] font-mono uppercase tracking-[0.14em]">Disabled</span>
+          )}
+          {isSelf && (
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark">this is you</span>
+          )}
+        </div>
+      </div>
+
+      <Card title="Profile flags" sub="Toggle then save with a reason. Self-protection: you cannot revoke your own admin flag or disable your own account.">
+        <div className="space-y-3 mb-4">
+          <label className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+            <div>
+              <div className="font-mono text-[13px]">is_admin</div>
+              <div className="text-[11px] text-muteDark">Grants access to /admin.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!draft.is_admin}
+              disabled={isSelf && data.profile?.is_admin}
+              onChange={(e) => setDraft(d => ({ ...d, is_admin: e.target.checked }))}
+              className="h-4 w-4"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+            <div>
+              <div className="font-mono text-[13px]">is_disabled</div>
+              <div className="text-[11px] text-muteDark">
+                {data.profile?.disabled_reason ? `Previously: "${data.profile.disabled_reason}"` : 'Blocks API access (enforced once Phase 3 lands).'}
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!draft.is_disabled}
+              disabled={isSelf}
+              onChange={(e) => setDraft(d => ({ ...d, is_disabled: e.target.checked }))}
+              className="h-4 w-4"
+            />
+          </label>
+        </div>
+
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. promoting CTO to admin / disabling abuser account" />
+        <div className="flex justify-end">
+          <Btn onClick={apply} disabled={saving}>{saving ? 'Saving…' : 'Save flags'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="Owned workspaces" sub={`${data.workspaces.length} workspace${data.workspaces.length === 1 ? '' : 's'}`}>
+        {data.workspaces.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No workspaces owned.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[13px]">
+            {data.workspaces.map(w => (
+              <li key={w.id} className="flex items-center justify-between py-1.5 border-b border-lineDark/40 last:border-b-0">
+                <div>
+                  <span className="font-medium">{w.name || 'Untitled'}</span>
+                  <span className="ml-2 text-[11px] font-mono text-muteDark">{shortId(w.id)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span className="text-muteDark uppercase tracking-[0.14em]">{w.tier}</span>
+                  <TrialBadge state={w.trial_state} daysLeft={null} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card title="Sign-in history" sub={`${data.sign_ins.length} recorded sign-in event${data.sign_ins.length === 1 ? '' : 's'}`}>
+        {data.sign_ins.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No recorded sign-ins yet. /api/auth-log records events the first time a user signs in after Phase 0 deploy — older sign-ins predate the log.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Method</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">IP</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">User Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sign_ins.map(s => (
+                  <tr key={s.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(s.signed_in_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{s.method || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{s.ip || '—'}</td>
+                    <td className="py-2 pr-3 max-w-[400px] truncate text-muteDark" title={s.user_agent}>{s.user_agent || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Audit log (admin actions on this user)" sub="Last 50.">
+        {data.audit_log.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions recorded for this user.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.audit_log.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Briefs screen — read-only diagnostic. Filters: model, workspace_id.
+// Click a row to expand metadata (prompt version, score factors).
+// ═════════════════════════════════════════════════════════════════════════
+const BriefsScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [modelF, setModelF]   = React.useState('');
+  const [wsF, setWsF]         = React.useState('');
+  const [open, setOpen]       = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (modelF) q.set('model', modelF);
+      if (wsF)    q.set('workspace_id', wsF);
+      const r = await api(`/admin?action=briefs${q.toString() ? `&${q.toString()}` : ''}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [modelF, wsF]);
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">AI brief monitor</h1>
+        <p className="text-[14px] text-muteDark mt-1">Brief generations across every workspace. Read-only — re-run buttons land later.</p>
+      </div>
+
+      <Card>
+        {data && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+            <Stat label="Verdicts in window"   value={data.totals?.verdicts ?? 0} />
+            <Stat label="Intelligence runs"    value={data.totals?.total_runs ?? 0} />
+            <Stat label="Failed runs" value={data.totals?.failed_runs ?? 0} tone={(data.totals?.failed_runs ?? 0) > 0 ? 'warn' : 'good'} />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={modelF}
+            onChange={(e) => setModelF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All models</option>
+            <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <TextInput
+            type="text"
+            value={wsF}
+            onChange={(e) => setWsF(e.target.value)}
+            placeholder="workspace_id (paste from Workspaces)"
+            className="flex-1 min-w-[260px] font-mono"
+          />
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+        </div>
+
+        {loading && !data ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading briefs…</div>
+        ) : (data?.briefs?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No briefs match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Model</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Prompt</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Latency</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tokens</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Title</th>
+                  <th className="py-2 pr-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.briefs.map(b => (
+                  <React.Fragment key={b.id}>
+                    <tr className="border-b border-lineDark/60">
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(b.generated_at)}</td>
+                      <td className="py-2 pr-3 font-mono">{b.workspace_name || shortId(b.workspace_id)}</td>
+                      <td className="py-2 pr-3 font-mono">{b.model_used || '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.prompt_version || '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.latency_ms != null ? `${b.latency_ms}ms` : '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.tokens_used ?? '—'}</td>
+                      <td className="py-2 pr-3 max-w-[280px] truncate" title={b.title}>{b.title}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <button
+                          onClick={() => setOpen(open === b.id ? null : b.id)}
+                          className="text-[11px] text-muteDark hover:text-paper"
+                        >
+                          {open === b.id ? 'Hide' : 'More'}
+                        </button>
+                      </td>
+                    </tr>
+                    {open === b.id && (
+                      <tr className="bg-ink/30">
+                        <td colSpan={8} className="p-3">
+                          <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">Score factors</div>
+                          {(b.score_factors || []).length === 0 ? (
+                            <div className="text-[12px] text-muteDark">—</div>
+                          ) : (
+                            <ul className="space-y-1 text-[12px]">
+                              {b.score_factors.map((f, i) => <li key={i} className="font-mono">{f}</li>)}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {data?.failed_runs?.length > 0 && (
+        <Card title="Recent failed runs" sub="Intelligence runs with status='failed' in the window.">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Records</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.failed_runs.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.run_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.workspace_name || shortId(r.workspace_id)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.records_fetched ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.cost_cents != null ? `${(r.cost_cents / 100).toFixed(2)}¢` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sources screen — sync source health aggregates. Read-only diagnostic.
+// ═════════════════════════════════════════════════════════════════════════
+const SourcesScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=sources');
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const rate = (b) => b.total ? Math.round((b.failed / b.total) * 1000) / 10 : 0;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Sync & sources</h1>
+          <p className="text-[14px] text-muteDark mt-1">Aggregated from usage_log. Three time windows: last hour, last 24 hours, last 7 days.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      {loading && !data ? (
+        <div className="text-muteDark text-[13px] py-6 text-center">Loading source health…</div>
+      ) : (
+        <>
+          <Card title="Run types" sub="Counts and failure rates per source. Failure rate is a fast signal — if anything jumps past ~5% you've probably got a real problem.">
+            {(data?.sources?.length || 0) === 0 ? (
+              <div className="text-muteDark text-[13px]">No usage_log entries in the last 7 days.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="text-left text-muteDark border-b border-lineDark">
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Type</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">1h total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">24h total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">7d total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">7d cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sources.map(s => (
+                      <tr key={s.run_type} className="border-b border-lineDark/60">
+                        <td className="py-2 pr-3 font-mono">{s.run_type}</td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_1h.total} / <span className={s.window_1h.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_1h.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_1h)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_24h.total} / <span className={s.window_24h.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_24h.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_24h)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_7d.total} / <span className={s.window_7d.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_7d.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_7d)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">{(s.cost_cents_7d / 100).toFixed(2)}¢</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Workspaces with failures (24h)" sub="Intelligence runs that failed in the last day, sorted by failure count.">
+            {(data?.per_workspace_fallbacks?.length || 0) === 0 ? (
+              <div className="text-muteDark text-[13px]">No workspace-level failures in the last 24 hours.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="text-left text-muteDark border-b border-lineDark">
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Total</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.per_workspace_fallbacks.map(w => (
+                      <tr key={w.workspace_id} className="border-b border-lineDark/60">
+                        <td className="py-2 pr-3 font-mono">{w.workspace_name}</td>
+                        <td className="py-2 pr-3 font-mono">{w.total}</td>
+                        <td className="py-2 pr-3 font-mono text-magenta">{w.failed}</td>
+                        <td className="py-2 pr-3 font-mono">{w.total ? Math.round((w.failed / w.total) * 1000) / 10 : 0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Reports screen — read-only queue view. Mutating actions (retry,
+// cancel) land in a follow-up; the current /api/reports endpoint
+// generates new rows rather than retrying, so retry needs a small
+// dedicated path.
+// ═════════════════════════════════════════════════════════════════════════
+const ReportsScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [statusF, setStatusF] = React.useState('');
+  const [kindF, setKindF]     = React.useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (statusF) q.set('status', statusF);
+      if (kindF)   q.set('kind', kindF);
+      const r = await api(`/admin?action=reports${q.toString() ? `&${q.toString()}` : ''}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [statusF, kindF]);
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Reports queue</h1>
+          <p className="text-[14px] text-muteDark mt-1">Every report across every workspace. Read-only for now.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      <Card>
+        {data && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Stat label="Total"     value={data.totals?.total ?? 0} />
+            <Stat label="Rendering" value={data.totals?.rendering ?? 0} />
+            <Stat label="Ready"     value={data.totals?.ready ?? 0} tone="good" />
+            <Stat label="Failed"    value={data.totals?.failed ?? 0} tone={(data.totals?.failed ?? 0) > 0 ? 'warn' : 'normal'} />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={statusF}
+            onChange={(e) => setStatusF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All statuses</option>
+            <option value="rendering">Rendering</option>
+            <option value="ready">Ready</option>
+            <option value="failed">Failed</option>
+          </select>
+          <select
+            value={kindF}
+            onChange={(e) => setKindF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All kinds</option>
+            <option value="weekly">Weekly</option>
+            <option value="on_demand">On-demand</option>
+          </select>
+        </div>
+
+        {loading && !data ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading reports…</div>
+        ) : (data?.reports?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No reports match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Kind</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Period</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Emailed</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.reports.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.generated_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.workspace_name || shortId(r.workspace_id)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.kind}</td>
+                    <td className="py-2 pr-3 font-mono">{r.period || '—'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        r.status === 'ready'    ? 'bg-lime/10 text-lime border-lime/30'
+                        : r.status === 'failed' ? 'bg-magenta/10 text-magenta border-magenta/30'
+                        : 'bg-paper/10 text-paper border-paper/30',
+                      )}>{r.status}</span>
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.emailed_at)}</td>
+                    <td className="py-2 pr-3 max-w-[280px] truncate text-magenta" title={r.error}>{r.error || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
 // Sidebar + shell
 // ═════════════════════════════════════════════════════════════════════════
 const NAV = [
   { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 5 },
   { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 0 },
-  { id: 'users',        label: 'Users',            section: 'control',     phase: 2 },
+  { id: 'users',        label: 'Users',            section: 'control',     phase: 0 },
   { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 0 },
-  { id: 'briefs',       label: 'AI brief monitor', section: 'operations',  phase: 2 },
-  { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 2 },
-  { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 2 },
+  { id: 'briefs',       label: 'AI brief monitor', section: 'operations',  phase: 0 },
+  { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 0 },
+  { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 0 },
   { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 0 },
   { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 4 },
   { id: 'flags',        label: 'Feature flags',    section: 'config',      phase: 0 },
@@ -1612,11 +2303,11 @@ const App = () => {
       case 'workspaces': return <WorkspacesScreen setToast={setToast} />;
       case 'trials':     return <TrialsScreen setToast={setToast} />;
       case 'handles':    return <HandlesScreen setToast={setToast} />;
+      case 'users':      return <UsersScreen setToast={setToast} currentUserId={state.identity?.user?.id} />;
+      case 'briefs':     return <BriefsScreen setToast={setToast} />;
+      case 'sync':       return <SourcesScreen setToast={setToast} />;
+      case 'reports':    return <ReportsScreen setToast={setToast} />;
       case 'overview':   return <Stub title="Overview" plannedIn="Phase 5" sub="Health snapshot + recent activity across every module." />;
-      case 'users':      return <Stub title="Users" plannedIn="Phase 2" sub="Sign-in history, admin flag, disable/reactivate." />;
-      case 'briefs':     return <Stub title="AI brief monitor" plannedIn="Phase 2" sub="Generation history with model, prompt version, fallback diagnostics." />;
-      case 'sync':       return <Stub title="Sync & sources" plannedIn="Phase 2" sub="Zernio + Apify + YouTube API health. Per-workspace fallback usage." />;
-      case 'reports':    return <Stub title="Reports queue" plannedIn="Phase 2" sub="Queued / running / failed / completed reports across workspaces." />;
       case 'billing':    return <Stub title="Billing" plannedIn="Phase 4" sub="Stripe customer state + force-refresh from upstream." />;
       default:           return <Stub title="Coming soon" plannedIn="future phase" />;
     }
