@@ -1918,6 +1918,8 @@ Object.assign(window, { Landing });
 <script type="text/babel" src="js/core/auth.js"></script>
 <script type="text/babel" src="js/core/api.js"></script>
 <script type="text/babel" src="js/core/data.js"></script>
+<script type="text/babel" src="js/billing/subscription-banner.js"></script>
+<script type="text/babel" src="js/billing/upgrade-dialog.js"></script>
 <script type="text/babel">
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
@@ -7153,75 +7155,6 @@ const TrialBanner = ({ trial, intentTier, onUpgrade }) => {
   );
 };
 
-// Subscription-state banner. Lives in the same slot as TrialBanner but
-// renders only AFTER the trial has converted — the two are mutually
-// exclusive in practice. Three states surface here:
-//   - past_due:  payment failed, Stripe is retrying; user needs to fix card
-//   - canceled:  subscription ended; offer a one-click resubscribe path
-//   - cancel_at_period_end: subscription remains active but will end on
-//                           current_period_end; informational, lower urgency
-// No enforcement — the trial paywall is the only hard lock today. These
-// are nudges that lead to the Customer Portal or Checkout.
-const SubscriptionBanner = ({ workspace, onUpgrade, onPortal }) => {
-  if (!workspace) return null;
-  const status = workspace.stripe_subscription_status;
-  const cancelPending = !!workspace.stripe_cancel_at_period_end;
-  const renewsAt = workspace.stripe_current_period_end;
-
-  // past_due — card failed, Stripe will keep retrying. Loudest banner.
-  if (status === 'past_due') {
-    return (
-      <div className="w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap bg-magenta text-paper">
-        <span>Payment failed · update your card to avoid losing access</span>
-        <button
-          type="button"
-          onClick={onPortal}
-          className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-paper/15 hover:bg-paper/25 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
-        >
-          Update payment <Icon name="arrowRight" className="w-3 h-3" />
-        </button>
-      </div>
-    );
-  }
-
-  // canceled — sub is gone. We show this until the user clicks "Subscribe
-  // again". No grace period today; if you want one, gate by
-  // stripe_current_period_end being in the future.
-  if (status === 'canceled') {
-    return (
-      <div className="w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap bg-ink text-paper">
-        <span>Subscription ended · resubscribe to keep your data flowing</span>
-        <button
-          type="button"
-          onClick={onUpgrade}
-          className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-lime text-ink hover:brightness-105 transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
-        >
-          Subscribe again <Icon name="arrowRight" className="w-3 h-3" />
-        </button>
-      </div>
-    );
-  }
-
-  // cancel_at_period_end — subscription still active but won't renew.
-  // Informational tone; user can change their mind via the portal.
-  if (cancelPending && renewsAt) {
-    const endsOn = new Date(renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    return (
-      <div className="w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap bg-amber text-ink">
-        <span>Subscription ends {endsOn} · reactivate any time before then</span>
-        <button
-          type="button"
-          onClick={onPortal}
-          className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-ink/10 hover:bg-ink/20 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
-        >
-          Manage billing <Icon name="arrowRight" className="w-3 h-3" />
-        </button>
-      </div>
-    );
-  }
-
-  return null;
-};
 
 const TrialLockedPaywall = ({ trial, intentTier, onUpgrade }) => {
   const planLabel = intentTier
@@ -7283,98 +7216,10 @@ const TrialLockedCard = ({ featureLabel, tier = 'brand', sub, onUpgrade }) => {
   );
 };
 
-// Upgrade dialog — opened via the pulse:openUpgrade custom event so any
-// screen (banner, paywall, AdsScreen locked card, etc.) can request it
-// without prop drilling. POSTs to /api/stripe?action=checkout and
-// redirects the browser to Stripe's hosted Checkout. Falls back to an
-// email-support path if Stripe Checkout creation fails.
-const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
-  const [loading, setLoading] = React.useState(false);
-  const [error, setError]     = React.useState(null);
 
-  if (!open) return null;
-  const tierLabel = intentTier
-    ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
-    : 'Your plan';
-  const supportEmail = 'support@karvan.io';
-
-  const startCheckout = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const r = await api('/stripe?action=checkout', {
-        method: 'POST',
-        body: JSON.stringify({ tier: intentTier || undefined }),
-      });
-      if (!r?.url) throw new Error('No checkout URL returned');
-      window.location.href = r.url;
-    } catch (e) {
-      setError(e.message || 'Could not start checkout.');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
-      <div
-        className="max-w-md w-full bg-paper dark:bg-coal rounded-3xl p-7 sm:p-8 border border-line dark:border-lineDark"
-        onClick={e => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-      >
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="w-10 h-10 rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center">
-            <Icon name="sparkle" className="w-5 h-5" />
-          </div>
-          <button type="button" onClick={onClose} className="text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper transition" aria-label="Close">
-            <Icon name="x" className="w-4 h-4" />
-          </button>
-        </div>
-        <Eyebrow color="text-ultra">Upgrade to {tierLabel}</Eyebrow>
-        <h2 className="font-display text-[28px] font-semibold tracking-tightest mt-2 mb-2 leading-tight">
-          Continue to Stripe.
-        </h2>
-        <p className="text-[14px] text-mute dark:text-muteDark leading-relaxed mb-5">
-          We'll redirect you to Stripe's secure checkout to start your {tierLabel} subscription. You can cancel or change plans anytime from Settings → Billing.
-        </p>
-        {trial?.days_left != null && !trial.locked && (
-          <div className="rounded-xl bg-chalk dark:bg-coalsoft p-3 text-[12.5px] text-mute dark:text-muteDark mb-5">
-            <Icon name="clock" className="w-3.5 h-3.5 inline-block mr-1 -mt-0.5" />
-            You still have {trial.days_left === 0 ? 'less than a day' : `${trial.days_left} day${trial.days_left === 1 ? '' : 's'}`} left on your trial.
-          </div>
-        )}
-        {error && (
-          <div className="rounded-xl bg-magenta/10 border border-magenta/40 text-magenta text-[12.5px] p-3 mb-4">
-            {error} · <a className="underline" href={`mailto:${supportEmail}?subject=Upgrade%20issue`}>email support</a>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={startCheckout}
-            disabled={loading}
-            className="flex-1 h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-ink text-paper dark:bg-paper dark:text-ink font-medium text-[13.5px] hover:opacity-90 transition disabled:opacity-60"
-          >
-            {loading ? 'Redirecting…' : <>Continue to Stripe <Icon name="arrowUpRight" className="w-3.5 h-3.5" /></>}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="h-11 px-4 rounded-xl text-[13.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper transition disabled:opacity-60"
-          >
-            Later
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// hydrateD now lives in js/core/data.js — already on window. Don't
-// re-reference the bare identifier here or strict-mode Babel might
-// trip on the undeclared symbol.
-Object.assign(window, { EmptyDashboardCTA, BriefGenerating, TrialBanner, SubscriptionBanner, TrialLockedPaywall, TrialLockedCard, UpgradeDialog });
+// hydrateD lives in js/core/data.js; SubscriptionBanner + UpgradeDialog
+// in js/billing/. Don't re-reference those bare identifiers here.
+Object.assign(window, { EmptyDashboardCTA, BriefGenerating, TrialBanner, TrialLockedPaywall, TrialLockedCard });
 
 </script>
 <script type="text/babel">
