@@ -660,18 +660,792 @@ const fmtTs = (s) => {
 };
 const shortId = (id) => id ? String(id).slice(0, 8) : '—';
 
+// Compact pill-style label for trial state. Shared across Workspaces and
+// Trials screens so colour assignment stays consistent.
+const TrialBadge = ({ state, daysLeft }) => {
+  const map = {
+    active:    { cls: 'bg-lime/10 text-lime border-lime/30',           label: `Trial · ${daysLeft ?? '?'}d` },
+    locked:    { cls: 'bg-magenta/10 text-magenta border-magenta/30',  label: 'Locked' },
+    converted: { cls: 'bg-paper/10 text-paper border-paper/30',        label: 'Converted' },
+    none:      { cls: 'bg-ink text-muteDark border-lineDark',          label: '—' },
+  };
+  const cfg = map[state] || map.none;
+  return (
+    <span className={cls('inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border', cfg.cls)}>
+      {cfg.label}
+    </span>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Workspaces screen — list + drill-down to a single workspace detail.
+// State machine: when `selectedId` is null we render the list; otherwise
+// the WorkspaceDetail view, with a back button.
+// ═════════════════════════════════════════════════════════════════════════
+const WorkspacesScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [query, setQuery]       = React.useState('');
+  const [tierF, setTierF]       = React.useState('');
+  const [stateF, setStateF]     = React.useState('');
+  const [selectedId, setSelectedId] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=workspaces');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selectedId) {
+    return <WorkspaceDetail id={selectedId} onBack={() => setSelectedId(null)} setToast={setToast} onMutated={load} />;
+  }
+
+  const q = query.trim().toLowerCase();
+  const filtered = (rows || []).filter(w => {
+    if (q && !`${w.name || ''} ${w.owner_email || ''}`.toLowerCase().includes(q)) return false;
+    if (tierF  && w.tier !== tierF) return false;
+    if (stateF && w.trial_state !== stateF) return false;
+    return true;
+  });
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Workspaces</h1>
+        <p className="text-[14px] text-muteDark mt-1">Search, drill in, trigger trial controls. Read-first — actions live on each detail view.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <TextInput
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by workspace name or owner email"
+            className="flex-1 min-w-[260px]"
+          />
+          <select
+            value={tierF}
+            onChange={(e) => setTierF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All tiers</option>
+            <option value="creator">Creator</option>
+            <option value="brand">Brand</option>
+            <option value="agency">Agency</option>
+          </select>
+          <select
+            value={stateF}
+            onChange={(e) => setStateF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All trial states</option>
+            <option value="active">Trial active</option>
+            <option value="locked">Trial locked</option>
+            <option value="converted">Converted</option>
+            <option value="none">No trial state</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {loading && !rows ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading workspaces…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">
+            No workspaces match these filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Name</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tier</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Trial</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Accounts</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Competitors</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(w => (
+                  <tr
+                    key={w.id}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                    onClick={() => setSelectedId(w.id)}
+                  >
+                    <td className="py-2 pr-3">
+                      <div className="font-medium">{w.name || 'Untitled'}</div>
+                      <div className="text-muteDark text-[10px] font-mono">{shortId(w.id)}</div>
+                    </td>
+                    <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                    <td className="py-2 pr-3 uppercase font-mono text-[10px] tracking-[0.14em] text-muteDark">{w.tier}</td>
+                    <td className="py-2 pr-3"><TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} /></td>
+                    <td className="py-2 pr-3 font-mono">{w.accounts_count}</td>
+                    <td className="py-2 pr-3 font-mono">{w.competitors_count}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// Workspace detail — one workspace, every angle, plus the trial-action
+// surface. Calls /api/admin?action=workspace-detail on mount + on demand.
+const WorkspaceDetail = ({ id, onBack, setToast, onMutated }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [trialOp, setTrialOp] = React.useState('extend');
+  const [days, setDays]       = React.useState(7);
+  const [reason, setReason]   = React.useState('');
+  const [saving, setSaving]   = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=workspace-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const applyTrial = async () => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=trial-set', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: id, op: trialOp, days, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: `Trial ${trialOp} applied.`, tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to workspaces</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const w = data.workspace;
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to workspaces</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{w.name || 'Untitled'}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{w.id}</div>
+          <div className="text-[13px] text-muteDark mt-2">
+            Owner: {data.owner?.email || '—'}
+            {data.owner?.id && <span className="ml-2 font-mono text-[11px]">({shortId(data.owner.id)})</span>}
+          </div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-2">
+          <TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} />
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muteDark">{w.tier} tier</div>
+        </div>
+      </div>
+
+      <Card title="Tier & usage">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Plan" value={data.tier.label || data.tier.key} />
+          <Stat label="Accounts" value={`${data.usage.accounts_active} / ${data.tier.accounts_total ?? '—'}`} />
+          <Stat label="Competitors" value={`${data.usage.competitors} / ${data.tier.competitors_limit}`} />
+          <Stat label="Runs/mo cap" value={data.tier.runs_per_month === -1 ? '∞' : data.tier.runs_per_month} />
+        </div>
+      </Card>
+
+      <Card
+        title="Trial controls"
+        sub="Audit-logged. Reason required. Tier-conversion via Stripe happens elsewhere — 'Convert' here just stamps trial_converted_at so the gate releases."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+          <select
+            value={trialOp}
+            onChange={(e) => setTrialOp(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] md:col-span-2"
+          >
+            <option value="extend">Extend</option>
+            <option value="end">End now</option>
+            <option value="convert">Convert</option>
+            <option value="reset">Reset</option>
+          </select>
+          <TextInput
+            type="number"
+            min="1"
+            max="60"
+            value={days}
+            onChange={(e) => setDays(+e.target.value)}
+            placeholder="days"
+          />
+          <div className="text-[11px] text-muteDark flex items-center">days for extend/reset</div>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. extending trial 7 days while support investigates" />
+        <div className="flex justify-end">
+          <Btn onClick={applyTrial} disabled={saving}>{saving ? 'Saving…' : 'Apply trial action'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="Connected accounts" sub={`${data.accounts.length} total · ${data.usage.accounts_active} active`}>
+        {data.accounts.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No accounts connected.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Handle</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Followers</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last sync</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.map(a => (
+                  <tr key={a.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono">{a.platform}</td>
+                    <td className="py-2 pr-3 font-mono">{a.platform_username || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{a.followers ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(a.last_synced_at)}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        a.is_active ? 'bg-lime/10 text-lime border-lime/30' : 'bg-magenta/10 text-magenta border-magenta/30',
+                      )}>{a.is_active ? 'Active' : 'Inactive'}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Recent briefs" sub="Last 10 verdict generations.">
+        {data.briefs.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No briefs generated yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Model</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Latency</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tokens</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Title</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.briefs.map(b => (
+                  <tr key={b.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(b.generated_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{b.model_used || b.metadata?.model || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{b.latency_ms ? `${b.latency_ms}ms` : '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{b.tokens_used ?? '—'}</td>
+                    <td className="py-2 pr-3 max-w-[400px] truncate" title={b.title}>{b.title}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Recent sync runs" sub="Last 20 entries from usage_log.">
+        {data.sync_runs.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No sync activity recorded.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Type</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Records</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sync_runs.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.run_at || r.created_at || r.logged_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.run_type || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.platform || '—'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        r.status === 'completed' ? 'bg-lime/10 text-lime border-lime/30'
+                        : r.status === 'failed'  ? 'bg-magenta/10 text-magenta border-magenta/30'
+                        : 'bg-paper/10 text-paper border-paper/30',
+                      )}>{r.status || '—'}</span>
+                    </td>
+                    <td className="py-2 pr-3 font-mono">{r.records_fetched ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.cost_cents != null ? `${(r.cost_cents / 100).toFixed(2)}¢` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Audit log (this workspace)" sub="Last 50 admin actions scoped to this workspace.">
+        {data.audit_log.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions recorded for this workspace yet.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.audit_log.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Trials screen — command center. Same trial-set endpoint as the
+// per-workspace detail, but workflow-focused: pick a workspace, choose
+// an op, capture a reason, fire. Useful when you know the workspace by
+// name (e.g. from support) and want to act in one place.
+// ═════════════════════════════════════════════════════════════════════════
+const TrialsScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [stateF, setStateF]     = React.useState('');
+  const [selected, setSelected] = React.useState('');
+  const [op, setOp]             = React.useState('extend');
+  const [days, setDays]         = React.useState(7);
+  const [reason, setReason]     = React.useState('');
+  const [saving, setSaving]     = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=workspaces');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const filtered = rows.filter(w => !stateF || w.trial_state === stateF);
+  const counts = {
+    active:    rows.filter(w => w.trial_state === 'active').length,
+    locked:    rows.filter(w => w.trial_state === 'locked').length,
+    converted: rows.filter(w => w.trial_state === 'converted').length,
+    expiring:  rows.filter(w => w.trial_state === 'active' && (w.trial_days_left ?? 99) <= 1).length,
+  };
+
+  const apply = async () => {
+    if (!selected) {
+      setToast({ message: 'Pick a workspace first.', tone: 'err' });
+      return;
+    }
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=trial-set', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: selected, op, days, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: `Trial ${op} applied.`, tone: 'ok' });
+      await load();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Trial command</h1>
+        <p className="text-[14px] text-muteDark mt-1">Extend, end, convert, or reset trials. Stripe is not touched — billing changes happen separately.</p>
+      </div>
+
+      <Card title="Snapshot">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Trial active"      value={counts.active} />
+          <Stat label="Expiring ≤ 1 day"  value={counts.expiring} tone={counts.expiring > 0 ? 'warn' : 'normal'} />
+          <Stat label="Trial locked"      value={counts.locked}  tone={counts.locked > 0 ? 'warn' : 'normal'} />
+          <Stat label="Converted"         value={counts.converted} tone="good" />
+        </div>
+      </Card>
+
+      <Card title="Apply a trial action" sub="Audit-logged. Reason captured on every save.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Workspace</label>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] w-full"
+            >
+              <option value="">— pick a workspace —</option>
+              {rows.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name || 'Untitled'} · {w.owner_email || 'no email'} · {w.trial_state}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Action</label>
+            <div className="flex gap-2">
+              <select
+                value={op}
+                onChange={(e) => setOp(e.target.value)}
+                className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] flex-1"
+              >
+                <option value="extend">Extend</option>
+                <option value="end">End now</option>
+                <option value="convert">Convert</option>
+                <option value="reset">Reset</option>
+              </select>
+              <TextInput
+                type="number"
+                min="1"
+                max="60"
+                value={days}
+                onChange={(e) => setDays(+e.target.value)}
+                placeholder="days"
+                className="w-24"
+              />
+            </div>
+            <div className="text-[10px] text-muteDark mt-1.5">days input applies only to extend / reset</div>
+          </div>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. extending trial after onboarding call delay" />
+        <div className="flex justify-end">
+          <Btn onClick={apply} disabled={saving || !selected}>{saving ? 'Saving…' : 'Apply'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="All workspaces (trial view)">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {['', 'active', 'locked', 'converted', 'none'].map(s => (
+            <Pill key={s || 'all'} active={stateF === s} onClick={() => setStateF(s)}>
+              {s ? s : 'All'}
+            </Pill>
+          ))}
+        </div>
+        {loading ? (
+          <div className="text-muteDark text-[13px] py-4">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-4">None match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Trial</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Ends</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Intent</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Promo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(w => (
+                  <tr
+                    key={w.id}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                    onClick={() => setSelected(w.id)}
+                  >
+                    <td className="py-2 pr-3">{w.name || 'Untitled'}</td>
+                    <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                    <td className="py-2 pr-3"><TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} /></td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.trial_ends_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{w.trial_intent_tier || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{w.trial_promo_code || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Handles screen — global registry view + release / reassign actions.
+// Releases and reassigns both go through audit logging; reassign also
+// requires a target workspace_id.
+// ═════════════════════════════════════════════════════════════════════════
+const HandlesScreen = ({ setToast }) => {
+  const [handles, setHandles]   = React.useState([]);
+  const [workspaces, setWorkspaces] = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [platform, setPlatform] = React.useState('');
+  const [state, setState]       = React.useState('');
+  const [acting, setActing]     = React.useState(null);   // handle id we're acting on
+  const [actType, setActType]   = React.useState('release');
+  const [permanent, setPermanent] = React.useState(false);
+  const [reassignTo, setReassignTo] = React.useState('');
+  const [reason, setReason]     = React.useState('');
+  const [saving, setSaving]     = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (platform) q.set('platform', platform);
+      if (state)    q.set('state', state);
+      const [h, w] = await Promise.all([
+        api(`/admin?action=handles${q.toString() ? `&${q.toString()}` : ''}`),
+        api('/admin?action=workspaces'),
+      ]);
+      setHandles(h.handles || []);
+      setWorkspaces(w.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [platform, state]);
+
+  const wsById = new Map(workspaces.map(w => [w.id, w]));
+
+  const openAction = (handle, type) => {
+    setActing(handle);
+    setActType(type);
+    setPermanent(false);
+    setReassignTo('');
+    setReason('');
+  };
+
+  const submit = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    setSaving(true);
+    try {
+      if (actType === 'release') {
+        await api('/admin?action=handle-release', {
+          method: 'POST',
+          body: JSON.stringify({
+            platform: acting.platform,
+            handle:   acting.handle,
+            permanent,
+            reason: reason.trim(),
+          }),
+        });
+        setToast({ message: `Released ${acting.platform}/${acting.handle}.`, tone: 'ok' });
+      } else if (actType === 'reassign') {
+        if (!reassignTo) {
+          setToast({ message: 'Pick a target workspace.', tone: 'err' });
+          setSaving(false);
+          return;
+        }
+        await api('/admin?action=handle-reassign', {
+          method: 'POST',
+          body: JSON.stringify({
+            platform: acting.platform,
+            handle:   acting.handle,
+            workspace_id: reassignTo,
+            reason: reason.trim(),
+          }),
+        });
+        setToast({ message: `Reassigned to ${wsById.get(reassignTo)?.name || reassignTo}.`, tone: 'ok' });
+      }
+      setActing(null);
+      await load();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Handle registry</h1>
+        <p className="text-[14px] text-muteDark mt-1">Global (platform, handle) bindings. Use this when the anti-abuse layer needs a manual override.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All platforms</option>
+            {['instagram', 'tiktok', 'youtube', 'facebook', 'linkedin', 'x', 'snapchat'].map(p =>
+              <option key={p} value={p}>{p}</option>
+            )}
+          </select>
+          <select
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All states</option>
+            <option value="bound">Bound</option>
+            <option value="released">Released</option>
+            <option value="trial_locked">Trial-locked</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {handles.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No handles match this filter.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Handle</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tier</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Bound</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Released</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {handles.map(h => {
+                  const ws = h.workspace_id ? wsById.get(h.workspace_id) : null;
+                  return (
+                    <tr key={h.id} className="border-b border-lineDark/60">
+                      <td className="py-2 pr-3 font-mono">{h.platform}</td>
+                      <td className="py-2 pr-3 font-mono">{h.handle}</td>
+                      <td className="py-2 pr-3 font-mono">
+                        {ws ? ws.name : (h.workspace_id ? <span className="text-muteDark">{shortId(h.workspace_id)}</span> : '—')}
+                      </td>
+                      <td className="py-2 pr-3 font-mono">{h.tier || '—'}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(h.last_bound_at)}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(h.released_at)}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => openAction(h, 'release')} className="text-[11px] text-muteDark hover:text-magenta">Release</button>
+                          <button onClick={() => openAction(h, 'reassign')} className="text-[11px] text-muteDark hover:text-paper">Reassign</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {acting && (
+        <Card
+          title={actType === 'release' ? `Release ${acting.platform}/${acting.handle}` : `Reassign ${acting.platform}/${acting.handle}`}
+          right={<button onClick={() => setActing(null)} className="text-[11px] text-muteDark hover:text-paper">Cancel</button>}
+        >
+          {actType === 'release' && (
+            <label className="flex items-center gap-2 text-[13px] mb-3">
+              <input
+                type="checkbox"
+                checked={permanent}
+                onChange={(e) => setPermanent(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Permanent (null workspace binding — anyone can re-claim)
+            </label>
+          )}
+          {actType === 'reassign' && (
+            <div className="mb-3">
+              <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Target workspace</label>
+              <select
+                value={reassignTo}
+                onChange={(e) => setReassignTo(e.target.value)}
+                className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] w-full"
+              >
+                <option value="">— pick a workspace —</option>
+                {workspaces.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name || 'Untitled'} · {w.owner_email || 'no email'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <ReasonField value={reason} onChange={setReason} placeholder={actType === 'release' ? 'why are you releasing this handle?' : 'why are you reassigning?'} />
+          <div className="flex justify-end gap-2">
+            <Btn variant="secondary" onClick={() => setActing(null)} disabled={saving}>Cancel</Btn>
+            <Btn onClick={submit} disabled={saving}>
+              {saving ? 'Saving…' : (actType === 'release' ? 'Release handle' : 'Reassign handle')}
+            </Btn>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
 // ═════════════════════════════════════════════════════════════════════════
 // Sidebar + shell
 // ═════════════════════════════════════════════════════════════════════════
 const NAV = [
   { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 5 },
-  { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 1 },
+  { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 0 },
   { id: 'users',        label: 'Users',            section: 'control',     phase: 2 },
-  { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 1 },
+  { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 0 },
   { id: 'briefs',       label: 'AI brief monitor', section: 'operations',  phase: 2 },
   { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 2 },
   { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 2 },
-  { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 1 },
+  { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 0 },
   { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 4 },
   { id: 'flags',        label: 'Feature flags',    section: 'config',      phase: 0 },
   { id: 'settings',     label: 'Platform settings',section: 'config',      phase: 0 },
@@ -835,14 +1609,14 @@ const App = () => {
       case 'settings':   return <SettingsScreen setToast={setToast} />;
       case 'flags':      return <FlagsScreen setToast={setToast} />;
       case 'audit':      return <AuditScreen setToast={setToast} />;
+      case 'workspaces': return <WorkspacesScreen setToast={setToast} />;
+      case 'trials':     return <TrialsScreen setToast={setToast} />;
+      case 'handles':    return <HandlesScreen setToast={setToast} />;
       case 'overview':   return <Stub title="Overview" plannedIn="Phase 5" sub="Health snapshot + recent activity across every module." />;
-      case 'workspaces': return <Stub title="Workspaces" plannedIn="Phase 1" sub="Search, drill-down, tier + trial controls." />;
       case 'users':      return <Stub title="Users" plannedIn="Phase 2" sub="Sign-in history, admin flag, disable/reactivate." />;
-      case 'trials':     return <Stub title="Trial command" plannedIn="Phase 1" sub="Extend / end / convert / reset trials in bulk or by id." />;
       case 'briefs':     return <Stub title="AI brief monitor" plannedIn="Phase 2" sub="Generation history with model, prompt version, fallback diagnostics." />;
       case 'sync':       return <Stub title="Sync & sources" plannedIn="Phase 2" sub="Zernio + Apify + YouTube API health. Per-workspace fallback usage." />;
       case 'reports':    return <Stub title="Reports queue" plannedIn="Phase 2" sub="Queued / running / failed / completed reports across workspaces." />;
-      case 'handles':    return <Stub title="Handle registry" plannedIn="Phase 1" sub="Manual release / reassign with claim history." />;
       case 'billing':    return <Stub title="Billing" plannedIn="Phase 4" sub="Stripe customer state + force-refresh from upstream." />;
       default:           return <Stub title="Coming soon" plannedIn="future phase" />;
     }
