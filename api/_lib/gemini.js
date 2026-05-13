@@ -51,13 +51,14 @@ function buildBody({ system, user, max_tokens, temperature, json }) {
 
 // Call Gemini and normalise the response into { text, usage, model }.
 // Throws on non-2xx so the router can fall back to Claude.
-export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, temperature, json = true } = {}) {
+export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, temperature, json = true, signal } = {}) {
   if (!KEY) throw new Error('GEMINI_API_KEY missing');
   const body = buildBody({ system, user, max_tokens, temperature, json });
   const res = await fetch(endpoint(model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal,
   });
   const text = await res.text();
   let data = null;
