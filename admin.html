@@ -2518,6 +2518,63 @@ const OverviewScreen = ({ setToast, onNavigate }) => {
         </Btn>
       </div>
 
+      {/* Needs attention — only renders when there's something to do.
+          Each tile is a deep-link to the screen where the admin acts on
+          it. Counts are computed on every fetch, so a reload is always
+          authoritative. */}
+      {(() => {
+        const n = data.needs_attention || {};
+        const total = (n.trials_ending_24h || 0)
+                    + (n.subs_renewing_24h || 0)
+                    + (n.subs_past_due || 0)
+                    + (n.subs_canceling_soon || 0);
+        if (total === 0) {
+          return (
+            <Card title="Needs attention" sub="Nothing's on fire — no expiring trials, renewing subscriptions, past-due payments, or pending cancellations.">
+              <div className="py-4 text-center text-[13px] text-lime font-mono">All clear.</div>
+            </Card>
+          );
+        }
+        return (
+          <Card
+            title="Needs attention"
+            sub="Items that may require admin action within the next day. Each tile takes you to the relevant module."
+            right={<span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[11px] font-mono uppercase tracking-[0.14em]">{total} open</span>}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Linkable to="trials">
+                <Stat
+                  label="Trials ending ≤ 24h"
+                  value={n.trials_ending_24h ?? 0}
+                  tone={(n.trials_ending_24h ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Renewing ≤ 24h"
+                  value={n.subs_renewing_24h ?? 0}
+                  tone={(n.subs_renewing_24h ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Past-due payments"
+                  value={n.subs_past_due ?? 0}
+                  tone={(n.subs_past_due ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Cancelling ≤ 7 days"
+                  value={n.subs_canceling_soon ?? 0}
+                  tone={(n.subs_canceling_soon ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+            </div>
+          </Card>
+        );
+      })()}
+
       <Card title="Platform settings" sub="Active provider + flag count. Edit on Platform Settings.">
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           <Linkable to="settings"><Stat label="AI provider"    value={data.settings.ai_provider} /></Linkable>

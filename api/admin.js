@@ -1185,7 +1185,10 @@ export default async function handler(req, res) {
     const since24h = new Date(Date.now() - 86400_000).toISOString();
     const [workspaces, handles, runs24h, reports, recentAudit, settings] = await Promise.all([
       supabase.select('workspaces', {
-        select: 'id,tier,trial_started_at,trial_ends_at,trial_converted_at',
+        // Adding the stripe_* columns so the "needs attention" block can
+        // flag past_due / cancel-pending / renewing-soon without a
+        // second query.
+        select: 'id,tier,trial_started_at,trial_ends_at,trial_converted_at,stripe_subscription_status,stripe_current_period_end,stripe_cancel_at_period_end',
         limit: 5000,
       }).catch(() => []),
       supabase.select('social_handles', {
@@ -1223,6 +1226,36 @@ export default async function handler(req, res) {
       wsTotals.by_tier[t] = (wsTotals.by_tier[t] || 0) + 1;
     }
 
+    // "Needs attention" rollup — drives the prominent tile at the top of
+    // the Overview screen. Counts shift in real time as the underlying
+    // workspaces / subscriptions change; we recompute on every load so
+    // there's never any cached staleness.
+    const nowMs    = Date.now();
+    const day24Ms  = 24 * 3600_000;
+    const day7Ms   = 7  * 86400_000;
+    const needsAttention = {
+      trials_ending_24h:    0,
+      subs_renewing_24h:    0,
+      subs_past_due:        0,
+      subs_canceling_soon:  0,
+    };
+    for (const w of workspaces || []) {
+      const trial = deriveTrialState(w);
+      if (trial.state === 'active' && (trial.daysLeft ?? 99) <= 1) {
+        needsAttention.trials_ending_24h += 1;
+      }
+      const periodEnd = w.stripe_current_period_end ? new Date(w.stripe_current_period_end).getTime() : null;
+      if (w.stripe_subscription_status === 'past_due') {
+        needsAttention.subs_past_due += 1;
+      }
+      if (w.stripe_subscription_status === 'active' && periodEnd && (periodEnd - nowMs) <= day24Ms && (periodEnd - nowMs) >= 0) {
+        needsAttention.subs_renewing_24h += 1;
+      }
+      if (w.stripe_cancel_at_period_end && periodEnd && (periodEnd - nowMs) <= day7Ms && (periodEnd - nowMs) >= 0) {
+        needsAttention.subs_canceling_soon += 1;
+      }
+    }
+
     const handleTotals = {
       total: (handles || []).length,
       bound: (handles || []).filter(h => !h.released_at && !!h.workspace_id).length,
@@ -1244,6 +1277,7 @@ export default async function handler(req, res) {
     };
 
     return json(res, 200, {
+      needs_attention: needsAttention,
       workspaces: wsTotals,
       handles:    handleTotals,
       runs:       runTotals,
