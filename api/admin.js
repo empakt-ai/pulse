@@ -31,9 +31,14 @@
 //   POST   ?action=self-tier-override         → set/clear caller's tier_override
 //                                               (only honored when caller is admin)
 //
-// Phase 5 actions (this commit):
+// Phase 5 actions:
 //   GET    ?action=overview                   → cross-module roll-up for the
 //                                               Overview dashboard landing tile
+//
+// Phase 4 actions (this commit):
+//   GET    ?action=billing                    → workspace list with Stripe state
+//   GET    ?action=billing-detail&id=…        → one workspace + Stripe invoices
+//   POST   ?action=billing-refresh            → force-pull subscription from Stripe
 //
 // Every write goes through requireAdmin → requireReason → mutation → log.
 // The reason field is mandatory at both the API and DB layers.
@@ -45,6 +50,7 @@ import { gate, requireReason, logAdminAction } from './_lib/admin.js';
 import { getPlatformSettings, setSettings } from './_lib/platform-settings.js';
 import { tierFor } from './_lib/tiers.js';
 import { normaliseHandle } from './_lib/handle-registry.js';
+import { getSubscription, listInvoices, TIER_BY_PRICE } from './_lib/stripe.js';
 
 const AI_PROVIDERS = new Set(['gemini', 'anthropic']);
 const SETTABLE_KEYS = new Set(['ai_provider', 'feature_flags', 'brief_prompt_version', 'caps']);
@@ -1007,6 +1013,168 @@ export default async function handler(req, res) {
       failed:    out.filter(r => r.status === 'failed').length,
     };
     return json(res, 200, { reports: out, totals });
+  }
+
+  // ── Billing list ─────────────────────────────────────────────────────
+  // Every workspace with its Stripe state side-by-side with its trial
+  // state. The admin uses this to spot drift (e.g. trial_converted_at
+  // set but no subscription_id), past_due workspaces, and renewals
+  // landing in the next few days.
+  if (action === 'billing' && req.method === 'GET') {
+    const [workspaces, profiles] = await Promise.all([
+      supabase.select('workspaces', {
+        select: 'id,name,owner_id,tier,trial_converted_at,stripe_subscription_id,stripe_subscription_status,stripe_price_id,stripe_current_period_end,stripe_cancel_at_period_end,stripe_last_invoice_status,stripe_last_event_at',
+        order: 'created_at.desc',
+        limit: 500,
+      }).catch(() => []),
+      supabase.select('profiles', {
+        select: 'id,stripe_customer_id',
+        limit: 5000,
+      }).catch(() => []),
+    ]);
+    const ownerIds = [...new Set((workspaces || []).map(w => w.owner_id).filter(Boolean))];
+    const users = await listAuthUsers({ ids: ownerIds });
+    const userById = indexBy(users, 'id');
+    const profileById = indexBy(profiles, 'id');
+
+    const out = (workspaces || []).map(w => {
+      const profile = profileById.get(w.owner_id);
+      const tierFromPrice = w.stripe_price_id ? TIER_BY_PRICE[w.stripe_price_id] : null;
+      return {
+        id: w.id,
+        name: w.name,
+        owner_email: userById.get(w.owner_id)?.email || null,
+        stripe_customer_id: profile?.stripe_customer_id || null,
+        tier: w.tier,
+        tier_from_price: tierFromPrice,
+        stripe_subscription_id: w.stripe_subscription_id,
+        stripe_subscription_status: w.stripe_subscription_status,
+        stripe_current_period_end: w.stripe_current_period_end,
+        stripe_cancel_at_period_end: !!w.stripe_cancel_at_period_end,
+        stripe_last_invoice_status: w.stripe_last_invoice_status,
+        stripe_last_event_at: w.stripe_last_event_at,
+        trial_converted_at: w.trial_converted_at,
+      };
+    });
+    return json(res, 200, { workspaces: out });
+  }
+
+  // ── Billing detail (one workspace + Stripe invoices) ─────────────────
+  if (action === 'billing-detail' && req.method === 'GET') {
+    const id = (req.query?.id || '').toString();
+    if (!id) return json(res, 400, { error: 'id required' });
+
+    const ws = await supabase.select('workspaces', {
+      select: '*', eq: { id }, single: true,
+    }).catch(() => null);
+    if (!ws) return json(res, 404, { error: 'Workspace not found' });
+
+    const profile = ws.owner_id ? await supabase.select('profiles', {
+      select: 'id,stripe_customer_id',
+      eq: { id: ws.owner_id },
+      single: true,
+    }).catch(() => null) : null;
+
+    let invoices = [];
+    if (profile?.stripe_customer_id) {
+      try {
+        const list = await listInvoices(profile.stripe_customer_id, { limit: 20 });
+        invoices = (list?.data || []).map(inv => ({
+          id: inv.id,
+          number: inv.number,
+          status: inv.status,
+          amount_due: inv.amount_due,
+          amount_paid: inv.amount_paid,
+          currency: inv.currency,
+          created: inv.created ? new Date(inv.created * 1000).toISOString() : null,
+          period_end: inv.period_end ? new Date(inv.period_end * 1000).toISOString() : null,
+          hosted_invoice_url: inv.hosted_invoice_url,
+          invoice_pdf: inv.invoice_pdf,
+        }));
+      } catch (e) {
+        // Don't fail the detail view if Stripe is unreachable — show
+        // what we have on file plus a warning.
+        invoices = [{ error: e.message }];
+      }
+    }
+
+    return json(res, 200, {
+      workspace: ws,
+      profile,
+      invoices,
+    });
+  }
+
+  // ── Billing refresh (audit-logged) ───────────────────────────────────
+  // Force-pull the subscription from Stripe and mirror state into our
+  // tables. Useful when a webhook was lost or when we suspect drift.
+  // Same patch shape as handleSubscriptionUpsert in stripe-webhook.js —
+  // keeping the logic duplicated rather than shared avoids cross-file
+  // coupling while the surface is small; revisit if a third caller
+  // appears.
+  if (action === 'billing-refresh' && req.method === 'POST') {
+    const body = parseBody(req);
+    const r = requireReason(body);
+    if (r.envelope) return json(res, r.envelope.status, r.envelope.body);
+
+    const workspaceId = String(body?.workspace_id || '').trim();
+    if (!workspaceId) return json(res, 400, { error: 'workspace_id required' });
+
+    const before = await supabase.select('workspaces', {
+      select: 'id,owner_id,tier,stripe_subscription_id,stripe_subscription_status,stripe_price_id,stripe_current_period_end,stripe_cancel_at_period_end',
+      eq: { id: workspaceId },
+      single: true,
+    }).catch(() => null);
+    if (!before) return json(res, 404, { error: 'Workspace not found' });
+    if (!before.stripe_subscription_id) {
+      return json(res, 400, { error: 'No subscription_id on file — workspace has not converted from trial' });
+    }
+
+    let sub;
+    try {
+      sub = await getSubscription(before.stripe_subscription_id);
+    } catch (e) {
+      return json(res, e.status || 502, { error: `Stripe: ${e.message}` });
+    }
+
+    const item = (sub.items?.data || [])[0];
+    const priceId = item?.price?.id || null;
+    const derivedTier = priceId ? TIER_BY_PRICE[priceId] : null;
+    const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
+
+    const patch = {
+      stripe_subscription_status: sub.status,
+      stripe_price_id: priceId,
+      stripe_current_period_end: periodEnd,
+      stripe_cancel_at_period_end: !!sub.cancel_at_period_end,
+      stripe_last_event_at: new Date().toISOString(),
+    };
+    if (derivedTier && derivedTier !== before.tier) patch.tier = derivedTier;
+
+    const updated = await supabase.update('workspaces', patch, { eq: { id: workspaceId } });
+    const after = updated?.[0] || null;
+
+    await logAdminAction({
+      actor: auth.user.id,
+      action: 'billing.refresh',
+      targetType: 'workspace',
+      targetId: workspaceId,
+      before: {
+        tier: before.tier,
+        stripe_subscription_status: before.stripe_subscription_status,
+        stripe_price_id: before.stripe_price_id,
+        stripe_current_period_end: before.stripe_current_period_end,
+      },
+      after: {
+        tier: patch.tier ?? before.tier,
+        stripe_subscription_status: patch.stripe_subscription_status,
+        stripe_price_id: patch.stripe_price_id,
+        stripe_current_period_end: patch.stripe_current_period_end,
+      },
+      reason: r.reason,
+    });
+
+    return json(res, 200, { workspace: after });
   }
 
   // ── Overview (cross-module roll-up) ──────────────────────────────────

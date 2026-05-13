@@ -7227,7 +7227,21 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </div>
             </div>
 
-            <div className="mt-5 flex justify-end">
+            <div className="mt-5 flex justify-between items-center gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await api('/stripe?action=portal', { method: 'POST' });
+                    if (r?.url) window.location.href = r.url;
+                  } catch (e) {
+                    showToast(e.message || 'Could not open billing portal', 'err');
+                  }
+                }}
+                className="text-[13px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper underline underline-offset-4"
+              >
+                Manage billing on Stripe →
+              </button>
               <Btn
                 onClick={saveWorkspace}
                 disabled={saving}
@@ -7543,14 +7557,35 @@ const TrialLockedCard = ({ featureLabel, tier = 'brand', sub, onUpgrade }) => {
 
 // Upgrade dialog — opened via the pulse:openUpgrade custom event so any
 // screen (banner, paywall, AdsScreen locked card, etc.) can request it
-// without prop drilling. Stripe checkout lands in phase 6; this stub
-// surfaces the email-support path so users have *something* to do.
+// without prop drilling. POSTs to /api/stripe?action=checkout and
+// redirects the browser to Stripe's hosted Checkout. Falls back to an
+// email-support path if Stripe Checkout creation fails.
 const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError]     = React.useState(null);
+
   if (!open) return null;
   const tierLabel = intentTier
     ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
     : 'Your plan';
   const supportEmail = 'support@karvan.io';
+
+  const startCheckout = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await api('/stripe?action=checkout', {
+        method: 'POST',
+        body: JSON.stringify({ tier: intentTier || undefined }),
+      });
+      if (!r?.url) throw new Error('No checkout URL returned');
+      window.location.href = r.url;
+    } catch (e) {
+      setError(e.message || 'Could not start checkout.');
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-ink/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -7569,10 +7604,10 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
         </div>
         <Eyebrow color="text-ultra">Upgrade to {tierLabel}</Eyebrow>
         <h2 className="font-display text-[28px] font-semibold tracking-tightest mt-2 mb-2 leading-tight">
-          Stripe checkout is coming soon.
+          Continue to Stripe.
         </h2>
         <p className="text-[14px] text-mute dark:text-muteDark leading-relaxed mb-5">
-          We're wiring up self-serve billing. In the meantime, drop us a line at <a className="text-ultra dark:text-lime hover:underline" href={`mailto:${supportEmail}?subject=Upgrade%20to%20${tierLabel}`}>{supportEmail}</a> and we'll activate your {tierLabel} plan within one business day.
+          We'll redirect you to Stripe's secure checkout to start your {tierLabel} subscription. You can cancel or change plans anytime from Settings → Billing.
         </p>
         {trial?.days_left != null && !trial.locked && (
           <div className="rounded-xl bg-chalk dark:bg-coalsoft p-3 text-[12.5px] text-mute dark:text-muteDark mb-5">
@@ -7580,17 +7615,25 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
             You still have {trial.days_left === 0 ? 'less than a day' : `${trial.days_left} day${trial.days_left === 1 ? '' : 's'}`} left on your trial.
           </div>
         )}
+        {error && (
+          <div className="rounded-xl bg-magenta/10 border border-magenta/40 text-magenta text-[12.5px] p-3 mb-4">
+            {error} · <a className="underline" href={`mailto:${supportEmail}?subject=Upgrade%20issue`}>email support</a>
+          </div>
+        )}
         <div className="flex gap-2">
-          <a
-            href={`mailto:${supportEmail}?subject=Upgrade%20to%20${tierLabel}&body=${encodeURIComponent('Please activate the ' + tierLabel + ' plan on my workspace.')}`}
-            className="flex-1 h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-ink text-paper dark:bg-paper dark:text-ink font-medium text-[13.5px] hover:opacity-90 transition"
+          <button
+            type="button"
+            onClick={startCheckout}
+            disabled={loading}
+            className="flex-1 h-11 inline-flex items-center justify-center gap-1.5 rounded-xl bg-ink text-paper dark:bg-paper dark:text-ink font-medium text-[13.5px] hover:opacity-90 transition disabled:opacity-60"
           >
-            Email support <Icon name="arrowUpRight" className="w-3.5 h-3.5" />
-          </a>
+            {loading ? 'Redirecting…' : <>Continue to Stripe <Icon name="arrowUpRight" className="w-3.5 h-3.5" /></>}
+          </button>
           <button
             type="button"
             onClick={onClose}
-            className="h-11 px-4 rounded-xl text-[13.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper transition"
+            disabled={loading}
+            className="h-11 px-4 rounded-xl text-[13.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper transition disabled:opacity-60"
           >
             Later
           </button>

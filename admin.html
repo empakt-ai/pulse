@@ -2179,6 +2179,300 @@ const ReportsScreen = ({ setToast }) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════
+// Billing screen — list of workspaces with Stripe state, drill into one
+// to see invoices and force-refresh from Stripe. Read-mostly; the only
+// write is force-refresh (audit-logged with reason).
+// ═════════════════════════════════════════════════════════════════════════
+const BillingScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [statusF, setStatusF]   = React.useState('');
+  const [selectedId, setSelectedId] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=billing');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selectedId) {
+    return <BillingDetail id={selectedId} onBack={() => setSelectedId(null)} setToast={setToast} onMutated={load} />;
+  }
+
+  const filtered = (rows || []).filter(w => {
+    if (statusF === 'unsubscribed') return !w.stripe_subscription_id;
+    if (statusF === 'active')       return w.stripe_subscription_status === 'active';
+    if (statusF === 'trialing')     return w.stripe_subscription_status === 'trialing';
+    if (statusF === 'past_due')     return w.stripe_subscription_status === 'past_due';
+    if (statusF === 'canceled')     return w.stripe_subscription_status === 'canceled';
+    if (statusF === 'expiring_30d') {
+      if (!w.stripe_current_period_end) return false;
+      const days = (new Date(w.stripe_current_period_end).getTime() - Date.now()) / 86400000;
+      return days >= 0 && days <= 30;
+    }
+    return true;
+  });
+
+  const counts = {
+    active:    (rows || []).filter(w => w.stripe_subscription_status === 'active').length,
+    past_due:  (rows || []).filter(w => w.stripe_subscription_status === 'past_due').length,
+    canceled:  (rows || []).filter(w => w.stripe_subscription_status === 'canceled').length,
+    unsubscribed: (rows || []).filter(w => !w.stripe_subscription_id).length,
+  };
+
+  return (
+    <div className="max-w-[1300px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Billing</h1>
+          <p className="text-[14px] text-muteDark mt-1">Subscription state mirrored from Stripe via webhook. Click a row to see invoices + force-refresh.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      {rows && (
+        <Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Stat label="Active"     value={counts.active}  tone="good" />
+            <Stat label="Past due"   value={counts.past_due} tone={counts.past_due > 0 ? 'warn' : 'normal'} />
+            <Stat label="Canceled"   value={counts.canceled} />
+            <Stat label="Never paid" value={counts.unsubscribed} />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {['', 'active', 'trialing', 'past_due', 'canceled', 'unsubscribed', 'expiring_30d'].map(s => (
+              <Pill key={s || 'all'} active={statusF === s} onClick={() => setStatusF(s)}>
+                {s ? s.replace('_', ' ') : 'All'}
+              </Pill>
+            ))}
+          </div>
+
+          {loading && !rows ? (
+            <div className="text-muteDark text-[13px] py-6 text-center">Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-muteDark text-[13px] py-6 text-center">No workspaces match.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-left text-muteDark border-b border-lineDark">
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Plan</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Subscription</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Renews</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cancel?</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last invoice</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(w => {
+                    const drift = w.tier_from_price && w.tier_from_price !== w.tier;
+                    return (
+                      <tr
+                        key={w.id}
+                        onClick={() => setSelectedId(w.id)}
+                        className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                      >
+                        <td className="py-2 pr-3">
+                          <div className="font-medium">{w.name || 'Untitled'}</div>
+                          <div className="text-muteDark text-[10px] font-mono">{shortId(w.id)}</div>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                        <td className="py-2 pr-3">
+                          <div className="font-mono uppercase tracking-[0.14em] text-[10px] text-muteDark">{w.tier}</div>
+                          {drift && (
+                            <div className="text-[10px] text-magenta font-mono" title={`Stripe says ${w.tier_from_price}`}>
+                              drift ↔ {w.tier_from_price}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={cls(
+                            'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                            w.stripe_subscription_status === 'active'    ? 'bg-lime/10 text-lime border-lime/30'
+                            : w.stripe_subscription_status === 'trialing' ? 'bg-paper/10 text-paper border-paper/30'
+                            : w.stripe_subscription_status === 'past_due' ? 'bg-magenta/10 text-magenta border-magenta/40'
+                            : w.stripe_subscription_status === 'canceled' ? 'bg-ink text-muteDark border-lineDark'
+                            : 'bg-ink text-muteDark border-lineDark',
+                          )}>
+                            {w.stripe_subscription_status || 'none'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.stripe_current_period_end)}</td>
+                        <td className="py-2 pr-3 font-mono">{w.stripe_cancel_at_period_end ? 'Yes' : '—'}</td>
+                        <td className="py-2 pr-3 font-mono">{w.stripe_last_invoice_status || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+};
+
+const BillingDetail = ({ id, onBack, setToast, onMutated }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason]   = React.useState('');
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=billing-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const refresh = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    setRefreshing(true);
+    try {
+      await api('/admin?action=billing-refresh', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: id, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: 'Refreshed from Stripe.', tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to billing</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const w = data.workspace;
+  const customerId = data.profile?.stripe_customer_id;
+  const stripeDashboard = customerId
+    ? `https://dashboard.stripe.com/customers/${customerId}`
+    : null;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to billing</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{w.name || 'Untitled'}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{w.id}</div>
+        </div>
+        {stripeDashboard && (
+          <a href={stripeDashboard} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muteDark hover:text-paper">Open in Stripe Dashboard →</a>
+        )}
+      </div>
+
+      <Card title="Subscription">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <Stat label="Status"      value={w.stripe_subscription_status || 'none'} />
+          <Stat label="Tier"        value={w.tier} />
+          <Stat label="Renews"      value={w.stripe_current_period_end ? fmtTs(w.stripe_current_period_end) : '—'} />
+          <Stat label="Cancel pending" value={w.stripe_cancel_at_period_end ? 'Yes' : 'No'} tone={w.stripe_cancel_at_period_end ? 'warn' : 'normal'} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-[12.5px] font-mono">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Subscription ID</div>
+            <div className="break-all">{w.stripe_subscription_id || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Customer ID</div>
+            <div className="break-all">{customerId || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Price ID</div>
+            <div className="break-all">{w.stripe_price_id || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Last webhook</div>
+            <div>{fmtTs(w.stripe_last_event_at)}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="Force-refresh from Stripe"
+        sub="Re-pulls the subscription state. Use when you suspect drift (e.g. a webhook was lost or processed in error)."
+      >
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. webhook drift suspected after Stripe API outage" />
+        <div className="flex justify-end">
+          <Btn onClick={refresh} disabled={refreshing || !w.stripe_subscription_id}>
+            {refreshing ? 'Refreshing…' : 'Refresh from Stripe'}
+          </Btn>
+        </div>
+        {!w.stripe_subscription_id && (
+          <div className="text-[12px] text-muteDark mt-2">No subscription_id on file. Refresh is only meaningful after a checkout has completed.</div>
+        )}
+      </Card>
+
+      <Card title="Recent invoices" sub="Latest 20 invoices from Stripe.">
+        {(data.invoices || []).length === 0 ? (
+          <div className="text-muteDark text-[13px]">No invoices yet.</div>
+        ) : data.invoices[0]?.error ? (
+          <div className="text-magenta text-[13px]">Stripe error: {data.invoices[0].error}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Number</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Created</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Amount</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.invoices.map(inv => (
+                  <tr key={inv.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono">{inv.number || shortId(inv.id)}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(inv.created)}</td>
+                    <td className="py-2 pr-3 font-mono">{inv.status}</td>
+                    <td className="py-2 pr-3 font-mono">
+                      {((inv.amount_paid || inv.amount_due || 0) / 100).toFixed(2)} {(inv.currency || 'usd').toUpperCase()}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {inv.hosted_invoice_url && <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muteDark hover:text-paper">Stripe page →</a>}
+                      {' '}
+                      {inv.invoice_pdf && <a href={inv.invoice_pdf} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muteDark hover:text-paper">PDF</a>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
 // Overview screen — landing dashboard. Cross-module roll-up backed by
 // /api/admin?action=overview. Stat grids + recent admin activity feed.
 // Click-through hooks let the user jump straight to the relevant detail
@@ -2308,7 +2602,7 @@ const NAV = [
   { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 0 },
   { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 0 },
   { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 0 },
-  { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 4 },
+  { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 0 },
   { id: 'flags',        label: 'Feature flags',    section: 'config',      phase: 0 },
   { id: 'settings',     label: 'Platform settings',section: 'config',      phase: 0 },
   { id: 'audit',        label: 'Audit log',        section: 'audit',       phase: 0 },
@@ -2479,7 +2773,7 @@ const App = () => {
       case 'sync':       return <SourcesScreen setToast={setToast} />;
       case 'reports':    return <ReportsScreen setToast={setToast} />;
       case 'overview':   return <OverviewScreen setToast={setToast} onNavigate={setActive} />;
-      case 'billing':    return <Stub title="Billing" plannedIn="Phase 4" sub="Stripe customer state + force-refresh from upstream." />;
+      case 'billing':    return <BillingScreen setToast={setToast} />;
       default:           return <Stub title="Coming soon" plannedIn="future phase" />;
     }
   })();
