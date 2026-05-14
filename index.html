@@ -212,11 +212,13 @@ tailwind.config = {
     text-align: center;
   }
   #pulse-splash-logo {
+    display: flex; align-items: center; gap: 10px;
     font-family: 'Bricolage Grotesque', system-ui, sans-serif;
     font-size: 32px; font-weight: 700;
     letter-spacing: -0.04em;
     color: #0A0A0B;
   }
+  #pulse-splash-logo img { display: block; width: 38px; height: 38px; }
   html.dark #pulse-splash-logo { color: #F5F1E8; }
   #pulse-splash-spinner {
     width: 28px; height: 28px;
@@ -307,7 +309,7 @@ tailwind.config = {
 <div id="root"></div>
 <div id="pulse-splash" aria-live="polite" aria-busy="true">
   <div id="pulse-splash-inner">
-    <div id="pulse-splash-logo">pulse.</div>
+    <div id="pulse-splash-logo"><img src="/images/mashal-logo.png" alt="" decoding="async"><span>Mashal</span></div>
     <div id="pulse-splash-spinner"></div>
     <div id="pulse-splash-status">Loading your intelligence</div>
     <button id="pulse-splash-reset" type="button" onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}location.reload()">Taking too long? Reset session</button>
