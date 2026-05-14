@@ -431,8 +431,9 @@ text. If no clean comparison exists, return null instead of fabricating one.
 
 Final reminder: this brief lands in someone's inbox at 6 AM. They have coffee in one hand and 90 seconds. Earn that 90 seconds. If your verdict could have been written without seeing their data, it's wrong. Rewrite it.`;
 
-// Tone presets layered on top of the base prompt. Agency-tier preference;
-// default 'strategic' keeps the brief style we shipped on launch.
+// Tone presets layered on top of the base prompt. Per-workspace override
+// via workspace.brief_tone; otherwise we pick a default from the tier
+// (creators get 'encouraging', brand/agency get 'strategic').
 const TONE_GUIDANCE = {
   analytical: `
 ═══ TONE OVERRIDE: ANALYTICAL ═══
@@ -454,7 +455,59 @@ Brief reads like a one-paragraph memo to a CMO. Verdict body: 1-2 sentences
 maximum. Each action: a single sentence, decision-first. Drop preamble, drop
 hedging, drop "consider" / "you might". State the move. The data is in the
 signals — the verdict is the call to make.`,
+
+  encouraging: `
+═══ TONE OVERRIDE: ENCOURAGING ═══
+For solo creators who often stare at analytics and feel discouraged. Be the
+partner who's already seen tomorrow's win.
+
+THE RULE OF POSITIVE DELTA — never state a negative metric without
+immediately pairing it with the opening it points to. "Views dipped 12%
+week-over-week, but your save-rate climbed to 4.1% on the same posts —
+the right people are watching." A dip is always a setup for a move.
+
+OPPORTUNITY-FIRST FRAMING — lead each action with the door it opens, not
+the gap it closes. Right: "Your audience clearly wants the mid-video
+deep-dive — trim the next intro to 15 seconds and that retention spike
+comes right back." Wrong: "Your intros are too long."
+
+LANGUAGE — replace "lacking" with "untapped", "underperforming" with "in
+its growth phase", "failure" with "still refining", "weak" with "warming
+up". The data isn't a verdict on the creator; it's pointing at the next
+move.
+
+PERSPECTIVE — speak as the coach looking ahead to the 9 AM win, not a
+judge ranking last week's stats. The verdict and actions should land like
+"here's the door you can walk through today", not "here's where you fell
+short". The honesty about thin data from the base prompt still applies —
+encouragement never means inventing wins. When the data is thin, frame the
+foundation work as the unlock it actually is.
+
+KEEP — every quantitative specificity rule from the base prompt. Real
+numbers. Real post titles. Real platform names. The encouragement comes
+from the framing, never from softer or vaguer data.
+
+VERBOSITY — medium-high. Give the verdict body and action bodies room to
+breathe so the opening feels real, not clipped. Signals stay tight.`,
 };
+
+// Resolve the tone for a workspace.
+//
+// Creator-tier always gets the encouraging coach tone. Migration 012
+// gave brief_tone a NOT NULL default of 'strategic', and the ToneSwitcher
+// UI is currently agency-only — so a Creator-tier row's brief_tone is
+// never an "explicit choice", it's just the column default. We hijack
+// that for them. If/when Creator tier gets the ToneSwitcher exposed,
+// revisit this branch and let an explicit non-default value win.
+//
+// Brand/Agency: honour an explicit workspace.brief_tone if it maps to a
+// known preset, otherwise the launch-default 'strategic'.
+function resolveTone(workspace) {
+  if (workspace?.tier === 'creator') return 'encouraging';
+  const explicit = workspace?.brief_tone;
+  if (explicit && TONE_GUIDANCE[explicit]) return explicit;
+  return 'strategic';
+}
 
 function buildUserMessage(payload, tone) {
   const toneBlock = TONE_GUIDANCE[tone] ? `\n${TONE_GUIDANCE[tone]}\n` : '';
@@ -466,8 +519,7 @@ function buildUserMessage(payload, tone) {
 // from the workspace and threaded into the user message.
 export function buildBriefPrompt({ workspace, accounts, posts, snapshots, competitors }) {
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
-  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
-  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, tone) };
+  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, resolveTone(workspace)) };
 }
 
 // ── Persist generated brief into signals table ─────────────────────────────────
@@ -789,10 +841,10 @@ export async function generateBrief(workspace) {
   // 3) Build prompt
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
 
-  // 4) Call the AI router (Gemini-only during this phase). Tone preference
-  //    is applied via buildUserMessage and reads workspace.brief_tone
-  //    (analytical / strategic / executive). Default 'strategic'.
-  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
+  // 4) Call the AI router (Gemini-only during this phase). Tone is
+  //    resolved from workspace.brief_tone first, then by tier — Creator
+  //    defaults to 'encouraging', Brand/Agency to 'strategic'.
+  const tone = resolveTone(workspace);
   const result = await generateIntelligence({
     system: SYSTEM_PROMPT,
     user:   buildUserMessage(payload, tone),
@@ -888,7 +940,7 @@ export async function* generateBriefStream(workspace) {
 
   const intelScore = computeIntelScore({ accounts, posts, snapshots });
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
-  const tone = TONE_GUIDANCE[workspace?.brief_tone] ? workspace.brief_tone : 'strategic';
+  const tone = resolveTone(workspace);
 
   yield { phase: 'generating' };
 
