@@ -1406,7 +1406,7 @@ const HeroGradient = ({ onSignUp }) => (
           <span className="text-[12px] text-mute dark:text-muteDark ml-2">No credit card · Cancel anytime</span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-5 sm:gap-8 pt-7 border-t border-line dark:border-lineDark">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-5 sm:gap-x-6 pt-7 border-t border-line dark:border-lineDark">
           {[
             { v: '7 platforms',                l: 'One unified brief' },
             { v: '6 AM',                       l: 'Fresh intelligence every morning' },
@@ -1414,8 +1414,8 @@ const HeroGradient = ({ onSignUp }) => (
             { v: 'Competitors tracked',        l: 'Nightly, automatically' }
           ].map((s,i) => (
             <div key={i}>
-              <div className="font-display text-[22px] font-semibold tracking-tighter">{s.v}</div>
-              <div className="text-[11px] text-mute dark:text-muteDark uppercase font-mono tracking-[0.1em]">{s.l}</div>
+              <div className="font-display text-[17px] sm:text-[18px] font-semibold tracking-tighter leading-tight">{s.v}</div>
+              <div className="text-[10.5px] text-mute dark:text-muteDark uppercase font-mono tracking-[0.08em] mt-1 leading-snug">{s.l}</div>
             </div>
           ))}
         </div>
