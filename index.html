@@ -6069,7 +6069,7 @@ const ToneSwitcher = ({ workspaceId, tier, onSwitched, onRegenerated, onError })
     try {
       const r = await api('/intelligence/generate', { method: 'POST' });
       setGenerateResult(r);
-      if (r?.skipped) onError?.(`Skipped: ${r.skipped}`);
+      if (r?.skipped) onError?.(r.message || `Skipped: ${r.skipped}`);
       else if (r?.error && !r?.ok) onError?.(`Brief error: ${r.message || r.error}`);
       else if (r?.ok) onRegenerated?.(r);
     } catch (e) {

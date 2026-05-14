@@ -22,6 +22,27 @@ import { parseJsonResponse } from './anthropic.js';
 import { generateIntelligence } from './ai-router.js';
 import { callStream as geminiCallStream } from './gemini.js';
 import { allRulesAsPromptText } from './platform-rules.js';
+import { checkUsageCap } from './tiers.js';
+
+// Build the cap-exceeded skip payload. Shared so /generate and /stream
+// return the same shape — the SPA's toast / banner handler can rely on
+// `skipped === 'usage_cap_exceeded'` and read `message`/`used`/`limit`
+// without branching on caller.
+function capExceededPayload(cap) {
+  const friendlyLimit = (cap.limit === null || cap.limit === -1) ? 'your plan' : `${cap.limit}`;
+  const source = cap.source === 'trial_locked'
+    ? 'Your trial has ended — upgrade to generate briefs.'
+    : cap.source === 'trial'
+      ? `You've used ${cap.used} of your ${cap.limit} trial regenerations. Upgrade to keep going.`
+      : `You've used ${cap.used}/${friendlyLimit} brief regenerations this month. Upgrade or wait until next month to run another manual brief.`;
+  return {
+    skipped: 'usage_cap_exceeded',
+    message: source,
+    used: cap.used,
+    limit: cap.limit,
+    cap_source: cap.source,
+  };
+}
 
 // ── Deterministic intel score (don't trust the LLM for math) ───────────────────
 // Inputs: per-platform avg engagement vs category baselines, growth velocity,
@@ -825,6 +846,14 @@ export async function generateLiveSignals(workspace) {
 // Defaults to true so callers that haven't been updated still record as
 // user runs; auto-fire paths must pass { manual: false } explicitly.
 export async function generateBrief(workspace, { manual = true } = {}) {
+  // Cap-gate user-initiated runs only. System-fired runs (cron, session
+  // auto-regen, first-brief bootstrap) are free — they record as
+  // 'intelligence_auto' and don't count toward or against the quota.
+  if (manual) {
+    const cap = await checkUsageCap(workspace);
+    if (cap.exceeded) return capExceededPayload(cap);
+  }
+
   // 1) Gather data — including content_pieces + series so the prompt can
   //    reason about cross-platform groupings and ongoing numbered series
   //    rather than treating each post as an isolated row.
@@ -928,6 +957,16 @@ export async function generateBrief(workspace, { manual = true } = {}) {
 //   { phase: 'persisting' }               — full text received, parsing + writing
 //   { done: true, summary: {...} } | { error: 'persist_failed', ... } | etc.
 export async function* generateBriefStream(workspace, { manual = true } = {}) {
+  // Cap-gate user-initiated runs. System-fired runs bypass — same
+  // policy as generateBrief().
+  if (manual) {
+    const cap = await checkUsageCap(workspace);
+    if (cap.exceeded) {
+      yield capExceededPayload(cap);
+      return;
+    }
+  }
+
   yield { phase: 'gathering' };
 
   const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
