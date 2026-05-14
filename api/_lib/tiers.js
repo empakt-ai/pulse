@@ -12,26 +12,27 @@ import { supabase } from './supabase.js';
 export const TIERS = {
   creator: {
     label: 'Creator',
-    price_usd: 29,
-    platforms: 7,
-    accounts_per_platform: 1,
+    price_usd: 15,
+    platforms: 5,                  // IG · TT · YT · FB · LI (no X, no Snap)
+    accounts_total: 5,
     competitors: 5,
     runs_per_month: 30,
   },
   brand: {
     label: 'Brand',
-    price_usd: 149,
+    price_usd: 99,
     platforms: 7,
-    accounts_total: 21,
-    competitors: 15,
+    accounts_total: 7,             // 1 per platform
+    accounts_per_platform: 1,
+    competitors: 10,
     runs_per_month: 120,
   },
   agency: {
     label: 'Agency',
-    price_usd: 599,
+    price_usd: 449,
     platforms: 7,
-    accounts_total: -1, // unlimited
-    competitors: 50,
+    accounts_total: 100,            // ~5 per workspace × 20 workspaces
+    competitors: 30,
     runs_per_month: 600,
   },
 };
