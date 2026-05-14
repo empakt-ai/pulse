@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] DEPRECATED for the Gemini-only phase.
+// [Mashal-SPECIFIC] DEPRECATED for the Gemini-only phase.
 // The endpoint used to run the same prompt through Claude + Gemini and
 // return them side by side. With Gemini as the sole provider there is
 // nothing to compare. We keep the route alive (rather than 404ing) so
@@ -14,6 +14,6 @@ export default async function handler(req, res) {
   if (auth.error) return json(res, auth.status, { error: auth.error });
   return json(res, 410, {
     error: 'gone',
-    message: 'Side-by-side model comparison is paused — PULSE briefs are currently Gemini-only. The Agency control on Settings is now a brief-tone selector.',
+    message: 'Side-by-side model comparison is paused — Mashal briefs are currently Gemini-only. The Agency control on Settings is now a brief-tone selector.',
   });
 }

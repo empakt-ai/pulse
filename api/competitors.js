@@ -1,16 +1,16 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [MIXED] Mostly SHARED — generic competitor-handle CRUD over a generic
-// schema — with one PULSE-specific touch: the cap on how many competitors
-// a workspace can track comes from PULSE's pricing tiers.
+// schema — with one Mashal-specific touch: the cap on how many competitors
+// a workspace can track comes from Mashal's pricing tiers.
 //
 //   SHARED (move to platform service):
 //     • GET/POST/DELETE on the competitors table
 //     • action='sync' trigger that calls syncCompetitorsForWorkspace()
 //
-//   PULSE-SPECIFIC (stays here):
-//     • checkCompetitorCap() — uses PULSE tier limits (5/15/50)
+//   Mashal-SPECIFIC (stays here):
+//     • checkCompetitorCap() — uses Mashal tier limits (5/15/50)
 //
-// Proposed split: shared service exposes raw CRUD; PULSE wraps it with a
+// Proposed split: shared service exposes raw CRUD; Mashal wraps it with a
 // thin auth/quota check before forwarding.
 // ═════════════════════════════════════════════════════════════════════════
 //

@@ -1,4 +1,4 @@
-# PULSE — Supabase Auth email templates
+# Mashal — Supabase Auth email templates
 
 Branded HTML email templates for the Supabase Auth flows. The actual
 templates that get sent live in Supabase Dashboard → Auth → Email
@@ -21,11 +21,11 @@ Repeat for each template. Supabase saves immediately — no deploy needed.
 
 | File | Supabase template | Subject line | When it fires |
 |---|---|---|---|
-| `magic-link.html` | Magic Link | `Sign in to PULSE` | User requests OTP sign-in. |
-| `confirm-signup.html` | Confirm signup | `Confirm your PULSE account` | New email + password signup. |
-| `reset-password.html` | Reset Password | `Reset your PULSE password` | Forgot-password flow. |
-| `change-email.html` | Change Email Address | `Confirm your new email for PULSE` | User changes the email on file. Sent to both old AND new addresses. |
-| `invite-user.html` | Invite User | `You've been invited to PULSE` | Admin invites a new user via `inviteUserByEmail`. |
+| `magic-link.html` | Magic Link | `Sign in to Mashal` | User requests OTP sign-in. |
+| `confirm-signup.html` | Confirm signup | `Confirm your Mashal account` | New email + password signup. |
+| `reset-password.html` | Reset Password | `Reset your Mashal password` | Forgot-password flow. |
+| `change-email.html` | Change Email Address | `Confirm your new email for Mashal` | User changes the email on file. Sent to both old AND new addresses. |
+| `invite-user.html` | Invite User | `You've been invited to Mashal` | Admin invites a new user via `inviteUserByEmail`. |
 
 ## Editing
 

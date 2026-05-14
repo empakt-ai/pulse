@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE Auth — Supabase magic-link + email/password client.
+// Mashal Auth — Supabase magic-link + email/password client.
 //
 // Source of truth for everything in the auth library: the sbAuth object
 // (sign in / sign up / refresh / session store), magic-link URL handling,

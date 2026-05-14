@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Public list of workspace names that have opted in to
+// [Mashal-SPECIFIC] Public list of workspace names that have opted in to
 // being featured in the "Trusted by" marquee on the landing page. No
 // auth — anyone can fetch the list. Returns names only — no handles,
 // no follower counts, no platform breakdown.

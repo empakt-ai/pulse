@@ -12,9 +12,9 @@
 //   deep        — Sunday weekly re-pull of last 30 days to catch the
 //                 retroactive metric corrections platforms ship.
 //
-// NO intelligence here. The signalFor() classifier is the one PULSE-shaped
+// NO intelligence here. The signalFor() classifier is the one Mashal-shaped
 // field this file writes (`posts.signal`); when we extract this to the
-// platform service we'll move signal classification out into a PULSE
+// platform service we'll move signal classification out into a Mashal
 // post-processor that runs on the refresh-complete event.
 // ═════════════════════════════════════════════════════════════════════════
 

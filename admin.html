@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>PULSE — Admin Console</title>
+<title>Mashal — Admin Console</title>
 <meta name="robots" content="noindex,nofollow" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,9 +53,9 @@
 
 <script type="text/babel">
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE Admin Console — standalone SPA. Independent React tree, own auth,
-// own state. Only shared concept with PULSE is the Supabase session in
-// localStorage ('pulse_session') — if you're already signed in to PULSE
+// Mashal Admin Console — standalone SPA. Independent React tree, own auth,
+// own state. Only shared concept with Mashal is the Supabase session in
+// localStorage ('pulse_session') — if you're already signed in to Mashal
 // in this browser, admin picks up the session automatically.
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -268,7 +268,7 @@ const SignIn = ({ onSent }) => {
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <div className="inline-block px-2 py-1 rounded-full bg-magenta/15 text-magenta text-[10px] font-mono uppercase tracking-[0.18em] mb-3">Admin Console</div>
-          <h1 className="font-display text-[28px] font-semibold tracking-tight">PULSE Admin</h1>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">Mashal Admin</h1>
           <p className="text-[13px] text-muteDark mt-2">
             Magic-link sign-in. Only profiles flagged <code className="font-mono">is_admin</code> in Supabase can proceed past this screen.
           </p>
@@ -444,7 +444,7 @@ const SettingsScreen = ({ setToast, currentUserId }) => {
                 });
                 setTierOverride(r.tier_override || null);
                 setTierReason('');
-                setToast({ message: `View-as set to ${r.tier_override || 'none'}. Reload PULSE to see the change.`, tone: 'ok' });
+                setToast({ message: `View-as set to ${r.tier_override || 'none'}. Reload Mashal to see the change.`, tone: 'ok' });
               } catch (e) {
                 setToast({ message: e.message, tone: 'err' });
               } finally {
@@ -510,7 +510,7 @@ const FlagsScreen = ({ setToast }) => {
     <div className="max-w-[1000px] mx-auto">
       <div className="mb-6">
         <h1 className="font-display text-[32px] font-semibold tracking-tight">Feature flags</h1>
-        <p className="text-[14px] text-muteDark mt-1">Boolean gates on unreleased features. PULSE reads <code className="font-mono">D.flags[key]</code> after Phase 3.</p>
+        <p className="text-[14px] text-muteDark mt-1">Boolean gates on unreleased features. Mashal reads <code className="font-mono">D.flags[key]</code> after Phase 3.</p>
       </div>
 
       <Card title="Flags" sub="Edit the list, then capture a reason before saving. One audit row per save, regardless of how many flags changed.">
@@ -2679,7 +2679,7 @@ const Sidebar = ({ active, setActive, onSignOut, identity }) => {
     <aside className="w-[240px] shrink-0 border-r border-lineDark bg-inksoft min-h-screen p-4 flex flex-col">
       <div className="mb-6 px-2">
         <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-magenta mb-1">Admin Console</div>
-        <div className="font-display text-[18px] font-semibold tracking-tight">PULSE</div>
+        <div className="font-display text-[18px] font-semibold tracking-tight">Mashal</div>
       </div>
       <nav className="flex-1 overflow-y-auto">
         {Object.entries(grouped).map(([section, items]) => (

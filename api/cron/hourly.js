@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Layer-2 cron dispatcher. Vercel triggers this at the
+// [Mashal-SPECIFIC] Layer-2 cron dispatcher. Vercel triggers this at the
 // top of every hour; we fan out to every workspace, check what its local
 // clock currently reads, and dispatch the right job:
 //
@@ -9,9 +9,9 @@
 //                                  append-only; no full brief regen)
 //
 // The shared data-fetch layer (api/_lib/sync.js) handles persistence; the
-// PULSE-specific intelligence layer (api/_lib/intelligence.js) handles
+// Mashal-specific intelligence layer (api/_lib/intelligence.js) handles
 // signal generation. After the platform extraction this file moves to
-// PULSE and subscribes to a "refresh_complete" event from the shared
+// Mashal and subscribes to a "refresh_complete" event from the shared
 // service rather than driving the refresh itself.
 // ═════════════════════════════════════════════════════════════════════════
 //
@@ -141,13 +141,13 @@ async function runWeeklyDigest(workspace) {
     const filename = `pulse-weekly-${fmt(today)}.pdf`;
     await sendEmail({
       to: recipient,
-      subject: `Your PULSE weekly · ${workspace.name}`,
-      html: `<p>Hi,</p><p>Your weekly PULSE intelligence brief for <strong>${workspace.name}</strong> is attached.</p>
+      subject: `Your Mashal weekly · ${workspace.name}`,
+      html: `<p>Hi,</p><p>Your weekly Mashal intelligence brief for <strong>${workspace.name}</strong> is attached.</p>
              ${brief.verdict?.title ? `<p><strong>${brief.verdict.title}</strong></p>` : ''}
              <p>${brief.actionPlan.length} prioritised actions · ${brief.signals.length} signals
                 ${brief.intelScore ? `· Intel score ${brief.intelScore}/100` : ''}</p>
-             <p style="color:#888;font-size:12px;">— PULSE</p>`,
-      text: `Your weekly PULSE brief for ${workspace.name}.\n\n— PULSE`,
+             <p style="color:#888;font-size:12px;">— Mashal</p>`,
+      text: `Your weekly Mashal brief for ${workspace.name}.\n\n— Mashal`,
       attachments: [{ filename, content: Buffer.from(pdf) }],
     });
 

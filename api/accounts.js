@@ -1,8 +1,8 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
 // Pure account lifecycle: list, sync from Zernio + Apify, disconnect. No
-// PULSE-specific logic. Resist the temptation to compute signals or
-// classifications here — that belongs in PULSE-specific intelligence code.
+// Mashal-specific logic. Resist the temptation to compute signals or
+// classifications here — that belongs in Mashal-specific intelligence code.
 // ═════════════════════════════════════════════════════════════════════════
 //
 // Consolidated accounts endpoint (replaces accounts/list, accounts/sync,

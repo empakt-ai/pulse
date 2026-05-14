@@ -1,7 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
 // Generic Google/YouTube wrapper: OAuth, channel scraping, token refresh.
-// No PULSE-specific transformation here — callers map the raw response to
+// No Mashal-specific transformation here — callers map the raw response to
 // whichever schema they want.
 // ═════════════════════════════════════════════════════════════════════════
 //

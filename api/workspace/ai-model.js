@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Brief-tone preference for the current workspace.
+// [Mashal-SPECIFIC] Brief-tone preference for the current workspace.
 // Replaces the old Claude/Gemini selector during the Gemini-only phase.
 // Endpoint path kept as /workspace/ai-model so we don't break URLs; the
 // internal column it writes to is now `brief_tone`. When public model

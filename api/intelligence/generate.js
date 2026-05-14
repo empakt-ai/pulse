@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Stays in this repo. Manual trigger for the PULSE AI
-// brief. After the platform extraction this stays a PULSE endpoint that
+// [Mashal-SPECIFIC] Stays in this repo. Manual trigger for the Mashal AI
+// brief. After the platform extraction this stays a Mashal endpoint that
 // reads from the shared posts/account_snapshots tables.
 // ═════════════════════════════════════════════════════════════════════════
 //

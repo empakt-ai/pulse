@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
-// Pure wrapper around Zernio's REST API. Stays free of PULSE intelligence:
+// Pure wrapper around Zernio's REST API. Stays free of Mashal intelligence:
 // no signal classification, no benchmarking, no brief logic. Add new
 // endpoints as thin pass-throughs; downstream callers do the interpreting.
 // ═════════════════════════════════════════════════════════════════════════
@@ -102,7 +102,7 @@ async function call(path, opts = {}) {
 }
 
 export const zernio = {
-  // Profiles group social accounts (one per PULSE workspace)
+  // Profiles group social accounts (one per Mashal workspace)
   async createProfile(name) {
     return call('/profiles', { method: 'POST', body: JSON.stringify({ name }) });
   },

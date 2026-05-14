@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE Billing — SubscriptionBanner.
+// Mashal Billing — SubscriptionBanner.
 //
 // Top-of-app strip surfacing Stripe subscription state. Lives in the
 // same slot as TrialBanner but renders only AFTER the trial has

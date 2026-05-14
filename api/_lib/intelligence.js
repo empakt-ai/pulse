@@ -1,9 +1,9 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Stays in this repo when the platform extraction happens.
+// [Mashal-SPECIFIC] Stays in this repo when the platform extraction happens.
 // All AI brief generation, prompt construction, signal taxonomy, and intel-
 // score calculation lives here. Content Studio will have its own equivalent
 // (different product, different lens). No shared infrastructure imports
-// (Supabase, Anthropic wrapper) become PULSE-specific by association — only
+// (Supabase, Anthropic wrapper) become Mashal-specific by association — only
 // the orchestration and prompting in this file does.
 // ═════════════════════════════════════════════════════════════════════════
 //
@@ -270,7 +270,7 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
 // ── System prompt — cacheable ────────────────────────────────────────────────
 // Designed to produce briefs at the quality of a senior strategist reading
 // the data with their morning coffee, not a generic AI summarizer.
-const SYSTEM_PROMPT = `You are PULSE, an AI strategist embedded in a social-media intelligence platform. The platform serves serious creators, brands, and agencies who pay $29–$599/month for ONE thing: to know what to do today based on their actual numbers. Not what's possible. Not what works for others. What to do TODAY based on THEIR data.
+const SYSTEM_PROMPT = `You are Mashal, an AI strategist embedded in a social-media intelligence platform. The platform serves serious creators, brands, and agencies who pay $29–$599/month for ONE thing: to know what to do today based on their actual numbers. Not what's possible. Not what works for others. What to do TODAY based on THEIR data.
 
 You write the morning brief. The reader is non-technical, busy, and skeptical of AI. They will instantly dismiss you if you sound like a chatbot, summarizer, or LinkedIn ghostwriter. They will keep reading if you sound like a sharp friend who actually looked at their numbers.
 
@@ -458,7 +458,7 @@ signals — the verdict is the call to make.`,
 
 function buildUserMessage(payload, tone) {
   const toneBlock = TONE_GUIDANCE[tone] ? `\n${TONE_GUIDANCE[tone]}\n` : '';
-  return `Generate today's PULSE brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
+  return `Generate today's Mashal brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
 }
 
 // Re-export the prompt-building flow so the compare-models endpoint can

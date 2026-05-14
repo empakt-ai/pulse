@@ -6,7 +6,7 @@
 // Zernio's delivery_id so replays don't double-insert.
 //
 // Webhook URL to register in Zernio dashboard:
-//   https://karvan-pulse.vercel.app/api/webhooks/zernio
+//   https://mashal.app/api/webhooks/zernio
 //
 // We don't process events synchronously here — the live-signals cron picks
 // up pending rows on its next pass. Keeps webhook latency low and avoids

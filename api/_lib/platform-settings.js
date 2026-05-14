@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Admin-controlled runtime configuration. Single touch-point
-// between the admin module and PULSE: admin writes, PULSE reads, nothing
+// between the admin module and Mashal: admin writes, Mashal reads, nothing
 // else.
 //
 // Cache is per-function-instance with a 60-second TTL. Warm Vercel

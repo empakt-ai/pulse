@@ -1,7 +1,7 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
 // Maps Zernio /ads payloads to the generic posts schema. No interpretation
-// of what "good" means happens here; consumers (PULSE brief, future Content
+// of what "good" means happens here; consumers (Mashal brief, future Content
 // Studio campaign view) compute their own verdicts from the raw rows.
 // ═════════════════════════════════════════════════════════════════════════
 //

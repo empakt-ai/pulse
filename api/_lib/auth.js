@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
-// Generic Bearer-token validation + workspace selection. No PULSE-specific
+// Generic Bearer-token validation + workspace selection. No Mashal-specific
 // concepts (tier checks, signal logic, etc.) belong in this file.
 // ═════════════════════════════════════════════════════════════════════════
 //
@@ -154,7 +154,7 @@ export function trialLockoutEnvelope(workspace) {
   return {
     status: 402,
     body: {
-      error: 'Trial ended. Upgrade to continue using PULSE.',
+      error: 'Trial ended. Upgrade to continue using Mashal.',
       trial_locked: true,
       trial_ends_at: workspace.trial_ends_at || null,
       trial_intent_tier: workspace.trial_intent_tier || workspace.tier || null,

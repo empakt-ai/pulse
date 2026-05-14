@@ -39,7 +39,7 @@ function renderError(res, title, detail) {
   <body>
     <h1>${esc(title)}</h1>
     <p>${esc(detail || 'Try again from Settings.')}</p>
-    <p><a href="${esc(process.env.APP_URL || 'https://karvan-pulse.vercel.app')}/#settings">Return to Pulse</a></p>
+    <p><a href="${esc(process.env.APP_URL || 'https://mashal.app')}/#settings">Return to Mashal</a></p>
     <script>try{window.opener?.postMessage({type:'pulse:connect-failed',error:${JSON.stringify(detail || title)}}, '*');}catch(e){}
     setTimeout(function(){try{window.close()}catch(e){}}, 4000);</script>
   </body></html>`);
@@ -49,7 +49,7 @@ async function handleGoogleCallback(req, res, code, state) {
   const verified = verifyOAuthState(state);
   if (!verified) return renderError(res, 'Invalid or expired state', 'Sign-in link expired — try Connect again.');
 
-  const appUrl = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
+  const appUrl = process.env.APP_URL || 'https://mashal.app';
   const redirectUri = `${appUrl}/api/connect/callback`;
 
   let tokens;
@@ -82,7 +82,7 @@ async function handleGoogleCallback(req, res, code, state) {
       return renderError(res, 'Channel already connected',
         check.reason === 'trial_locked'
           ? 'This YouTube channel was used by a different workspace whose trial expired. Contact support if it\'s yours.'
-          : 'This YouTube channel is connected to another PULSE workspace. Disconnect it there first.');
+          : 'This YouTube channel is connected to another Mashal workspace. Disconnect it there first.');
     }
   } catch (_) { /* registry check failed — fall through; insert below will still try */ }
 
@@ -160,7 +160,7 @@ async function handleGoogleCallback(req, res, code, state) {
 }
 
 export default async function handler(req, res) {
-  const appUrl = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
+  const appUrl = process.env.APP_URL || 'https://mashal.app';
   const code = req.query?.code;
   const state = req.query?.state;
   let platform = esc(req.query?.platform || 'account');
@@ -186,7 +186,7 @@ export default async function handler(req, res) {
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Connected — Pulse</title>
+<title>Connected — Mashal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Geist:wght@400;500&display=swap" rel="stylesheet" />
@@ -214,7 +214,7 @@ export default async function handler(req, res) {
       </div>
       <h1>${platformLabel} connected.</h1>
       <p>Closing this window…</p>
-      <p class="small">If it doesn't close on its own, <a href="${appUrl}/#settings">return to Pulse</a>.</p>
+      <p class="small">If it doesn't close on its own, <a href="${appUrl}/#settings">return to Mashal</a>.</p>
     </div>
   </div>
 <script>

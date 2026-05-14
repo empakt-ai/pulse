@@ -1,5 +1,5 @@
 -- 007_security_cleanup.sql
--- Address Supabase linter warnings on the original Pulse schema (the
+-- Address Supabase linter warnings on the original Mashal schema (the
 -- helper functions + views that pre-date our migrations).
 --
 -- Safe to run on a populated DB. Does NOT touch tier_limits / usage_summary

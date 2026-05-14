@@ -1,7 +1,7 @@
 -- ═════════════════════════════════════════════════════════════════════════
 -- 017_admin_foundation.sql
 -- Foundation for the admin console — kept in its own migration so the
--- module can ship as a self-contained Phase 0 with zero PULSE-side
+-- module can ship as a self-contained Phase 0 with zero Mashal-side
 -- changes. Three concerns land together because they share the same
 -- "admin reads from / writes to a privileged surface" pattern:
 --
@@ -10,7 +10,7 @@
 --      admin write from day one carries provenance.
 --
 --   2. platform_settings — single-row K/V config (jsonb values). Admin
---      flips a key, every PULSE call sees the change on the next request
+--      flips a key, every Mashal call sees the change on the next request
 --      (post-cache TTL). No deploy required to switch AI provider, toggle
 --      a feature flag, or adjust a global cap.
 --

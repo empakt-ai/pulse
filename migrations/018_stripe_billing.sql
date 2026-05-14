@@ -6,7 +6,7 @@
 --
 -- Customer = user (profiles.stripe_customer_id). One Customer per
 -- signed-up user, used to pay for any number of workspaces the user
--- owns. Subscriptions are scoped per-workspace because PULSE bills
+-- owns. Subscriptions are scoped per-workspace because Mashal bills
 -- per-workspace.
 --
 -- The trial flow is unchanged: workspaces enter a 7-day trial on

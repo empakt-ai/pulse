@@ -3,7 +3,7 @@
 // via stripe_events.id, and mirrors subscription state onto our tables.
 //
 // Endpoint URL (configure in Stripe Dashboard → Developers → Webhooks):
-//   https://karvan-pulse.vercel.app/api/stripe-webhook
+//   https://mashal.app/api/stripe-webhook
 //
 // Events we listen to:
 //   - checkout.session.completed       — trial → paid conversion lands here

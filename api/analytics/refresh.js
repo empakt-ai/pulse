@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Manual sync trigger. PULSE tier-based daily caps enforce
+// [Mashal-SPECIFIC] Manual sync trigger. Mashal tier-based daily caps enforce
 // fair use here (3 / 8 / unlimited). The actual data fetching is delegated
 // to the shared runSync() — no intelligence work happens in this handler.
 // Brief generation is a separate endpoint (/api/intelligence/generate) and

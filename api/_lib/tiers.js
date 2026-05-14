@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Stays in this repo. PULSE's commercial model (Creator /
+// [Mashal-SPECIFIC] Stays in this repo. Mashal's commercial model (Creator /
 // Brand / Agency tiers, USD pricing, per-tier caps on accounts, comp-
 // etitors and AI runs) is a product decision, not a platform primitive.
 // Content Studio will have its own pricing/quota module.

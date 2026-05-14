@@ -1,8 +1,8 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Stays in this repo. This is the dashboard hydration
+// [Mashal-SPECIFIC] Stays in this repo. This is the dashboard hydration
 // endpoint — it joins raw shared data (accounts, posts, snapshots) with
-// PULSE intelligence outputs (signals, verdict, intel score, today actions,
-// posting heatmap, top-posts curation). The shaping done here is the PULSE
+// Mashal intelligence outputs (signals, verdict, intel score, today actions,
+// posting heatmap, top-posts curation). The shaping done here is the Mashal
 // product, not the platform. Content Studio will have its own equivalent.
 // ═════════════════════════════════════════════════════════════════════════
 //

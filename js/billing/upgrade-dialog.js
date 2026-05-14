@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE Billing — UpgradeDialog.
+// Mashal Billing — UpgradeDialog.
 //
 // Modal opened via the `pulse:openUpgrade` custom event so any screen
 // (trial banner, locked paywall, AdsScreen locked card, etc.) can

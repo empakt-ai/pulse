@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
-// Per-platform Apify actor configs + a generic runner. No PULSE-specific
+// Per-platform Apify actor configs + a generic runner. No Mashal-specific
 // scoring or signal logic — actors return normalised profile/posts objects
 // that downstream callers can interpret however they like.
 // ═════════════════════════════════════════════════════════════════════════

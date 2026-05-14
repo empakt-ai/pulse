@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] One-shot historic backfill via Apify for an own account.
+// [Mashal-SPECIFIC] One-shot historic backfill via Apify for an own account.
 //
 // Zernio only serves analytics from the moment an account is connected,
 // which leaves brand-new workspaces with no history for the Brief, Growth,

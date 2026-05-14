@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
-// Generic Anthropic Messages API client. Today only consumed by PULSE
+// Generic Anthropic Messages API client. Today only consumed by Mashal
 // intelligence, but the wrapper itself has no product-specific logic; any
 // future product on the platform can use it.
 // ═════════════════════════════════════════════════════════════════════════

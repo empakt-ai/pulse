@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Stripe-facing endpoints exposed to the SPA. Single
+// [Mashal-SPECIFIC] Stripe-facing endpoints exposed to the SPA. Single
 // function, action-routed.
 //
 //   POST /api/stripe?action=checkout
@@ -26,7 +26,7 @@ import {
   PRICE_BY_TIER,
 } from './_lib/stripe.js';
 
-const APP_URL = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
+const APP_URL = process.env.APP_URL || 'https://mashal.app';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);

@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Public contact-form handler. Accepts POST { name, email,
+// [Mashal-SPECIFIC] Public contact-form handler. Accepts POST { name, email,
 // message } from /contact and forwards as an email to CONTACT_TO via Resend.
 // No auth — public endpoint. Honeypot field + rate-limit by IP+email to
 // keep spam bots out. Idempotent on identical payloads in the last 60s.
@@ -84,7 +84,7 @@ export default async function handler(req, res) {
   try {
     await sendEmail({
       to: CONTACT_TO,
-      subject: `PULSE contact form: ${name}`,
+      subject: `Mashal contact form: ${name}`,
       text: `New contact form submission\n\nFrom: ${name} <${email}>\n\n${message}\n\n—\nIP: ${clientIp(req)}\nUA: ${req.headers?.['user-agent'] || 'unknown'}`,
       html: `
         <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 580px;">

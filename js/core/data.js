@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE Data Layer — the global D object + hydrateD().
+// Mashal Data Layer — the global D object + hydrateD().
 //
 // D is the in-memory runtime state every screen reads from. Initial
 // shape is a "loading-safe" stub so components that paint before
@@ -162,7 +162,7 @@ const hydrateD = (brief) => {
   // Admin-controlled runtime context. flags is read everywhere (every
   // user gets the same flag set); is_admin / as_tier only flip true for
   // mnawaz@gmail.com (or any future profile with profiles.is_admin=true).
-  // Nothing in core PULSE branches on these today — wiring is here so
+  // Nothing in core Mashal branches on these today — wiring is here so
   // future gated features can lazily start reading D.flags[key].
   D.isAdmin = !!brief.is_admin;
   D.asTier  = brief.as_tier || null;

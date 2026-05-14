@@ -1,6 +1,6 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Platform infrastructure — moves to the shared platform service.
-// OAuth initiation. Generic across products. No PULSE logic.
+// OAuth initiation. Generic across products. No Mashal logic.
 // ═════════════════════════════════════════════════════════════════════════
 
 import { authenticate, json } from '../_lib/auth.js';
@@ -60,7 +60,7 @@ export default async function handler(req, res) {
     return json(res, 400, { error: `Unsupported platform: ${platform}` });
   }
 
-  const appUrl = process.env.APP_URL || 'https://karvan-pulse.vercel.app';
+  const appUrl = process.env.APP_URL || 'https://mashal.app';
 
   try {
     // YouTube uses direct Google OAuth — no Zernio profile involved.

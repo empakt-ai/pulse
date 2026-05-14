@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Reports & Export endpoint. Renders the brief snapshot
+// [Mashal-SPECIFIC] Reports & Export endpoint. Renders the brief snapshot
 // to a one-page landscape PDF via headless Chromium, uploads to Supabase
 // Storage, and returns a signed read URL. GET lists past reports.
 // ═════════════════════════════════════════════════════════════════════════
@@ -169,14 +169,14 @@ export default async function handler(req, res) {
           const filename = `pulse-report-${period.replace(/\s.→\s./g, '_to_')}.pdf`;
           await sendEmail({
             to: recipientEmail,
-            subject: `Your PULSE brief · ${ws.name}`,
-            html: `<p>Hi,</p><p>Your latest PULSE intelligence brief is attached.</p>
+            subject: `Your Mashal brief · ${ws.name}`,
+            html: `<p>Hi,</p><p>Your latest Mashal intelligence brief is attached.</p>
                    <p><strong>${summary.verdict_title || 'Brief generated'}</strong></p>
                    <p>${summary.actions} prioritised action${summary.actions === 1 ? '' : 's'}
                       · ${summary.signals} signal${summary.signals === 1 ? '' : 's'}
                       ${summary.intel_score ? `· Intel score ${summary.intel_score}/100` : ''}</p>
-                   <p style="color:#888;font-size:12px;">— PULSE · karvan-pulse.vercel.app</p>`,
-            text: `Your PULSE brief: ${summary.verdict_title || 'Brief generated'}\n\n— PULSE`,
+                   <p style="color:#888;font-size:12px;">— Mashal · mashal.app</p>`,
+            text: `Your Mashal brief: ${summary.verdict_title || 'Brief generated'}\n\n— Mashal`,
             attachments: [{ filename, content: Buffer.from(pdf) }],
           });
           await supabase.update('reports', { emailed_at: new Date().toISOString() }, { eq: { id: reportRow.id } });

@@ -1,9 +1,9 @@
 // ═════════════════════════════════════════════════════════════════════════
-// PULSE API client — single fetch wrapper used by every screen.
+// Mashal API client — single fetch wrapper used by every screen.
 //
 // All requests:
 //   - hit `${API_BASE}/api${path}` (API_BASE empty in production → same
-//     origin; settable via window.PULSE_API_URL for staging/dev)
+//     origin; settable via window.Mashal_API_URL for staging/dev)
 //   - send Bearer token from window.__pulseToken (set by js/core/auth.js)
 //   - send x-workspace-id when localStorage has one set (the workspace
 //     switcher path)
@@ -14,7 +14,7 @@
 // makes the contract obvious.
 // ═════════════════════════════════════════════════════════════════════════
 
-const API_BASE = window.PULSE_API_URL || '';
+const API_BASE = window.Mashal_API_URL || '';
 
 // ── API client (calls our backend, which holds keys) ─────────────────────────
 const api = async (path, opts = {}) => {

@@ -3,7 +3,7 @@
 // Orchestrates Apify scrapes for tracked competitor handles and persists
 // to the generic posts + account_snapshots schema. The "competitor" concept
 // is a generic comparative-tracking primitive that Content Studio can reuse
-// for its own competitor benchmarks. No PULSE intelligence here.
+// for its own competitor benchmarks. No Mashal intelligence here.
 // ═════════════════════════════════════════════════════════════════════════
 //
 // Run Apify actors for all active competitors in a workspace, persist posts +

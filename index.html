@@ -3,17 +3,19 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-<title>Pulse — Social intelligence for serious creators</title>
-<meta name="description" content="PULSE is daily social intelligence for serious creators, brands, and agencies. One landscape brief at 6 AM: verdict, three actions, six signals — across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Built by KARVAN BI Studio." />
+<title>Mashal — Social intelligence for serious creators</title>
+<link rel="canonical" href="https://mashal.app/" />
+<meta name="description" content="Mashal is daily social intelligence for serious creators, brands, and agencies. One landscape brief at 6 AM: verdict, three actions, six signals — across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Built by KARVAN BI Studio." />
 <meta name="keywords" content="social media intelligence, social analytics, creator analytics, brand analytics, agency analytics, daily brief, Instagram analytics, TikTok analytics, YouTube analytics, Snapchat analytics, GCC social media, Saudi Arabia social media, KARVAN BI Studio" />
 <meta name="author" content="KARVAN Business Intelligence Studio" />
 <meta property="og:type" content="website" />
-<meta property="og:site_name" content="PULSE by KARVAN BI Studio" />
-<meta property="og:title" content="PULSE — Social intelligence for serious creators" />
+<meta property="og:site_name" content="Mashal by KARVAN BI Studio" />
+<meta property="og:url" content="https://mashal.app/" />
+<meta property="og:title" content="Mashal — Social intelligence for serious creators" />
 <meta property="og:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals — across every platform that matters. Built by KARVAN BI Studio." />
 <meta property="og:locale" content="en_US" />
 <meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="PULSE — Social intelligence for serious creators" />
+<meta name="twitter:title" content="Mashal — Social intelligence for serious creators" />
 <meta name="twitter:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals — across every platform that matters." />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -93,7 +95,7 @@ tailwind.config = {
   }
   .marquee { animation: scroll-x 40s linear infinite; }
 
-  /* Pulse dot */
+  /* Mashal dot */
   @keyframes ping-pulse {
     0%   { transform: scale(1); opacity: .8; }
     100% { transform: scale(2.4); opacity: 0; }
@@ -256,7 +258,7 @@ tailwind.config = {
   "@type": "Organization",
   "name": "KARVAN Business Intelligence Studio",
   "alternateName": "KARVAN BI Studio",
-  "description": "Toronto-based business intelligence studio. Maker of PULSE — daily social intelligence for creators, brands, and agencies.",
+  "description": "Toronto-based business intelligence studio. Maker of Mashal — daily social intelligence for creators, brands, and agencies.",
   "foundingDate": "2019",
   "email": "hello@karvan.io",
   "address": {
@@ -272,7 +274,8 @@ tailwind.config = {
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "PULSE",
+  "name": "Mashal",
+  "url": "https://mashal.app/",
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web",
   "description": "Daily social intelligence for creators, brands, and agencies. One landscape brief at 6 AM with verdict, three actions, and six signals across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat.",
@@ -368,7 +371,7 @@ tailwind.config = {
     var inner = document.getElementById('pulse-splash-inner');
     if (!inner) return;
     inner.innerHTML =
-      '<div id="pulse-splash-logo">Couldn\'t start Pulse</div>' +
+      '<div id="pulse-splash-logo">Couldn\'t start Mashal</div>' +
       '<pre id="pulse-diag-errors" style="font-family:Geist Mono,ui-monospace,monospace;font-size:11px;color:rgba(10,10,11,0.7);max-width:560px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-word;text-align:left;padding:12px;margin:0;background:rgba(10,10,11,0.04);border-radius:10px;user-select:text;-webkit-user-select:text;">' + safeDetails + '</pre>' +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px;">' +
         '<button type="button" id="pulse-diag-copy" style="padding:9px 14px;border-radius:10px;background:#6B5BFF;color:#fff;border:none;font-family:Geist,system-ui,sans-serif;font-size:13px;cursor:pointer;">Copy errors</button>' +
@@ -431,7 +434,7 @@ tailwind.config = {
 
 <!-- Order matters: utilities → icons → data → tweaks → screens → app -->
 <script type="text/babel">
-// Pulse Icons — Platform SVGs (real) + thin-stroke utility icons
+// Mashal Icons — Platform SVGs (real) + thin-stroke utility icons
 const PlatformIcons = () => (
   <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden="true">
     <defs>
@@ -600,7 +603,7 @@ Object.assign(window, { CATEGORIES, COUNTRIES, REGION_PRESETS, ALL_FOCUS_OPTIONS
 
 </script>
 <script type="text/babel">
-// Pulse UI primitives
+// Mashal UI primitives
 
 const cls = (...a) => a.filter(Boolean).join(' ');
 
@@ -680,8 +683,8 @@ const Pill = ({ children, color = 'ink', className = '' }) => {
   return <span className={cls('inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[11px] font-medium tracking-tight whitespace-nowrap', colors[color], className)}>{children}</span>;
 };
 
-// Pulse live dot
-const PulseDot = ({ color = 'bg-magenta', size = 'w-2 h-2' }) => (
+// Mashal live dot
+const MashalDot = ({ color = 'bg-magenta', size = 'w-2 h-2' }) => (
   <span className={cls('relative inline-block rounded-full pulse-dot', size, color)} style={{ color: undefined }} />
 );
 
@@ -728,17 +731,17 @@ const SectionHead = ({ eyebrow, title, sub, right, className = '' }) => (
 );
 
 // Logo
-const PulseLogo = ({ className = 'h-7' }) => (
+const MashalLogo = ({ className = 'h-7' }) => (
   <div className={cls('inline-flex items-center gap-2', className)}>
     <svg viewBox="0 0 32 32" className="h-full w-auto" fill="none">
       <circle cx="16" cy="16" r="14" stroke="currentColor" strokeWidth="1.5" opacity="0.2" />
       <path d="M4 16h6l2-6 4 14 2-8 2 4h8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
-    <span className="font-display text-[20px] font-bold tracking-tightest">Pulse</span>
+    <span className="font-display text-[20px] font-bold tracking-tightest">Mashal</span>
   </div>
 );
 
-Object.assign(window, { cls, Card, Btn, Eyebrow, Plat, Sparkline, BarSpark, Pill, PulseDot, Progress, StatCard, SectionHead, PulseLogo });
+Object.assign(window, { cls, Card, Btn, Eyebrow, Plat, Sparkline, BarSpark, Pill, MashalDot, Progress, StatCard, SectionHead, MashalLogo });
 
 </script>
 <script type="text/babel">
@@ -1313,7 +1316,7 @@ Object.assign(window, {
 
 </script>
 <script type="text/babel">
-// Pulse Landing page
+// Mashal Landing page
 
 const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'brand' }) => {
   return (
@@ -1337,7 +1340,7 @@ const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'b
 const LandingNav = ({ onSignIn, onSignUp }) => (
   <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
     <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="PULSE — go to homepage"><PulseLogo /></a>
+      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal — go to homepage"><MashalLogo /></a>
       <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
         <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
         <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
@@ -1368,7 +1371,7 @@ const HeroGradient = ({ onSignUp }) => (
     <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-16 sm:pb-24">
       <div className="max-w-4xl">
         <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full border border-line dark:border-lineDark bg-chalk/70 dark:bg-coalsoft/70 backdrop-blur mb-7">
-          <PulseDot color="bg-magenta" />
+          <MashalDot color="bg-magenta" />
           <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Now in private beta · 2,400+ creators</span>
         </div>
 
@@ -1379,7 +1382,7 @@ const HeroGradient = ({ onSignUp }) => (
         </h1>
 
         <p className="text-[17px] sm:text-[20px] leading-snug text-mute dark:text-muteDark max-w-2xl mb-9">
-          Pulse aggregates Instagram, TikTok, YouTube, LinkedIn, and Facebook into one daily intelligence brief. Know what's working, what's not, and exactly what to do next — every morning at 6 AM.
+          Mashal aggregates Instagram, TikTok, YouTube, LinkedIn, and Facebook into one daily intelligence brief. Know what's working, what's not, and exactly what to do next — every morning at 6 AM.
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-12">
@@ -1426,7 +1429,7 @@ const HeroEditorial = ({ onSignUp }) => (
       </div>
       <div className="lg:col-span-4">
         <p className="text-[17px] leading-relaxed text-mute dark:text-muteDark">
-          Pulse is a morning briefing for serious creators. Five platforms. One signal. Every day at 6 AM — in language you'd actually say out loud.
+          Mashal is a morning briefing for serious creators. Five platforms. One signal. Every day at 6 AM — in language you'd actually say out loud.
         </p>
       </div>
     </div>
@@ -1436,12 +1439,12 @@ const HeroEditorial = ({ onSignUp }) => (
 const HeroSplit = ({ onSignUp }) => (
   <section className="grid lg:grid-cols-2 min-h-[600px]">
     <div className="p-8 sm:p-12 lg:p-16 flex flex-col justify-center">
-      <Eyebrow color="text-ultra">Pulse for creators</Eyebrow>
+      <Eyebrow color="text-ultra">Mashal for creators</Eyebrow>
       <h1 className="font-display text-[40px] sm:text-[64px] leading-[0.94] font-semibold tracking-tightest mt-5 mb-6">
         One brief. Five platforms. Every morning.
       </h1>
       <p className="text-[17px] text-mute dark:text-muteDark mb-8 max-w-md">
-        Stop checking five apps. Pulse reads your numbers, finds the signal, and tells you exactly what to do — before you've finished your coffee.
+        Stop checking five apps. Mashal reads your numbers, finds the signal, and tells you exactly what to do — before you've finished your coffee.
       </p>
       <div className="flex flex-wrap gap-3">
         <Btn variant="ink" size="lg" onClick={onSignUp}>Start free trial</Btn>
@@ -1458,7 +1461,7 @@ const MiniBriefPreview = () => (
   <div className="w-full max-w-md bg-coalsoft border border-lineDark rounded-2xl p-6 fade-up">
     <div className="flex items-center justify-between mb-4">
       <Eyebrow color="text-lime">Today · 06:04 AM</Eyebrow>
-      <PulseDot color="bg-lime" />
+      <MashalDot color="bg-lime" />
     </div>
     <h3 className="font-display text-[26px] leading-tight font-semibold tracking-tighter mb-3">Good morning, Alex.</h3>
     <p className="text-[14px] text-muteDark mb-5">Your Future-of-Work Reel hit 842K overnight. 3 high-priority signals detected.</p>
@@ -1514,7 +1517,7 @@ const DashboardPreview = () => (
     <div className="text-center max-w-2xl mx-auto mb-12">
       <Eyebrow>The dashboard</Eyebrow>
       <h2 className="font-display text-[32px] sm:text-[48px] leading-[1] font-semibold tracking-tightest mt-3 mb-4">Looks like a feed.<br/><span className="italic font-serif font-normal">Reads like a strategist.</span></h2>
-      <p className="text-[15px] text-mute dark:text-muteDark">No menus to learn. No charts to decode. Pulse writes you a daily memo and shows the work.</p>
+      <p className="text-[15px] text-mute dark:text-muteDark">No menus to learn. No charts to decode. Mashal writes you a daily memo and shows the work.</p>
     </div>
     <div className="relative rounded-3xl overflow-hidden border border-line dark:border-lineDark shadow-pop bg-chalk dark:bg-coalsoft">
       <div className="absolute inset-x-0 top-0 h-10 bg-ink/[0.03] dark:bg-paper/[0.04] border-b border-line dark:border-lineDark flex items-center px-4 gap-1.5">
@@ -1552,12 +1555,12 @@ const MockBrief = () => (
 
 const HowItWorks = () => (
   <section id="how" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
-    <SectionHead eyebrow="How it works" title="From scrolling to strategic in three mornings." sub="Pulse runs on autopilot. Here's what happens behind the scenes." />
+    <SectionHead eyebrow="How it works" title="From scrolling to strategic in three mornings." sub="Mashal runs on autopilot. Here's what happens behind the scenes." />
     <div className="grid md:grid-cols-3 gap-5">
       {[
         { n: '01', t: 'Connect your accounts', d: 'Authorize Instagram, TikTok, YouTube, LinkedIn, and Facebook in under 90 seconds. No password sharing, no scrapers to install.' },
-        { n: '02', t: 'Pulse syncs every morning', d: 'At 6 AM your local time, Pulse pulls fresh data, runs cross-platform analysis, and writes a personalized brief in plain English.' },
-        { n: '03', t: 'Read. Act. Repeat.', d: 'Open Pulse with your coffee. You\'ll know the one thing to do today, the two trends to watch this week, and where you stand against your goals.' }
+        { n: '02', t: 'Mashal syncs every morning', d: 'At 6 AM your local time, Mashal pulls fresh data, runs cross-platform analysis, and writes a personalized brief in plain English.' },
+        { n: '03', t: 'Read. Act. Repeat.', d: 'Open Mashal with your coffee. You\'ll know the one thing to do today, the two trends to watch this week, and where you stand against your goals.' }
       ].map((s,i) => (
         <div key={i} className="relative rounded-2xl border border-line dark:border-lineDark p-6 bg-chalk dark:bg-coalsoft">
           <div className="font-mono text-[11px] text-mute dark:text-muteDark mb-5">{s.n}</div>
@@ -1582,7 +1585,7 @@ const Features = () => (
         {[
           { i: 'sparkle', t: 'Morning Brief', d: 'A 2-minute read every day. AI verdict, top signals, 3 prioritized actions.' },
           { i: 'brain', t: 'AI Signal Engine', d: 'Cross-platform pattern detection finds viral formulas, content gaps, and emerging trends.' },
-          { i: 'target', t: 'Targets & Cycles', d: 'Set 30-day cycles. Pulse tracks pace, predicts outcomes, and recommends pivots.' },
+          { i: 'target', t: 'Targets & Cycles', d: 'Set 30-day cycles. Mashal tracks pace, predicts outcomes, and recommends pivots.' },
           { i: 'flame', t: 'Live Viral Alerts', d: 'Get notified the moment a post crosses algorithmic threshold — before the spike ends.' },
           { i: 'users', t: 'Competitor Tracking', d: 'Track up to 50 competitor accounts. See their wins, gaps, and posting cadence.' },
           { i: 'rocket', t: 'Content Deep-Dive', d: 'Anatomize any post: format, hook, niche, timing — and a "replicate this" playbook.' },
@@ -1607,7 +1610,7 @@ const Integrations = () => (
       <div className="lg:col-span-5">
         <Eyebrow>Integrations</Eyebrow>
         <h2 className="font-display text-[32px] sm:text-[44px] leading-[0.98] font-semibold tracking-tightest mt-3 mb-4">Five platforms.<br/>One source of truth.</h2>
-        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Pulse reads from official APIs only. No scraping. No risk to your accounts. Disconnect anytime.</p>
+        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Mashal reads from official APIs only. No scraping. No risk to your accounts. Disconnect anytime.</p>
         <Btn variant="outline" size="md">See all integrations <Icon name="arrowRight" className="w-4 h-4" /></Btn>
       </div>
       <div className="lg:col-span-7 grid grid-cols-5 gap-3">
@@ -1628,7 +1631,7 @@ const Testimonials = () => (
       <SectionHead eyebrow="From the field" title="Creators who stopped guessing." />
       <div className="grid md:grid-cols-3 gap-5">
         {[
-          { q: 'I used to spend 90 minutes every Monday building dashboards. Pulse does it before I wake up. The signals are uncannily specific.', n: 'Maya Chen', r: 'Creator · 240K IG', avatar: 'MC' },
+          { q: 'I used to spend 90 minutes every Monday building dashboards. Mashal does it before I wake up. The signals are uncannily specific.', n: 'Maya Chen', r: 'Creator · 240K IG', avatar: 'MC' },
           { q: 'We run 14 client accounts. The white-label briefs replaced our weekly reports. Clients literally forward them to their leadership.', n: 'Daniel Ortiz', r: 'Founder, LEDR Agency', avatar: 'DO' },
           { q: 'The cross-platform gap analysis surfaced 29 reels I\'d never uploaded as Shorts. Two of them have outperformed the original.', n: 'Sana Patel', r: 'Brand, kanaa.', avatar: 'SP' }
         ].map((t,i) => (
@@ -1883,10 +1886,10 @@ const Pricing = ({ activePlan, onSignUp }) => {
 const FAQ = () => {
   const [open, setOpen] = React.useState(0);
   const qs = [
-    { q: 'How does Pulse get my data?', a: 'Pulse connects through each platform\'s official API. You authorize once, we never see your password, and you can disconnect any account from Settings at any time.' },
+    { q: 'How does Mashal get my data?', a: 'Mashal connects through each platform\'s official API. You authorize once, we never see your password, and you can disconnect any account from Settings at any time.' },
     { q: 'When does the brief arrive?', a: 'Every morning at 6 AM in your local time zone. You can also enable a same-time email summary. The dashboard updates automatically when the sync completes.' },
-    { q: 'Can I track competitors?', a: 'Yes. Creator tracks up to 5, Brand up to 15, Agency up to 50. You add a public handle and Pulse runs the same analysis as it does for your own accounts.' },
-    { q: 'What about TikTok / Instagram API limits?', a: 'We use the official Business / Creator APIs. Pulse handles rate-limiting and retry logic so you never see "data delayed" messages.' },
+    { q: 'Can I track competitors?', a: 'Yes. Creator tracks up to 5, Brand up to 15, Agency up to 50. You add a public handle and Mashal runs the same analysis as it does for your own accounts.' },
+    { q: 'What about TikTok / Instagram API limits?', a: 'We use the official Business / Creator APIs. Mashal handles rate-limiting and retry logic so you never see "data delayed" messages.' },
     { q: 'Is there a free trial?', a: '7 days on Creator & Brand, no credit card required. You\'ll get the full feature set — including the daily brief — for the full trial.' },
     { q: 'What happens after the trial?', a: 'Your data goes read-only — nothing is deleted. You can upgrade at any time and pick up exactly where you left off. We hold your data for 30 days before clearing inactive trial accounts.' },
     { q: 'Can I cancel anytime?', a: 'Yes, from the Billing page in Settings. No phone calls, no retention specialists, no friction. Your data is exported automatically.' }
@@ -1916,7 +1919,7 @@ const CTA = ({ onSignUp }) => (
       <div className="blob bg-lime" style={{ width: 300, height: 300, bottom: -100, left: -50, opacity: 0.3 }} />
       <div className="relative z-10 max-w-2xl">
         <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mb-5">Tomorrow morning, you'll already know.</h2>
-        <p className="text-[16px] text-paper/70 mb-7">Get your first Pulse brief in less than 24 hours.</p>
+        <p className="text-[16px] text-paper/70 mb-7">Get your first Mashal brief in less than 24 hours.</p>
         <div className="flex flex-wrap gap-3">
           <Btn variant="lime" size="lg" onClick={onSignUp}>Start free 7-day trial <Icon name="arrowRight" className="w-4 h-4" /></Btn>
           <Btn variant="outline" size="lg" className="border-paper/20 text-paper">Book a 15-min demo</Btn>
@@ -1931,7 +1934,7 @@ const Footer = () => (
     <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12">
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-2">
-          <a href="/" className="inline-block hover:opacity-80 transition" aria-label="PULSE — go to homepage"><PulseLogo /></a>
+          <a href="/" className="inline-block hover:opacity-80 transition" aria-label="Mashal — go to homepage"><MashalLogo /></a>
           <p className="text-[13.5px] text-mute dark:text-muteDark mt-4 max-w-xs">Daily social intelligence for serious creators, brands and agencies.</p>
         </div>
         {[
@@ -2047,7 +2050,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
   return (
     <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
       <header className="max-w-7xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-        <button onClick={onBack}><PulseLogo /></button>
+        <button onClick={onBack}><MashalLogo /></button>
         <span className="text-[13px] text-mute dark:text-muteDark">
           {step === 'signin' ? 'New here? ' : 'Have an account? '}
           <button
@@ -2065,7 +2068,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
           <div className="w-full max-w-sm fade-up">
             <Eyebrow color="text-ultra">{step === 'signin' ? 'Welcome back' : 'Start your trial'}</Eyebrow>
             <h1 className="font-display text-[36px] sm:text-[44px] leading-[1] font-semibold tracking-tightest mt-3 mb-2">
-              {step === 'signin' ? 'Sign in to Pulse.' : 'Create your account.'}
+              {step === 'signin' ? 'Sign in to Mashal.' : 'Create your account.'}
             </h1>
             <p className="text-[14px] text-mute dark:text-muteDark mb-8">
               {step === 'signin' ? 'Pick up where you left off.' : '7-day free trial. No credit card required.'}
@@ -2184,7 +2187,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
           <div className="relative z-10 max-w-md">
             <MiniBriefPreview />
             <p className="mt-8 text-[14px] text-paper/70 leading-relaxed">
-              "Pulse replaced our Monday morning dashboard meeting. The brief is more useful than anything I'd build myself."
+              "Mashal replaced our Monday morning dashboard meeting. The brief is more useful than anything I'd build myself."
               <br />
               <span className="text-paper/50 mt-2 inline-block">— Maya Chen, 240K IG</span>
             </p>
@@ -2283,7 +2286,7 @@ const Onboarding = ({ onDone }) => {
   return (
     <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
       <header className="max-w-3xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-        <PulseLogo />
+        <MashalLogo />
         <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
           Step {step + 1} of {steps.length}
         </span>
@@ -2485,7 +2488,7 @@ const Onboarding = ({ onDone }) => {
               Pick where you're headed.
             </h1>
             <p className="text-[15px] text-mute dark:text-muteDark mb-8">
-              Your 7-day trial gives you everything PULSE collects. Tell us what you're planning to upgrade to — we'll tune your brief and the locked-feature copy to match.
+              Your 7-day trial gives you everything Mashal collects. Tell us what you're planning to upgrade to — we'll tune your brief and the locked-feature copy to match.
             </p>
 
             <div className="grid sm:grid-cols-3 gap-2.5 mb-7">
@@ -2592,7 +2595,7 @@ Object.assign(window, { Auth, Onboarding, sbAuth, checkMagicLinkHash, restoreSes
 
 </script>
 <script type="text/babel">
-// Pulse Shell — TopBar, AccountBar, MobileNav
+// Mashal Shell — TopBar, AccountBar, MobileNav
 
 const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, userEmail, theme, toggleTheme }) => {
   // Convenience: jump to Settings + a named anchor section. Falls back to
@@ -2629,14 +2632,14 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
     <header className="sticky top-0 z-30 backdrop-blur-md bg-paper/85 dark:bg-ink/85 border-b border-line dark:border-lineDark">
       <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <PulseLogo className="h-6" />
+          <MashalLogo className="h-6" />
           <div className="relative hidden md:block" ref={wsRef}>
             <button
               onClick={() => setWsOpen(o => !o)}
               className="inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark text-[11px] font-mono hover:border-ink/30 dark:hover:border-paper/30 transition"
               title="Switch workspace"
             >
-              <PulseDot color="bg-lime" size="w-1.5 h-1.5" />
+              <MashalDot color="bg-lime" size="w-1.5 h-1.5" />
               <span className="max-w-[160px] truncate">{activeWs?.name || D.workspace}</span>
               <Icon name="chevDown" className="w-3 h-3 opacity-60" />
             </button>
@@ -2946,7 +2949,7 @@ const BriefScreen = ({ activePlatform, setTab }) => {
         })()}
         title={greeting}
         sub={sub}
-        right={<Pill color="ultra"><PulseDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>}
+        right={<Pill color="ultra"><MashalDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>}
       />
 
       {/* Critical alert — promotes a warning-level signal to a red-tinted
@@ -3017,7 +3020,7 @@ const BriefScreen = ({ activePlatform, setTab }) => {
             )}
             <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body
               || (window.__pulseBriefGenerating && window.__pulseBriefPartial?.body)
-              || 'PULSE will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
+              || 'Mashal will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
             {(D.todayActions || []).length > 0 && (
               <div className="grid sm:grid-cols-3 gap-2.5">
                 {D.todayActions.map(a => (
@@ -3605,7 +3608,7 @@ const AdsScreen = ({ activePlatform }) => {
           Ad performance is a paid-tier add-on.
         </h1>
         <p className="text-[14.5px] text-mute dark:text-muteDark max-w-xl mx-auto leading-relaxed mb-7">
-          PULSE pulls Meta, TikTok, and X ad accounts alongside your organic posts and reports
+          Mashal pulls Meta, TikTok, and X ad accounts alongside your organic posts and reports
           spend, impressions, clicks, and CTR side-by-side with engagement. Upgrade to Brand
           to enable it for one workspace, or Agency to enable it across all your clients.
         </p>
@@ -3638,7 +3641,7 @@ const AdsScreen = ({ activePlatform }) => {
           </div>
           <h2 className="font-display text-[22px] font-semibold tracking-tight mb-2">No ad data yet.</h2>
           <p className="text-[13.5px] text-mute dark:text-muteDark max-w-md mx-auto leading-relaxed mb-5">
-            Connect a Meta, TikTok, or X account that has active ads. PULSE pulls spend and
+            Connect a Meta, TikTok, or X account that has active ads. Mashal pulls spend and
             performance hourly once an ad account is linked.
           </p>
           <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor: 'accounts' } }))}>
@@ -3875,7 +3878,7 @@ const TrajectoryChart = ({ series, height = 260 }) => {
   if (!allPoints.length) {
     return (
       <div ref={containerRef} className="flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark" style={{ height }}>
-        Not enough follower history yet — Pulse builds the trajectory from daily snapshots.
+        Not enough follower history yet — Mashal builds the trajectory from daily snapshots.
       </div>
     );
   }
@@ -4480,7 +4483,7 @@ const ContentScreen = ({ activePlatform, activeBrand }) => {
         <Card>
           <div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">
             {posts.length === 0
-              ? 'No posts yet. Once Pulse syncs your accounts, your published posts appear here for analysis.'
+              ? 'No posts yet. Once Mashal syncs your accounts, your published posts appear here for analysis.'
               : `No posts yet on ${PLATFORM_LABEL_FULL[activePlatform] || activePlatform}. Switch tabs or pick "All accounts" to see other platforms.`}
           </div>
         </Card>
@@ -4610,7 +4613,7 @@ const ContentScreen = ({ activePlatform, activeBrand }) => {
                 </div>
               ) : (
                 <div className="text-[12.5px] text-mute dark:text-muteDark py-2">
-                  No peer posts yet on this platform — percentiles appear once Pulse has at least 2 same-platform posts.
+                  No peer posts yet on this platform — percentiles appear once Mashal has at least 2 same-platform posts.
                 </div>
               )}
             </Card>
@@ -4781,7 +4784,7 @@ const CompetitorTopContent = ({ activePlatform, activeBrand }) => {
         sub={activeBrand
           ? `Filtered to one brand. Clear the brand filter in the top bar to see everyone.`
           : "What's working for the brands you track — and the hook formula behind each one."}
-        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> {visible.length} post{visible.length === 1 ? '' : 's'}</span>}
+        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><MashalDot color="bg-magenta" size="w-1.5 h-1.5" /> {visible.length} post{visible.length === 1 ? '' : 's'}</span>}
       />
 
       <Card className="overflow-hidden p-0">
@@ -4877,7 +4880,7 @@ const IntelScreen = ({ activePlatform }) => {
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader
-        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>}
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>}
         title="Strategic signals"
         sub={isAll
           ? "AI-derived analysis across your entire catalogue, refreshed with every sync."
@@ -4969,7 +4972,7 @@ const IntelScreen = ({ activePlatform }) => {
               <SectionHead
                 eyebrow="Stream"
                 title="Intelligence stream"
-                right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> {scoped.length} signal{scoped.length === 1 ? '' : 's'}{isAll ? '' : ` · ${platformLabel[activePlatform] || activePlatform}`}</span>}
+                right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><MashalDot color="bg-lime" size="w-1.5 h-1.5" /> {scoped.length} signal{scoped.length === 1 ? '' : 's'}{isAll ? '' : ` · ${platformLabel[activePlatform] || activePlatform}`}</span>}
               />
               <div className="space-y-2.5">
                 {rest.map(s => <SignalRow key={s.id} signal={s} />)}
@@ -5477,7 +5480,7 @@ const ActionsScreen = ({ activePlatform }) => {
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader
-        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-lime" size="w-1.5 h-1.5" /> Prioritised by impact</span>}
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-lime" size="w-1.5 h-1.5" /> Prioritised by impact</span>}
         title="Action plan"
         sub="Every move the latest brief surfaced — grouped by when it needs to happen. Start at the top."
         right={typeof D.intelScore === 'number' && D.intelScore > 0 ? (
@@ -5652,7 +5655,7 @@ const ReportsScreen = () => {
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader
-        eyebrow={<span className="flex items-center gap-1.5"><PulseDot color="bg-ultra" size="w-1.5 h-1.5" /> Executive PDFs</span>}
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-ultra" size="w-1.5 h-1.5" /> Executive PDFs</span>}
         title="Reports & export"
         sub="Export the current intelligence brief as a one-page executive PDF. History stays here for 50 reports per workspace."
         right={
@@ -5797,7 +5800,7 @@ const TargetsScreen = () => (
     <ScreenHeader
       eyebrow="Cycles"
       title="Targets & actuals"
-      sub="Set 30-day growth cycles and let Pulse track pace, project outcomes, and recommend pivots."
+      sub="Set 30-day growth cycles and let Mashal track pace, project outcomes, and recommend pivots."
     />
     <Card className="text-center py-16">
       <div className="w-14 h-14 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-5">
@@ -5805,7 +5808,7 @@ const TargetsScreen = () => (
       </div>
       <h3 className="font-display text-[22px] font-semibold tracking-tighter">Targets are coming next.</h3>
       <p className="text-[13.5px] text-mute dark:text-muteDark mt-2 max-w-md mx-auto">
-        Set follower, view, or engagement goals per platform and Pulse will calculate the daily pace, surface pivots when you slip, and grade the cycle when it closes. We'll enable this once the underlying growth data has settled.
+        Set follower, view, or engagement goals per platform and Mashal will calculate the daily pace, surface pivots when you slip, and grade the cycle when it closes. We'll enable this once the underlying growth data has settled.
       </p>
     </Card>
   </div>
@@ -5815,7 +5818,7 @@ Object.assign(window, { TargetsScreen });
 
 </script>
 <script type="text/babel">
-// Pulse Settings — clean OAuth connect flow, no API keys shown to users
+// Mashal Settings — clean OAuth connect flow, no API keys shown to users
 // All keys held server-side. Users only connect their social accounts.
 
 
@@ -6195,7 +6198,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                 ? `Trial allows ${r0.limit} accounts max. Upgrade for more.`
                 : r0.reason === 'cap_exceeded'
                   ? `Account limit reached for your plan.`
-                  : `${r0.handle || 'That handle'} is already connected to another PULSE workspace.`;
+                  : `${r0.handle || 'That handle'} is already connected to another Mashal workspace.`;
           showToast(msg, 'err');
         }
 
@@ -6222,12 +6225,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
             .catch(() => {});
         } else if (!anyConnected) {
           // OAuth round-tripped but Zernio didn't surface the account. Most
-          // common cause for Instagram: a personal IG profile (Pulse needs a
+          // common cause for Instagram: a personal IG profile (Mashal needs a
           // Business or Creator account). Same for Facebook personal profiles.
           showToast(
             'OAuth completed but no account was returned. ' +
             (platform === 'instagram' || platform === 'facebook'
-              ? 'Pulse needs a Business or Creator account — check your account type.'
+              ? 'Mashal needs a Business or Creator account — check your account type.'
               : 'Check your account permissions and try again.'),
             'warn'
           );
@@ -6531,7 +6534,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           <div id="settings-profile" style={{ scrollMarginTop: '80px' }}>
             <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Your profile</h3>
             <p className="text-[13px] text-mute dark:text-muteDark mb-4">
-              How Pulse greets you across workspaces.
+              How Mashal greets you across workspaces.
             </p>
             <div className="flex flex-col sm:flex-row gap-2 max-w-md">
               <input
@@ -6646,7 +6649,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </span>
             </div>
             <p className="text-[13px] text-mute dark:text-muteDark mb-4">
-              Add public handles you want PULSE to scrape and compare against. Without any entries here, no scrapes run.
+              Add public handles you want Mashal to scrape and compare against. Without any entries here, no scrapes run.
             </p>
 
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
@@ -6968,7 +6971,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                 <div className="min-w-0">
                   <label className="block text-[13.5px] font-semibold">Feature on homepage</label>
                   <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
-                    Show <strong>{form.name || 'this workspace'}</strong> in the "Trusted by" marquee on karvan-pulse.vercel.app. Only the workspace name is shown — never your handles, follower counts, or any account data.
+                    Show <strong>{form.name || 'this workspace'}</strong> in the "Trusted by" marquee on mashal.app. Only the workspace name is shown — never your handles, follower counts, or any account data.
                   </p>
                 </div>
                 <label className="inline-flex items-center cursor-pointer select-none flex-shrink-0">
@@ -7113,7 +7116,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           {/* Privacy note */}
           <div className="p-3.5 rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/20 text-[12px] leading-relaxed text-ultra dark:text-ultra/80">
             <Icon name="sparkle" className="w-3.5 h-3.5 inline mr-1" />
-            <strong>Your credentials are secure.</strong> API keys are stored on our servers only. You connect your accounts via official OAuth — PULSE never sees your passwords.
+            <strong>Your credentials are secure.</strong> API keys are stored on our servers only. You connect your accounts via official OAuth — Mashal never sees your passwords.
           </div>
 
         </div>
@@ -7138,7 +7141,7 @@ const EmptyDashboardCTA = ({ onGoToSettings }) => (
       Connect your first account.
     </h1>
     <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8">
-      PULSE generates your daily intelligence brief from your real social data.
+      Mashal generates your daily intelligence brief from your real social data.
       Connect Instagram, TikTok, YouTube, or any other platform to get started.
     </p>
     <Btn variant="ink" size="lg" onClick={onGoToSettings}>
@@ -7220,7 +7223,7 @@ const TrialLockedPaywall = ({ trial, intentTier, onUpgrade }) => {
           Your data is waiting.
         </h1>
         <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8 leading-relaxed">
-          Your 7-day trial is over. Upgrade to {planLabel} to unlock every brief, signal, and competitor insight PULSE has been collecting.
+          Your 7-day trial is over. Upgrade to {planLabel} to unlock every brief, signal, and competitor insight Mashal has been collecting.
           Your accounts and competitor list are saved — they reconnect the moment you pay.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-2.5">
@@ -7272,7 +7275,7 @@ Object.assign(window, { EmptyDashboardCTA, BriefGenerating, TrialBanner, TrialLo
 
 </script>
 <script type="text/babel">
-// Pulse App — root routing + Supabase auth wired
+// Mashal App — root routing + Supabase auth wired
 
 const DEFAULTS = /*EDITMODE-BEGIN*/{
   "theme": "light",
@@ -7732,7 +7735,7 @@ function App() {
     return (
       <div className="min-h-screen bg-paper dark:bg-ink flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <PulseLogo className="h-8 opacity-60" />
+          <MashalLogo className="h-8 opacity-60" />
           <div className="w-5 h-5 border-2 border-ink/20 dark:border-paper/20 border-t-ink dark:border-t-paper rounded-full animate-spin" />
         </div>
       </div>

@@ -1,5 +1,5 @@
 // ═════════════════════════════════════════════════════════════════════════
-// [PULSE-SPECIFIC] Streaming variant of /api/intelligence/generate.
+// [Mashal-SPECIFIC] Streaming variant of /api/intelligence/generate.
 // Returns Server-Sent Events so the browser can render verdict text as
 // Gemini emits it (~1s to first token vs ~5-10s for the full JSON).
 //
