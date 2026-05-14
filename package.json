@@ -2,7 +2,7 @@
   "name": "mashal",
   "version": "0.1.0",
   "private": true,
-  "description": "Mashal — Social Media Competitive Intelligence by KARVAN BI Studio",
+  "description": "Mashal — Social Media Competitive Intelligence by Empakt Financial Inc.",
   "type": "module",
   "engines": {
     "node": ">=18.0.0"
