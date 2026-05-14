@@ -49,4 +49,4 @@ Repeat for each template. Supabase saves immediately — no deploy needed.
 
 These templates assume Supabase Auth → SMTP Settings is wired to Resend
 (see project notes). Sender address must use a domain verified in Resend
-(`karvan.io` today).
+(`mashal.app`).

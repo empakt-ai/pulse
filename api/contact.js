@@ -7,7 +7,7 @@
 
 import { sendEmail } from './_lib/email.js';
 
-const CONTACT_TO = process.env.CONTACT_TO || 'hello@karvan.io';
+const CONTACT_TO = process.env.CONTACT_TO || 'hello@mashal.app';
 
 // In-process dedupe — tiny LRU keyed by ip+email+hash(message) for ~60s.
 // Survives across requests on the same warm function instance only; that's
