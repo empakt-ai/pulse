@@ -1317,10 +1317,10 @@ Object.assign(window, {
 <script type="text/babel">
 // Mashal Landing page
 
-const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'brand' }) => {
+const Landing = ({ onSignIn, onSignUp, theme, toggleTheme, heroVariant = 'gradient', activePlan = 'brand' }) => {
   return (
     <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper">
-      <LandingNav onSignIn={onSignIn} onSignUp={onSignUp} />
+      <LandingNav onSignIn={onSignIn} onSignUp={onSignUp} theme={theme} toggleTheme={toggleTheme} />
       <Hero variant={heroVariant} onSignUp={onSignUp} />
       <SocialProofMarquee />
       <DashboardPreview />
@@ -1336,7 +1336,7 @@ const Landing = ({ onSignIn, onSignUp, heroVariant = 'gradient', activePlan = 'b
   );
 };
 
-const LandingNav = ({ onSignIn, onSignUp }) => (
+const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => (
   <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
     <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
       <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal — go to homepage"><MashalLogo /></a>
@@ -1348,6 +1348,17 @@ const LandingNav = ({ onSignIn, onSignUp }) => (
         <a href="#faq" className="hover:text-ink dark:hover:text-paper transition">FAQ</a>
       </nav>
       <div className="flex items-center gap-2">
+        {toggleTheme && (
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center justify-center transition"
+            title="Toggle theme"
+            aria-label="Toggle theme"
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+          </button>
+        )}
         <Btn variant="ghost" size="sm" onClick={onSignIn}>Sign in</Btn>
         <Btn variant="ink" size="sm" onClick={onSignUp}>Start free trial</Btn>
       </div>
@@ -7749,6 +7760,8 @@ function App() {
         <Landing
           heroVariant={t.heroVariant}
           activePlan={t.activePlan}
+          theme={t.theme}
+          toggleTheme={() => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark')}
           onSignIn={() => setRoute('signin')}
           onSignUp={() => setRoute('signup')}
         />
