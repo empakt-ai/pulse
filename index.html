@@ -634,6 +634,7 @@ const Btn = ({ children, variant = 'ink', size = 'md', className = '', as: As = 
   const variants = {
     ink: 'bg-ink text-paper hover:bg-coal dark:bg-paper dark:text-ink dark:hover:bg-chalk',
     lime: 'bg-lime text-ink hover:bg-limeDeep',
+    ultra: 'bg-ultra text-paper hover:brightness-110',
     ghost: 'bg-transparent text-ink dark:text-paper hover:bg-ink/5 dark:hover:bg-paper/5',
     outline: 'bg-transparent border border-ink/15 dark:border-paper/15 text-ink dark:text-paper hover:border-ink/40 dark:hover:border-paper/40',
     magenta: 'bg-magenta text-white hover:brightness-110'
@@ -1595,15 +1596,15 @@ const HowItWorks = () => (
 );
 
 const Features = () => (
-  <section id="features" className="bg-ink text-paper">
+  <section id="features" className="bg-chalk dark:bg-coal text-ink dark:text-paper border-y border-line dark:border-lineDark">
     <div className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
       <div className="grid lg:grid-cols-12 gap-10 mb-12">
         <div className="lg:col-span-7">
-          <Eyebrow color="text-lime">Features</Eyebrow>
-          <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mt-3">Every metric you'd check. <span className="italic font-serif font-normal text-muteDark">Already read for you.</span></h2>
+          <Eyebrow>Features</Eyebrow>
+          <h2 className="font-display text-[36px] sm:text-[56px] leading-[0.96] font-semibold tracking-tightest mt-3">Every metric you'd check. <span className="italic font-serif font-normal text-mute dark:text-muteDark">Already read for you.</span></h2>
         </div>
       </div>
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-paper/[0.08]">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-px bg-line dark:bg-lineDark">
         {[
           { i: 'sparkle', t: 'Morning Brief', d: 'A 2-minute read every day. AI verdict, top signals, 3 prioritized actions.' },
           { i: 'brain', t: 'AI Signal Engine', d: 'Cross-platform pattern detection finds viral formulas, content gaps, and emerging trends.' },
@@ -1615,10 +1616,10 @@ const Features = () => (
           { i: 'download', t: 'Daily Email + Export', d: 'Brief in your inbox by 6 AM. Export anything to CSV, PDF, or your team\'s Slack.' },
           { i: 'layers', t: 'White-Label Workspaces', d: 'Agencies: 20 client workspaces, branded reports, bulk export. Built for scale.' }
         ].map((f,i) => (
-          <div key={i} className="bg-ink p-7 hover:bg-coalsoft transition">
-            <div className="w-10 h-10 rounded-xl bg-lime/15 text-lime flex items-center justify-center mb-4"><Icon name={f.i} className="w-5 h-5" /></div>
+          <div key={i} className="bg-chalk dark:bg-coal p-7 hover:bg-paper dark:hover:bg-coalsoft transition">
+            <div className="w-10 h-10 rounded-xl bg-ultra/15 text-ultra flex items-center justify-center mb-4"><Icon name={f.i} className="w-5 h-5" /></div>
             <h3 className="font-display text-[18px] font-semibold tracking-tight mb-2">{f.t}</h3>
-            <p className="text-[13.5px] text-muteDark leading-relaxed">{f.d}</p>
+            <p className="text-[13.5px] text-mute dark:text-muteDark leading-relaxed">{f.d}</p>
           </div>
         ))}
       </div>
@@ -1862,25 +1863,30 @@ const Pricing = ({ activePlan, onSignUp }) => {
         {plans.map(p => {
           const featured = p.id === activePlan;
           return (
-            <div key={p.id} className={cls('relative rounded-3xl p-7 border transition-all', featured ? 'bg-ink text-paper border-ink scale-[1.02] shadow-pop' : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark')}>
+            <div key={p.id} className={cls(
+              'relative rounded-3xl p-7 transition-all bg-chalk dark:bg-coalsoft',
+              featured
+                ? 'border-2 border-ultra scale-[1.02] shadow-[0_14px_44px_-14px_rgba(107,91,255,0.45)]'
+                : 'border border-line dark:border-lineDark'
+            )}>
               {featured && (
-                <span className="absolute -top-3 left-7 inline-flex items-center gap-1.5 px-3 h-6 rounded-full bg-lime text-ink text-[11px] font-mono uppercase tracking-[0.12em] font-medium">Most popular</span>
+                <span className="absolute -top-3 left-7 inline-flex items-center gap-1.5 px-3 h-6 rounded-full bg-ultra text-paper text-[11px] font-mono uppercase tracking-[0.12em] font-medium">Most popular</span>
               )}
               <h3 className="font-display text-[22px] font-semibold tracking-tighter">{p.name}</h3>
-              <p className={cls('text-[13px] mt-1 mb-5', featured ? 'text-paper/70' : 'text-mute dark:text-muteDark')}>{p.blurb}</p>
+              <p className="text-[13px] mt-1 mb-5 text-mute dark:text-muteDark">{p.blurb}</p>
               <div className="flex items-baseline gap-1 mb-6">
                 <span className="font-display text-[48px] font-semibold tracking-tightest leading-none">${p.price}</span>
-                <span className={cls('text-[13px]', featured ? 'text-paper/60' : 'text-mute dark:text-muteDark')}>/month</span>
+                <span className="text-[13px] text-mute dark:text-muteDark">/month</span>
               </div>
               <ul className="space-y-2.5 mb-7">
                 {p.bullets.map((b,i) => (
                   <li key={i} className="flex items-start gap-2.5 text-[13.5px] leading-snug">
-                    <Icon name="check" className={cls('w-4 h-4 mt-0.5 flex-shrink-0', featured ? 'text-lime' : 'text-ultra')} stroke={2} />
-                    <span className={featured ? 'text-paper/90' : ''}>{b}</span>
+                    <Icon name="check" className="w-4 h-4 mt-0.5 flex-shrink-0 text-ultra" stroke={2} />
+                    <span>{b}</span>
                   </li>
                 ))}
               </ul>
-              <Btn variant={featured ? 'lime' : 'ink'} size="md" className="w-full" onClick={onSignUp}>{p.cta}</Btn>
+              <Btn variant={featured ? 'ultra' : 'ink'} size="md" className="w-full" onClick={onSignUp}>{p.cta}</Btn>
             </div>
           );
         })}
