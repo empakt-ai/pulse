@@ -307,6 +307,22 @@ a.nav-cta:hover {
 }
 .site-footer .meta a { color: var(--mute); }
 
+/* Social row in the brand column of the footer. Small icon chips that
+   pick up brand accent on hover — same treatment across every marketing
+   page. Sized to sit comfortably under the 14px tagline copy. */
+.social-row { display: flex; gap: 10px; margin-top: 18px; }
+.social-row a {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: 9px;
+  color: var(--mute); border: 1px solid var(--line);
+  transition: color 120ms, border-color 120ms, background 120ms;
+}
+.social-row a:hover {
+  color: var(--ultra); border-color: var(--ultra);
+  background: rgba(107, 91, 255, 0.06);
+}
+.social-row svg { width: 16px; height: 16px; display: block; }
+
 /* ─── Misc utilities ──────────────────────────────────────────────────── */
 .divider { border-top: 1px solid var(--line); margin: 36px 0; }
 section { padding: 32px 0; }
