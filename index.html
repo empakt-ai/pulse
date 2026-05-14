@@ -5872,7 +5872,7 @@ const PLATFORMS = [
 ];
 
 // ── Platform connect card ─────────────────────────────────────────────────────
-const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onBackfill, backfilling }) => {
+const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onBackfill, backfilling, disabledReason }) => {
   const connected = !!account;
   // One-shot history fetch — only meaningful when an account is actually
   // connected. The server stamps historic_backfilled_at and refuses to
@@ -5955,17 +5955,20 @@ const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onB
       ) : (
         <button
           onClick={() => onConnect(platform.id)}
-          disabled={loading}
+          disabled={loading || !!disabledReason}
+          title={disabledReason || undefined}
           className={cls(
             'flex-shrink-0 self-center h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5 whitespace-nowrap',
-            loading
-              ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5'
+            (loading || disabledReason)
+              ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5 border border-line dark:border-lineDark text-mute dark:text-muteDark'
               : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:bg-coal dark:hover:bg-chalk'
           )}
         >
           {loading
             ? <><Icon name="clock" className="w-3.5 h-3.5" /> Opening...</>
-            : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>
+            : disabledReason
+              ? <><Icon name="info" className="w-3.5 h-3.5" /> {disabledReason}</>
+              : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>
           }
         </button>
       )}
@@ -6152,6 +6155,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
   const [workspaces, setWorkspaces] = React.useState([]);
   const [competitors, setCompetitors] = React.useState([]);
   const [usage, setUsage]           = React.useState(null);
+  // Tier object (full TIERS entry from /api/workspaces) so the SPA can
+  // pre-flight account-cap and platform-tier checks before the OAuth
+  // round-trip. Server-side is still the authoritative gate.
+  const [tierInfo, setTierInfo]     = React.useState(null);
   const [loading, setLoading]       = React.useState(true);
   const [connecting, setConnecting] = React.useState(null);
   const [toast, setToast]           = React.useState(null);
@@ -6296,6 +6303,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
         setWorkspace(wsData.workspace);
         setWorkspaces(wsList.workspaces || []);
         setUsage(wsData.usage);
+        setTierInfo(wsData.tier || null);
         setAccounts(acctData.accounts || []);
         setCompetitors(comps.competitors || []);
         setForm({
@@ -6323,6 +6331,16 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
 
   // ── Connect a platform ───────────────────────────────────────────────────
   const connectPlatform = async (platformId) => {
+    // Pre-flight cap check — refuse before opening the OAuth popup so the
+    // user doesn't round-trip through Zernio just to be told no. Server
+    // at /api/accounts still enforces this authoritatively as a backstop.
+    const activeCount = (accounts || []).filter(a => a.is_active !== false).length;
+    const capLimit = tierInfo?.accounts_total;
+    if (capLimit != null && capLimit !== -1 && activeCount >= capLimit) {
+      showToast(`You're at your ${capLimit}-account limit on ${tierInfo?.label || 'this plan'}. Upgrade to add more.`, 'warn');
+      return;
+    }
+
     setConnecting(platformId);
     try {
       const data = await api(`/connect/${platformId}`);
@@ -6630,20 +6648,38 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               )}
             </div>
 
-            <div className="space-y-2.5">
-              {PLATFORMS.map(platform => (
-                <PlatformCard
-                  key={platform.id}
-                  platform={platform}
-                  account={connectedMap[platform.id]}
-                  loading={connecting === platform.id}
-                  onConnect={connectPlatform}
-                  onDisconnect={disconnectPlatform}
-                  onBackfill={backfillAccount}
-                  backfilling={backfillingId === connectedMap[platform.id]?.id}
-                />
-              ))}
-            </div>
+            {(() => {
+              const activeCount = (accounts || []).filter(a => a.is_active !== false).length;
+              const capLimit = tierInfo?.accounts_total;
+              const atCap = capLimit != null && capLimit !== -1 && activeCount >= capLimit;
+              return (
+                <>
+                  {atCap && (
+                    <div className="text-[12px] text-mute dark:text-muteDark mb-2.5 flex items-center gap-2">
+                      <Icon name="info" className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>You're using <strong>{activeCount}/{capLimit}</strong> accounts on {tierInfo?.label || 'your plan'}. Disconnect one or upgrade to add more.</span>
+                    </div>
+                  )}
+                  <div className="space-y-2.5">
+                    {PLATFORMS.map(platform => (
+                      <PlatformCard
+                        key={platform.id}
+                        platform={platform}
+                        account={connectedMap[platform.id]}
+                        loading={connecting === platform.id}
+                        // Disable Connect when at cap UNLESS the platform is
+                        // already connected — disconnecting still has to work.
+                        disabledReason={atCap && !connectedMap[platform.id] ? `Cap reached (${activeCount}/${capLimit})` : null}
+                        onConnect={connectPlatform}
+                        onDisconnect={disconnectPlatform}
+                        onBackfill={backfillAccount}
+                        backfilling={backfillingId === connectedMap[platform.id]?.id}
+                      />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           <div className="h-px bg-line dark:bg-lineDark" />
