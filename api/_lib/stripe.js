@@ -29,9 +29,9 @@ if (!SECRET && typeof process !== 'undefined') {
 // Tier ↔ Price mapping. These are LIVE Price IDs from Stripe Dashboard.
 // Test-mode keys/prices would go in a separate map keyed by env.
 export const PRICE_BY_TIER = {
-  creator: 'price_1TWfK5ELRsQTgl07xDKn3yge',
-  brand:   'price_1TWfLRELRsQTgl07431afTpz',
-  agency:  'price_1TWfMdELRsQTgl07pgulXfdr',
+  creator: 'price_1TWzqUImZCTvR1deBmoqcZdq',
+  brand:   'price_1TWzqmImZCTvR1deNcMzg059',
+  agency:  'price_1TWzr4ImZCTvR1deU87YGUhD',
 };
 export const TIER_BY_PRICE = Object.fromEntries(
   Object.entries(PRICE_BY_TIER).map(([k, v]) => [v, k]),
