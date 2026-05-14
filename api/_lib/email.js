@@ -1,12 +1,12 @@
 // ═════════════════════════════════════════════════════════════════════════
 // [SHARED] Resend email wrapper — raw fetch, no SDK. Used by the weekly
 // digest cron and (eventually) any transactional emails. RESEND_API_KEY
-// must be set in Vercel; we ship from Mashal_FROM_EMAIL or a default.
+// must be set in Vercel; we ship from MASHAL_FROM_EMAIL or a default.
 // ═════════════════════════════════════════════════════════════════════════
 
 const RESEND_API = 'https://api.resend.com/emails';
 const KEY = process.env.RESEND_API_KEY;
-const FROM = process.env.Mashal_FROM_EMAIL || 'Mashal <reports@karvan.io>';
+const FROM = process.env.MASHAL_FROM_EMAIL || 'Mashal <reports@mashal.app>';
 
 // Send an email. attachments is an optional array of
 //   { filename: string, content: Buffer | base64 string }
