@@ -31,6 +31,12 @@ export default async function handler(req, res) {
     return res.end(JSON.stringify({ error: 'Workspace not found' }));
   }
 
+  // Auto-fire paths (Agency session-start regen, first-brief bootstrap)
+  // tag with ?source=auto so the resulting usage_log row records as
+  // 'intelligence_auto' and stays out of the monthly quota counter.
+  const source = (req.query?.source || '').toString().toLowerCase();
+  const manual = source !== 'auto';
+
   // Open SSE response. `X-Accel-Buffering: no` defeats any proxy buffering
   // that would otherwise hold chunks until the response closes.
   res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
@@ -44,7 +50,7 @@ export default async function handler(req, res) {
   };
 
   try {
-    for await (const ev of generateBriefStream(ws)) {
+    for await (const ev of generateBriefStream(ws, { manual })) {
       send(ev);
     }
   } catch (e) {

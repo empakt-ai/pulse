@@ -208,7 +208,10 @@ async function runWorkspace(workspace) {
       result.steps.push({ step: 'competitors', error: e.message });
     }
     try {
-      const brief = await generateBrief(workspace);
+      // Cron-driven brief is system-initiated — record as intelligence_auto
+      // so it leaves an audit row but doesn't burn the workspace's monthly
+      // user-initiated quota.
+      const brief = await generateBrief(workspace, { manual: false });
       result.steps.push({ step: 'brief', ok: !brief?.error, error: brief?.error });
     } catch (e) {
       result.steps.push({ step: 'brief', error: e.message });

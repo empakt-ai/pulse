@@ -818,7 +818,13 @@ export async function generateLiveSignals(workspace) {
   return { new: out.length, checked: posts.length, inbox: inboxEvents?.length || 0 };
 }
 
-export async function generateBrief(workspace) {
+// `manual` distinguishes a user-initiated regeneration (counts toward the
+// monthly quota — usage_log.run_type = 'intelligence') from a system-fired
+// regeneration (cron, Agency session-start auto-regen, first-brief bootstrap
+// — usage_log.run_type = 'intelligence_auto', excluded from the counter).
+// Defaults to true so callers that haven't been updated still record as
+// user runs; auto-fire paths must pass { manual: false } explicitly.
+export async function generateBrief(workspace, { manual = true } = {}) {
   // 1) Gather data — including content_pieces + series so the prompt can
   //    reason about cross-platform groupings and ongoing numbered series
   //    rather than treating each post as an isolated row.
@@ -884,7 +890,7 @@ export async function generateBrief(workspace) {
   //    zero even after several real briefs.
   await supabase.insert('usage_log', {
     workspace_id: workspace.id,
-    run_type: 'intelligence',
+    run_type: manual ? 'intelligence' : 'intelligence_auto',
     platform: 'all',
     records_fetched: (brief.signals?.length || 0) + (brief.actions?.length || 0) + 1,
     cost_cents: result.cost_cents || 0,
@@ -921,7 +927,7 @@ export async function generateBrief(workspace) {
 //   { chunk: '...' }                      — text chunk from Gemini
 //   { phase: 'persisting' }               — full text received, parsing + writing
 //   { done: true, summary: {...} } | { error: 'persist_failed', ... } | etc.
-export async function* generateBriefStream(workspace) {
+export async function* generateBriefStream(workspace, { manual = true } = {}) {
   yield { phase: 'gathering' };
 
   const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
@@ -999,7 +1005,7 @@ export async function* generateBriefStream(workspace) {
 
   await supabase.insert('usage_log', {
     workspace_id: workspace.id,
-    run_type: 'intelligence',
+    run_type: manual ? 'intelligence' : 'intelligence_auto',
     platform: 'all',
     records_fetched: (brief.signals?.length || 0) + (brief.actions?.length || 0) + 1,
     cost_cents: 0,

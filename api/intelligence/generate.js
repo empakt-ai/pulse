@@ -19,8 +19,15 @@ export default async function handler(req, res) {
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
+  // Auto-fire paths (Agency session-start regen, first-brief bootstrap,
+  // cron passing through here in future) tag themselves with ?source=auto
+  // so the run records as 'intelligence_auto' and stays out of the
+  // monthly quota counter. Anything else is treated as a user click.
+  const source = (req.query?.source || '').toString().toLowerCase();
+  const manual = source !== 'auto';
+
   try {
-    const result = await generateBrief(ws);
+    const result = await generateBrief(ws, { manual });
     // Forward the WHOLE result on error so the UI panel sees message/details
     // (e.g. the underlying SQL error from a persist failure). Keep status 200
     // so the browser api() helper doesn't throw and discard the body.

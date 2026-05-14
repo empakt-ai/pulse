@@ -7568,7 +7568,9 @@ function App() {
     if (!isAgency) return;
     agencyRegenFiredRef.current = true;
     let cancelled = false;
-    api('/intelligence/generate', { method: 'POST' })
+    // ?source=auto — this session-start regen is system-initiated and
+    // shouldn't burn a user-quota slot. Records as 'intelligence_auto'.
+    api('/intelligence/generate?source=auto', { method: 'POST' })
       .then(() => { if (!cancelled) refreshBrief(); })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -7611,7 +7613,10 @@ function App() {
       try {
         const token = window.__pulseToken;
         const wsId = (() => { try { return localStorage.getItem('pulse:workspaceId') || null; } catch { return null; } })();
-        const res = await fetch(`${API_BASE}/api/intelligence/stream`, {
+        // First-brief bootstrap is system-initiated — tag ?source=auto so
+        // it records as 'intelligence_auto' and is excluded from the
+        // workspace's monthly user-initiated quota counter.
+        const res = await fetch(`${API_BASE}/api/intelligence/stream?source=auto`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -7621,7 +7626,7 @@ function App() {
         });
         if (!res.ok || !res.body) {
           // Fallback to non-streaming endpoint if stream isn't available
-          const r = await api('/intelligence/generate', { method: 'POST' });
+          const r = await api('/intelligence/generate?source=auto', { method: 'POST' });
           if (!cancelled && r?.ok) refreshBrief();
           return;
         }
