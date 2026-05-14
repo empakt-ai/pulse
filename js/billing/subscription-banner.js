@@ -67,7 +67,7 @@ const SubscriptionBanner = ({ workspace, onUpgrade, onPortal }) => {
           onClick={onPortal}
           className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-ink/10 hover:bg-ink/20 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
         >
-          Manage billing <Icon name="arrowRight" className="w-3 h-3" />
+          Manage subscription <Icon name="arrowRight" className="w-3 h-3" />
         </button>
       </div>
     );

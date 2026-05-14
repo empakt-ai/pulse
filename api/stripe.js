@@ -59,6 +59,25 @@ export default async function handler(req, res) {
     return created.id;
   }
 
+  // Self-heal for "No such customer" — happens on test/live key swaps,
+  // manual Stripe-dashboard deletes, or account switches. Null the cached
+  // id and retry once so a single click still succeeds.
+  const isMissingCustomer = e =>
+    e?.code === 'resource_missing'
+    && (e?.body?.error?.param ? e.body.error.param === 'customer' : true);
+
+  async function withCustomerRetry(fn) {
+    try { return await fn(); } catch (e) {
+      if (!isMissingCustomer(e)) throw e;
+      console.warn('[stripe] cached customer missing in Stripe, recreating');
+      await supabase.update('profiles',
+        { stripe_customer_id: null },
+        { eq: { id: auth.user.id } },
+      ).catch(err => console.warn('[stripe] clear customer_id failed:', err.message));
+      return fn();
+    }
+  }
+
   // ── Checkout ─────────────────────────────────────────────────────────
   if (action === 'checkout') {
     let body = req.body;
@@ -68,14 +87,16 @@ export default async function handler(req, res) {
     if (!priceId) return json(res, 400, { error: `Unknown tier: ${tier}` });
 
     try {
-      const customerId = await ensureCustomerId();
-      const session = await createCheckoutSession({
-        customerId,
-        priceId,
-        workspaceId: ws.id,
-        successUrl: `${APP_URL}/?checkout=success`,
-        cancelUrl:  `${APP_URL}/?checkout=cancelled`,
-        promoCode: body?.promoCode || null,
+      const session = await withCustomerRetry(async () => {
+        const customerId = await ensureCustomerId();
+        return createCheckoutSession({
+          customerId,
+          priceId,
+          workspaceId: ws.id,
+          successUrl: `${APP_URL}/?checkout=success`,
+          cancelUrl:  `${APP_URL}/?checkout=cancelled`,
+          promoCode: body?.promoCode || null,
+        });
       });
       return json(res, 200, { url: session.url, id: session.id });
     } catch (e) {
@@ -86,10 +107,12 @@ export default async function handler(req, res) {
   // ── Customer Portal ──────────────────────────────────────────────────
   if (action === 'portal') {
     try {
-      const customerId = await ensureCustomerId();
-      const session = await createPortalSession({
-        customerId,
-        returnUrl: `${APP_URL}/?portal=returned`,
+      const session = await withCustomerRetry(async () => {
+        const customerId = await ensureCustomerId();
+        return createPortalSession({
+          customerId,
+          returnUrl: `${APP_URL}/?portal=returned`,
+        });
       });
       return json(res, 200, { url: session.url });
     } catch (e) {

@@ -28,7 +28,12 @@ const PLATFORM_TO_ICON = {
 const platformKey = (p) => PLATFORM_TO_ICON[p] || p;
 
 // Pull the most likely media + link fields out of raw_data without sending
-// the whole (sometimes huge) payload to the client.
+// the whole (sometimes huge) payload to the client. Each sync path stores a
+// different raw_data shape, so the candidate list spans all of them:
+//   YouTube Data API → snippet.thumbnails.{maxres,high,standard,medium,default}.url
+//   Apify IG         → displayUrl, images[0]
+//   Apify TikTok     → videoMeta.{coverUrl,originCover,dynamicCover}
+//   Zernio           → platforms[0].thumbnailUrl / media[0].thumbnailUrl
 function pickMediaFields(platform, raw) {
   if (!raw) return {};
   const pick = (...keys) => {
@@ -39,8 +44,21 @@ function pickMediaFields(platform, raw) {
     return null;
   };
   return {
-    thumbnail: pick('thumbnailUrl', 'thumbnail', 'displayUrl', 'cover', 'previewUrl',
-                    'platforms.0.thumbnailUrl', 'media.0.thumbnailUrl'),
+    thumbnail: pick(
+      // Common top-level keys
+      'thumbnailUrl', 'thumbnail', 'displayUrl', 'cover', 'previewUrl', 'imageUrl',
+      // YouTube Data API shape — try highest quality first
+      'snippet.thumbnails.maxres.url', 'snippet.thumbnails.high.url',
+      'snippet.thumbnails.standard.url', 'snippet.thumbnails.medium.url',
+      'snippet.thumbnails.default.url',
+      // TikTok (clockworks) — videoMeta.coverUrl is the most stable
+      'videoMeta.coverUrl', 'videoMeta.originCover', 'videoMeta.dynamicCover',
+      // Instagram carousel — images[0] when displayUrl is missing
+      'images.0',
+      // Zernio multi-platform array
+      'platforms.0.thumbnailUrl', 'platforms.0.cover', 'platforms.0.previewUrl',
+      'media.0.thumbnailUrl', 'media.0.url'
+    ),
     media_url: pick('mediaUrl', 'videoUrl', 'url', 'permalink',
                     'platforms.0.mediaUrl', 'media.0.url'),
     permalink: pick('permalink', 'url', 'shareUrl', 'webUrl',

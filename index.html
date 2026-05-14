@@ -3153,7 +3153,7 @@ const SignalRow = ({ signal: s }) => {
   const c = kindColor[s.kind];
   return (
     <div className="row-pad rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 hover:border-ink/20 dark:hover:border-paper/20 transition-all flex items-start gap-4 group">
-      <div className={cls('w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center', c === 'magenta' ? 'bg-magenta/15 text-magenta' : c === 'ultra' ? 'bg-ultra/15 text-ultra' : c === 'lime' ? 'bg-lime/25 text-limeDeep dark:text-lime' : 'bg-amber/15 text-amber')}>
+      <div className={cls('w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center', c === 'magenta' ? 'bg-magenta/15 text-[#A8174A] dark:text-magenta' : c === 'ultra' ? 'bg-ultra/15 text-[#3B2EBF] dark:text-ultra' : c === 'lime' ? 'bg-lime/25 text-[#5E7A00] dark:text-limeDeep' : 'bg-amber/15 text-[#8A5600] dark:text-amber')}>
         <Icon name={iconMap[s.kind]} className="w-4 h-4" />
       </div>
       <div className="flex-1 min-w-0">
@@ -4595,8 +4595,12 @@ const ContentScreen = ({ activePlatform, activeBrand }) => {
               <div className="grid sm:grid-cols-[180px_1fr] gap-5">
                 <div className="aspect-[9/16] rounded-2xl bg-gradient-to-br from-ink via-ultra/40 to-magenta/40 flex flex-col justify-between p-3 text-white relative overflow-hidden">
                   {p.thumbnail && (
-                    <img src={p.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover opacity-90"
-                         onError={e => { e.currentTarget.style.display = 'none'; }} />
+                    <img
+                      src={`${API_BASE}/api/post-image?id=${encodeURIComponent(p.id)}&t=${encodeURIComponent(window.__pulseToken || '')}`}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover opacity-90"
+                      onError={e => { e.currentTarget.style.display = 'none'; }}
+                    />
                   )}
                   <div className="relative z-10">
                     <Pill color={signal.tone}>{signal.label}</Pill>
@@ -7066,21 +7070,26 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </div>
             </div>
 
-            <div className="mt-5 flex justify-between items-center gap-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const r = await api('/stripe?action=portal', { method: 'POST' });
-                    if (r?.url) window.location.href = r.url;
-                  } catch (e) {
-                    showToast(e.message || 'Could not open billing portal', 'err');
-                  }
-                }}
-                className="text-[13px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper underline underline-offset-4"
-              >
-                Manage billing on Stripe →
-              </button>
+            <div className="mt-5 flex justify-end items-center gap-3">
+              {/* Hide while in app-managed trial — Stripe has no subscription
+                  yet, so the portal would just show an empty page. The link
+                  reappears once a real subscription exists (any state). */}
+              {workspace?.stripe_subscription_status && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const r = await api('/stripe?action=portal', { method: 'POST' });
+                      if (r?.url) window.location.href = r.url;
+                    } catch (e) {
+                      showToast(e.message || 'Could not open billing portal', 'err');
+                    }
+                  }}
+                  className="mr-auto text-[13px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper underline underline-offset-4"
+                >
+                  Manage your subscription →
+                </button>
+              )}
               <Btn
                 onClick={saveWorkspace}
                 disabled={saving}
@@ -7150,9 +7159,11 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                         <UsageMeter used={usage.used} limit={usage.limit} tier={tier} />
                       </div>
                     )}
-                    {/* CTA varies by state: no sub → Upgrade, past_due → fix
-                        card via portal, canceled → resubscribe, active →
-                        upgrade plan only when not on agency. */}
+                    {/* CTA varies by state: no sub → Upgrade (always, even
+                        for Agency-trial — workspace.tier reflects the intent
+                        tier and they still need to convert); past_due → fix
+                        card via portal; canceled → resubscribe; active →
+                        Change plan only when not on agency (no higher tier). */}
                     {subStatus === 'past_due' ? (
                       <button
                         onClick={async () => {
@@ -7172,7 +7183,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                       >
                         Subscribe again →
                       </button>
-                    ) : (tier !== 'agency') && (
+                    ) : (!subStatus || tier !== 'agency') && (
                       <button
                         onClick={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
                         className="mt-4 w-full h-9 rounded-xl bg-lime text-ink text-[13px] font-medium hover:brightness-105 transition"
