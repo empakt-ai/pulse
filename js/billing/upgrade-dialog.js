@@ -20,7 +20,7 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
   const tierLabel = intentTier
     ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
     : 'Your plan';
-  const supportEmail = 'hello@mashal.app';
+  const supportEmail = 'mashal@empakt.ca';
 
   const startCheckout = async () => {
     setLoading(true);
