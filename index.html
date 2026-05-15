@@ -219,6 +219,7 @@ tailwind.config = {
     color: #0A0A0B;
   }
   #pulse-splash-logo img { display: block; width: 38px; height: 38px; }
+  #pulse-splash-logo .dot { color: #FF2D6A; }
   html.dark #pulse-splash-logo { color: #F5F1E8; }
   #pulse-splash-spinner {
     width: 28px; height: 28px;
@@ -308,7 +309,7 @@ tailwind.config = {
 <div id="root"></div>
 <div id="pulse-splash" aria-live="polite" aria-busy="true">
   <div id="pulse-splash-inner">
-    <div id="pulse-splash-logo"><img src="/images/mashal-logo.png" alt="" decoding="async"><span>Mashal</span></div>
+    <div id="pulse-splash-logo"><img src="/images/mashal-logo.png" alt="" decoding="async"><span>Mashal<span class="dot">.</span></span></div>
     <div id="pulse-splash-spinner"></div>
     <div id="pulse-splash-status">Loading your intelligence</div>
     <button id="pulse-splash-reset" type="button" onclick="try{localStorage.clear();sessionStorage.clear();}catch(e){}location.reload()">Taking too long? Reset session</button>
@@ -748,7 +749,7 @@ const SectionHead = ({ eyebrow, title, sub, right, className = '' }) => (
 const MashalLogo = ({ className = 'h-7' }) => (
   <div className={cls('inline-flex items-center gap-2', className)}>
     <img src="/images/mashal-logo.png" alt="" className="h-full w-auto" />
-    <span className="font-display text-[20px] font-bold tracking-tightest">Mashal</span>
+    <span className="font-display text-[20px] font-bold tracking-tightest">Mashal<span className="text-magenta">.</span></span>
   </div>
 );
 
@@ -7392,6 +7393,13 @@ function App() {
           return 'app';
         }
       }
+      // Deep-link hint from the static marketing pages — they don't have a
+      // sign-in form of their own, so they navigate to /?route=signin|signup
+      // and we land directly on the right view. Only respected for
+      // unauthenticated visitors; signed-in users stay in 'app'.
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('route');
+      if (r === 'signin' || r === 'signup') return r;
     } catch { /* fall through to landing */ }
     return 'landing';
   });

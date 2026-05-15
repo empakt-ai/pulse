@@ -28,6 +28,10 @@
   // Always land at the top of the page on navigation. Browsers default
   // to restoring the previous scroll position which feels broken when
   // jumping between marketing pages of different lengths.
+  // Apply persisted theme before paint to avoid a flash on dark-mode users.
+  // Shares the pulse_theme key + html.dark class with the SPA so the
+  // preference carries cleanly between the app and these static pages.
+  (function(){try{if(localStorage.getItem('pulse_theme')==='dark')document.documentElement.classList.add('dark');}catch(_){} })();
   if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   window.addEventListener('load', () => window.scrollTo(0, 0));
 </script>
@@ -59,14 +63,24 @@
 
 <header class="site-header">
   <div class="wrap row">
-    <a href="/" class="logo">Mashal<span class="dot">.</span></a>
+    <a href="/" class="logo" aria-label="Mashal — go to homepage">
+      <img src="/images/mashal-logo.png" alt="" class="logo-img" />
+      <span>Mashal<span class="dot">.</span></span>
+    </a>
     <nav class="nav-links">
       <a href="/features">Features</a>
       <a href="/pricing">Pricing</a>
       <a href="/about">About</a>
       <a href="/contact">Contact</a>
-      <a href="/" class="nav-cta">Start free trial</a>
     </nav>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/?route=signin" class="nav-signin">Sign in</a>
+      <a href="/?route=signup" class="nav-cta">Start free trial</a>
+    </div>
   </div>
 </header>
 
@@ -159,7 +173,7 @@
 <footer class="site-footer">
   <div class="wrap inner">
     <div>
-      <a href="/" class="logo" aria-label="Mashal — go to homepage">Mashal<span class="dot">.</span></a>
+      <a href="/" class="logo" aria-label="Mashal — go to homepage"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
       <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
       <nav class="social-row" aria-label="Follow Mashal">
         <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a>
@@ -187,5 +201,6 @@
   </div></div>
 </footer>
 
+<script src="/js/marketing.js" defer></script>
 </body>
 </html>

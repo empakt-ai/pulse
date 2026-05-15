@@ -73,17 +73,46 @@ main { padding-bottom: 96px; }
   height: 64px;
 }
 .logo {
+  display: inline-flex; align-items: center; gap: 8px;
   font-family: 'Bricolage Grotesque', sans-serif;
-  font-weight: 800; font-size: 22px; letter-spacing: -0.03em;
+  font-weight: 800; font-size: 20px; letter-spacing: -0.03em;
+  color: var(--ink);
 }
+.logo:hover { color: var(--ink); opacity: 0.85; }
+.logo-img { display: block; height: 28px; width: auto; }
 .logo .dot { color: var(--magenta); }
 .nav-links { display: flex; align-items: center; gap: 28px; font-size: 14px; }
 .nav-links a { color: var(--mute); font-weight: 500; }
 .nav-links a:hover { color: var(--ink); }
+
+/* Right-side actions: theme toggle + Sign in + Start free trial.
+   Mirrors the home-page LandingNav so navigating from / → /features
+   doesn't change the chrome. */
+.nav-actions { display: inline-flex; align-items: center; gap: 6px; }
+.theme-toggle {
+  width: 36px; height: 36px; border-radius: 999px;
+  background: transparent; border: none; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--ink); cursor: pointer;
+  transition: background 120ms;
+}
+.theme-toggle:hover { background: rgba(10,10,11,0.05); }
+.theme-toggle svg { width: 16px; height: 16px; }
+.theme-toggle .icon-sun  { display: none; }
+.theme-toggle .icon-moon { display: block; }
+.nav-signin {
+  display: inline-flex; align-items: center;
+  height: 36px; padding: 0 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 500;
+  color: var(--ink);
+}
+.nav-signin:hover { background: rgba(10,10,11,0.05); color: var(--ink); }
+
 /* CTA pill — selector specificity bumped to .nav-links a.nav-cta so it
    wins over the .nav-links a { color: var(--mute) } rule above. Without
    that, the button rendered black-on-grey instead of black-on-paper. */
 .nav-links a.nav-cta,
+.nav-actions a.nav-cta,
 a.nav-cta {
   display: inline-flex; align-items: center; gap: 6px;
   height: 36px; padding: 0 16px; border-radius: 10px;
@@ -92,13 +121,16 @@ a.nav-cta {
   font-size: 13px; font-weight: 500;
 }
 .nav-links a.nav-cta:hover,
+.nav-actions a.nav-cta:hover,
 a.nav-cta:hover {
   background: var(--ultra);
   color: var(--paper);
 }
 
-@media (max-width: 640px) {
-  .nav-links a:not(.nav-cta) { display: none; }
+@media (max-width: 720px) {
+  .nav-links { display: none; }
+  .nav-actions .theme-toggle,
+  .nav-actions .nav-signin { display: none; }
 }
 
 /* ─── Page typography ──────────────────────────────────────────────────── */
@@ -327,3 +359,30 @@ a.nav-cta:hover {
 .divider { border-top: 1px solid var(--line); margin: 36px 0; }
 section { padding: 32px 0; }
 .muted { color: var(--mute); }
+
+/* ─── Dark mode ───────────────────────────────────────────────────────────
+   Triggered by adding html.dark — same toggle pattern as the SPA, same
+   localStorage key (pulse_theme) so the preference persists across the
+   home page and the marketing pages. Most rules use var(--ink) and
+   var(--paper) and flip automatically; only a handful of hardcoded
+   `white` backgrounds need explicit dark overrides below. */
+html.dark {
+  --ink: #F5F1E8;
+  --paper: #0A0A0B;
+  --chalk: #15151A;
+  --line: rgba(245,241,232,0.1);
+  --mute: #9F9B92;
+}
+html.dark .site-header { background: rgba(10, 10, 11, 0.85); }
+html.dark .card,
+html.dark .feature-cell,
+html.dark .price-card:not(.featured) { background: var(--chalk); }
+html.dark .form-field input,
+html.dark .form-field textarea { background: var(--chalk); color: var(--ink); }
+html.dark .btn-outline { border-color: rgba(245,241,232,0.18); color: var(--ink); }
+html.dark .btn-outline:hover { border-color: var(--ink); }
+html.dark .theme-toggle:hover,
+html.dark .nav-signin:hover { background: rgba(245,241,232,0.06); }
+html.dark .theme-toggle .icon-moon { display: none; }
+html.dark .theme-toggle .icon-sun  { display: block; }
+html.dark .social-row a:hover { background: rgba(107, 91, 255, 0.12); }
