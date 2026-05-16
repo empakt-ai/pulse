@@ -15,15 +15,18 @@
 import { supabase } from './supabase.js';
 
 // Each platform has a dominant placement we benchmark against when the
-// caller doesn't specify a format. The user's `per_platform` row in
-// brief.js aggregates across all an account's formats, so matching against
-// the primary placement keeps the comparison meaningful and deterministic.
+// caller doesn't specify a format. Keys match `per_platform[i].platform`
+// in brief.js — the short keys produced by platformKey() (ig, fb, tt, x,
+// li, google). The user's per_platform row aggregates across all an
+// account's formats, so matching against the primary placement keeps
+// the comparison meaningful and deterministic.
 const PRIMARY_FORMAT = {
-  meta:     'feed',
-  tiktok:   'in_feed',
-  x:        'promoted',
-  google:   'search',
-  linkedin: 'feed',
+  ig:     'feed',
+  fb:     'feed',
+  tt:     'in_feed',
+  x:      'promoted',
+  google: 'search',
+  li:     'feed',
 };
 
 // ── Benchmark lookup ─────────────────────────────────────────────────────
@@ -135,9 +138,9 @@ export function buildRecommendations({ goal, category, region, currentSpend = []
   }
 
   if (goal === 'leads' || goal === 'sales') {
-    if (!active.has('tiktok')) {
+    if (!active.has('tt')) {
       recs.push({
-        platform: 'tiktok',
+        platform: 'tt',
         format: 'in_feed',
         reason: `TikTok is absent from your mix. For ${category} brands focused on ${goal}, TikTok In-Feed typically delivers competitive CPAs. Test with a small budget.`,
         priority: 'medium',
@@ -156,9 +159,9 @@ export function buildRecommendations({ goal, category, region, currentSpend = []
     }
   }
 
-  if (goal === 'awareness' && active.has('meta')) {
+  if (goal === 'awareness' && (active.has('ig') || active.has('fb'))) {
     recs.push({
-      platform: 'meta',
+      platform: 'ig',
       format: 'reels',
       reason: `Meta Reels CPMs are typically 15–25% lower than Feed for ${category} awareness campaigns. If you're only running Feed placements, add Reels to your ad sets.`,
       priority: 'medium',

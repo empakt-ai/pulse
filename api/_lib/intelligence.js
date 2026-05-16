@@ -23,6 +23,60 @@ import { generateIntelligence } from './ai-router.js';
 import { callStream as geminiCallStream } from './gemini.js';
 import { allRulesAsPromptText } from './platform-rules.js';
 import { checkUsageCap } from './tiers.js';
+import { buildAdsIntel, buildAdsIntelPrompt } from './ads-intel.js';
+
+// Short keys for ads' platform aggregate — must match what brief.js emits
+// in `per_platform[i].platform` so benchmark lookups in buildAdsIntel hit
+// the seeded floor. Mirrors PLATFORM_TO_ICON in brief.js.
+const ADS_PLATFORM_KEY = {
+  instagram: 'ig', tiktok: 'tt', youtube: 'yt',
+  facebook: 'fb', linkedin: 'li', x: 'x', snapchat: 'sc',
+};
+
+// Brief-time wrapper around buildAdsIntel. Skips the lookup entirely on
+// tiers that can't see ads (Creator), workspaces with no ads, or empty
+// settings. Returns the `intel` object that goes into the prompt payload
+// (null when there's nothing to attach). All failures are swallowed so
+// brief generation never blocks on ad benchmarks.
+async function computeAdsIntelForBrief(workspace, posts) {
+  try {
+    const tierKey = String(workspace.tier || 'creator').toLowerCase();
+    if (tierKey !== 'brand' && tierKey !== 'agency') return null;
+    const ownAds = (posts || []).filter(p => p.source === 'own' && p.post_type === 'ad');
+    if (!ownAds.length) return null;
+    const perPlatform = aggregateAdsPerPlatform(ownAds);
+    const { intel } = await buildAdsIntel({
+      workspace,
+      adsAllowed: true,
+      adsCount: ownAds.length,
+      perPlatform,
+    });
+    return intel;
+  } catch (e) {
+    console.warn('[intelligence] ads intel skipped (non-fatal):', e.message);
+    return null;
+  }
+}
+
+// Per-platform ad aggregate — same shape brief.js builds. Pulled out as
+// a helper so generateBrief / generateBriefStream can hand the result
+// straight to buildAdsIntel without re-running brief.js logic.
+function aggregateAdsPerPlatform(ownAds) {
+  const byPlat = {};
+  for (const a of ownAds) {
+    const pk = ADS_PLATFORM_KEY[a.platform] || a.platform;
+    const row = byPlat[pk] || (byPlat[pk] = { platform: pk, count: 0, spend: 0, impressions: 0, clicks: 0 });
+    row.count += 1;
+    row.spend += Number(a.raw_data?.spend || 0);
+    row.impressions += Number(a.views || 0);
+    row.clicks += Number(a.raw_data?.clicks || 0);
+  }
+  return Object.values(byPlat).map(r => ({
+    ...r,
+    spend: Math.round(r.spend * 100) / 100,
+    ctr: r.impressions ? Math.round((r.clicks / r.impressions) * 10000) / 100 : 0,
+  })).sort((a, b) => b.spend - a.spend);
+}
 
 // Build the cap-exceeded skip payload. Shared so /generate and /stream
 // return the same shape — the SPA's toast / banner handler can rely on
@@ -145,7 +199,7 @@ function detectSeries(posts) {
   return result;
 }
 
-function buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces = [], seriesRows = [] }) {
+function buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces = [], seriesRows = [], adsIntel = null }) {
   const ownPosts = posts.filter(p => p.source === 'own');
   const byPlatform = {};
 
@@ -285,6 +339,12 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     competitors: (competitors || []).slice(0, 10).map(c => ({
       platform: c.platform, handle: c.handle, followers: c.followers || 0,
     })),
+    // Ad Intelligence — present only for workspaces with ads + configured
+    // settings. Carries per-platform spot scores, the benchmark each was
+    // compared against, and up to 5 ranked recommendations. The natural-
+    // language version is appended separately in buildUserMessage so the
+    // model gets both the structured payload and a direct nudge.
+    ads_intel: adsIntel || null,
   };
 }
 
@@ -532,7 +592,13 @@ function resolveTone(workspace) {
 
 function buildUserMessage(payload, tone) {
   const toneBlock = TONE_GUIDANCE[tone] ? `\n${TONE_GUIDANCE[tone]}\n` : '';
-  return `Generate today's Mashal brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}\n\nReturn the JSON only.`;
+  // Natural-language nudge for ad intelligence. Only attached when the
+  // workspace has configured Ad Intelligence settings + has ad data —
+  // buildAdsIntelPrompt returns '' otherwise. Sits BELOW the JSON payload
+  // so the model treats it as additional guidance, not data to summarise.
+  const adsBlock = buildAdsIntelPrompt(payload.ads_intel);
+  const adsTail = adsBlock ? `\n\n${adsBlock}` : '';
+  return `Generate today's Mashal brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}${adsTail}\n\nReturn the JSON only.`;
 }
 
 // Re-export the prompt-building flow so the compare-models endpoint can
@@ -873,8 +939,14 @@ export async function generateBrief(workspace, { manual = true } = {}) {
   // 2) Deterministic intel score
   const intelScore = computeIntelScore({ accounts, posts, snapshots });
 
-  // 3) Build prompt
-  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
+  // 3) Ad intelligence — runs for Brand/Agency workspaces with ads + a
+  // configured workspace_ad_settings row. Non-fatal: if the DB is slow
+  // or settings aren't configured, buildAdsIntel returns intel:null and
+  // the prompt skips the ad block.
+  const adsIntel = await computeAdsIntelForBrief(workspace, posts);
+
+  // 4) Build prompt
+  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows, adsIntel });
 
   // 4) Call the AI router (Gemini-only during this phase). Tone is
   //    resolved from workspace.brief_tone first, then by tier — Creator
@@ -984,7 +1056,8 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
   }
 
   const intelScore = computeIntelScore({ accounts, posts, snapshots });
-  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows });
+  const adsIntel = await computeAdsIntelForBrief(workspace, posts);
+  const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces, seriesRows, adsIntel });
   const tone = resolveTone(workspace);
 
   yield { phase: 'generating' };
