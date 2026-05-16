@@ -154,6 +154,11 @@ const hydrateD = (brief) => {
   D.connectedPlatforms = Object.keys(a || {});
   // Ad performance summary — null when no ads running.
   D.ads = brief.ads && brief.ads.count > 0 ? brief.ads : null;
+  // Ad Intelligence module — benchmark/spot-score/recommendations payload
+  // and the workspace's ad-goal/category settings. Both null when the
+  // tier doesn't allow ads, no ads exist, or settings aren't configured.
+  D.ads_intel = brief.ads_intel || null;
+  D.adSettings = brief.adSettings || null;
   // Tier + trial state — drive the trial banner, locked-card teasers,
   // and the full-screen paywall when trial.locked is true.
   D.tier = brief.tier || { key: 'creator', label: 'Creator' };

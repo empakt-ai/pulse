@@ -14,6 +14,7 @@ import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 import { getMarketContext } from './_lib/market-context.js';
 import { getPlatformSettings } from './_lib/platform-settings.js';
+import { buildAdsIntel } from './_lib/ads-intel.js';
 
 const PLATFORM_TO_ICON = {
   instagram: 'ig', tiktok: 'tt', youtube: 'yt',
@@ -158,6 +159,24 @@ export default async function handler(req, res) {
         status: p.raw_data?.status || null,
       })),
   };
+
+  // ── Ad Intelligence — benchmark + spot score + recommendations ────────
+  // Self-contained module. Returns { intel: null, adSettings: null } when
+  // the tier isn't allowed, no ads exist, or settings haven't been
+  // configured. Wrapped so a slow DB never breaks the dashboard fetch.
+  const tierKey = (ws.tier || 'creator').toLowerCase();
+  const adsAllowedForIntel = tierKey === 'brand' || tierKey === 'agency';
+  let adsIntelResult = { intel: null, adSettings: null };
+  try {
+    adsIntelResult = await buildAdsIntel({
+      workspace: ws,
+      adsAllowed: adsAllowedForIntel,
+      adsCount: ownAds.length,
+      perPlatform: per_platform,
+    });
+  } catch (e) {
+    console.warn('[brief] ads-intel build failed (non-fatal):', e.message);
+  }
 
   // Build per-platform account summary keyed the way the prototype expects.
   // Adds engRate30d (derived from posts) and follower_history (last 7 daily
@@ -367,6 +386,8 @@ export default async function handler(req, res) {
     accountSummary,
     briefMetrics,
     ads: adsSummary,
+    ads_intel:  adsIntelResult.intel,
+    adSettings: adsIntelResult.adSettings,
     competitors: (competitors || []).map(c => {
       // 7-day delta from account_snapshots (account_type='competitor')
       const compSnaps = (snapshots || [])

@@ -1693,10 +1693,12 @@ const COMPARE_GROUPS = [
     { label: 'Market context',     creator: false,        brand: true,              agency: true },
   ]},
   { category: 'Ad Intelligence', rows: [
-    { label: 'Ad performance dashboard',  creator: false, brand: true,  agency: true },
-    { label: 'Organic vs paid comparison',creator: false, brand: true,  agency: true },
-    { label: 'Cross-platform ad reporting',creator: false,brand: true,  agency: true },
-    { label: 'Per-client ad reporting',   creator: false, brand: false, agency: true },
+    { label: 'Ad performance dashboard',   creator: false, brand: true,  agency: true },
+    { label: 'Organic vs paid comparison', creator: false, brand: true,  agency: true },
+    { label: 'Cross-platform ad reporting',creator: false, brand: true,  agency: true },
+    { label: 'Spot score benchmarking',    creator: false, brand: true,  agency: true },
+    { label: 'Recommended ad spots',       creator: false, brand: true,  agency: true },
+    { label: 'Per-client ad reporting',    creator: false, brand: false, agency: true },
   ]},
   { category: 'Reports & Export', rows: [
     { label: 'PDF reports',        creator: false,        brand: true,              agency: true },
@@ -2014,6 +2016,8 @@ Object.assign(window, { Landing });
 <script type="text/babel" src="js/core/data.js"></script>
 <script type="text/babel" src="js/billing/subscription-banner.js"></script>
 <script type="text/babel" src="js/billing/upgrade-dialog.js"></script>
+<script type="text/babel" src="js/ads-intel/settings-section.js"></script>
+<script type="text/babel" src="js/ads-intel/ads-panels.js"></script>
 <script type="text/babel">
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
@@ -3722,10 +3726,18 @@ const AdsScreen = ({ activePlatform }) => {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      {/* Ad Intelligence — Agency per-client switcher. Renders null off-tier. */}
+      {window.AdsIntel?.AgencySwitcher && <window.AdsIntel.AgencySwitcher />}
+
       <ScreenHeader
         eyebrow={isAll ? 'Paid · Last 30d' : `${platformLabel[activePlatform] || activePlatform} · Last 30d`}
         title="Ad performance"
-        sub={`${scopedTotals.count} active ad${scopedTotals.count === 1 ? '' : 's'} across ${isAll ? (ads.per_platform || []).length : 1} platform${(isAll ? (ads.per_platform || []).length : 1) === 1 ? '' : 's'}.`}
+        sub={
+          <span className="inline-flex items-center gap-2 flex-wrap">
+            <span>{`${scopedTotals.count} active ad${scopedTotals.count === 1 ? '' : 's'} across ${isAll ? (ads.per_platform || []).length : 1} platform${(isAll ? (ads.per_platform || []).length : 1) === 1 ? '' : 's'}.`}</span>
+            {window.AdsIntel?.ContextChips && <window.AdsIntel.ContextChips />}
+          </span>
+        }
       />
 
       {/* KPI strip — 4 cards across the top */}
@@ -3811,6 +3823,12 @@ const AdsScreen = ({ activePlatform }) => {
           </Card>
         </div>
       </div>
+
+      {/* Ad Intelligence — benchmark compare + recommended spots. Both
+          render null when there's nothing to show (no settings, no intel
+          payload), so it's safe to mount unconditionally here. */}
+      {window.AdsIntel?.ComparePanel && <window.AdsIntel.ComparePanel />}
+      {window.AdsIntel?.Recommendations && <window.AdsIntel.Recommendations />}
 
       {/* Top ads table */}
       <div className="mt-5 sm:mt-7">
@@ -6195,6 +6213,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
     if (!scrollAnchor) return;
     const id = scrollAnchor === 'workspaces' ? 'settings-workspaces'
             : scrollAnchor === 'profile'    ? 'settings-profile'
+            : scrollAnchor === 'ad-intel'   ? 'settings-ad-intel'
             : null;
     if (!id) return;
     const raf = requestAnimationFrame(() => {
@@ -6788,6 +6807,13 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </div>
             )}
           </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Ad Intelligence — module-mounted. Component owns its own
+              load/save state; this is the only line that references it
+              inside SettingsScreen. See js/ads-intel/settings-section.js. */}
+          {window.AdsIntel?.Settings && <window.AdsIntel.Settings onToast={showToast} />}
 
           <div className="h-px bg-line dark:bg-lineDark" />
 
