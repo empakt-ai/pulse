@@ -2650,7 +2650,12 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
     if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
     setActive('Settings');
   };
-  const tabs = ['Brief','Stats','Ads','Content','Intel','Actions','Growth','Targets','Reports','Settings'];
+  // Ads is a Brand/Agency feature — Creator never sees the tab. During
+  // trial, ws.tier mirrors trial_intent_tier, so a Creator-intent trial
+  // also hides Ads, while Brand/Agency-intent trials still see it.
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const showAds = tierKey === 'brand' || tierKey === 'agency';
+  const tabs = ['Brief','Stats', ...(showAds ? ['Ads'] : []),'Content','Intel','Actions','Growth','Targets','Reports','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -2858,15 +2863,18 @@ const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand,
 });
 
 const MobileNav = React.memo(({ active, setActive }) => {
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const showAds = tierKey === 'brand' || tierKey === 'agency';
   const tabs = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
-    { id: 'Ads', icon: 'bolt' }, { id: 'Content', icon: 'play' },
+    ...(showAds ? [{ id: 'Ads', icon: 'bolt' }] : []),
+    { id: 'Content', icon: 'play' },
     { id: 'Intel', icon: 'sparkle' }, { id: 'Growth', icon: 'trending' },
     { id: 'Reports', icon: 'layers' }
   ];
   return (
     <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-7 px-1 py-1.5">
+      <div className={cls('grid px-1 py-1.5', showAds ? 'grid-cols-7' : 'grid-cols-6')}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setActive(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
             <Icon name={t.icon} className="w-4 h-4" />
@@ -3629,12 +3637,16 @@ const AdsScreen = ({ activePlatform }) => {
   const trialActive = !!D.trial?.active;
 
   // ── Trial users: scrape-only, no ad data — show locked teaser ─────────
+  // Honor the workspace's intent tier so an Agency-intent trial sees
+  // "Unlock with Agency", not the hardcoded Brand copy.
   if (trialActive) {
+    const intentTier = (D.trial?.intent_tier || D.tier?.key || 'brand').toLowerCase();
+    const teaserTier = intentTier === 'creator' ? 'brand' : intentTier;
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <TrialLockedCard
           featureLabel="Ad performance dashboard"
-          tier="brand"
+          tier={teaserTier}
           sub="Live spend, impressions, clicks and CTR pulled from your Meta, TikTok and X ad accounts. Unlocks after you upgrade."
           onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
         />
