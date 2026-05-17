@@ -33,7 +33,7 @@ import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 // Tier is intentionally NOT in this list — a client PATCH could otherwise
 // upgrade itself from Creator to Agency for free. tier changes happen
 // server-side only, via the conversion endpoint once payment lands.
-const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone', 'weekly_digest_enabled', 'digest_email', 'brief_tone', 'featured_on_homepage', 'trial_intent_tier', 'trial_promo_code'];
+const ALLOWED_FIELDS = ['name', 'user_type', 'category', 'market', 'account_age', 'country', 'focus_regions', 'timezone', 'weekly_digest_enabled', 'digest_email', 'brief_tone', 'brief_language', 'featured_on_homepage', 'trial_intent_tier', 'trial_promo_code'];
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);

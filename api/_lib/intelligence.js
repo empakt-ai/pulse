@@ -24,6 +24,7 @@ import { callStream as geminiCallStream } from './gemini.js';
 import { allRulesAsPromptText } from './platform-rules.js';
 import { checkUsageCap } from './tiers.js';
 import { buildAdsIntel, buildAdsIntelPrompt } from './ads-intel.js';
+import { getUpcomingCulturalMoments } from './cultural-calendar.js';
 
 // Short keys for ads' platform aggregate — must match what brief.js emits
 // in `per_platform[i].platform` so benchmark lookups in buildAdsIntel hit
@@ -322,13 +323,24 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     .sort((a, b) => b.views_per_hour - a.views_per_hour)
     .slice(0, 6);
 
+  // Upcoming cultural moments relevant to this workspace — drives
+  // proactive timing signals in the brief. 45-day look-ahead covers
+  // the practical preparation window for major retail/holiday content.
+  const culturalMoments = getUpcomingCulturalMoments(
+    workspace.country,
+    workspace.focus_regions || [],
+    45
+  );
+
   return {
     workspace: {
       user_type: workspace.user_type,
       category: workspace.category,
       market: workspace.market,
+      country: workspace.country,
       account_age: workspace.account_age,
       tier: workspace.tier,
+      brief_language: workspace.brief_language || 'en',
     },
     platforms: byPlatform,
     top_posts: topPosts,
@@ -345,6 +357,17 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     // language version is appended separately in buildUserMessage so the
     // model gets both the structured payload and a direct nudge.
     ads_intel: adsIntel || null,
+    // Cultural calendar — null when nothing relevant is upcoming in the
+    // 45-day window. The instruction string tells the model how hard to
+    // lean on the moments (immediate vs upcoming).
+    cultural_calendar: culturalMoments.length > 0 ? {
+      upcoming: culturalMoments,
+      instruction: culturalMoments.some(e => e.urgency === 'immediate')
+        ? 'URGENT: One or more cultural moments are happening NOW or within 3 days. Surface as the first or second action in the brief.'
+        : culturalMoments.some(e => e.urgency === 'this_week')
+        ? 'TIMELY: Cultural moments arrive this week. Include at least one action referencing the nearest event.'
+        : 'UPCOMING: Cultural moments within 45 days. Reference the nearest one as a strategic action or signal.',
+    } : null,
   };
 }
 
@@ -510,6 +533,17 @@ posts and shows what their post would look like in the competitor's winning
 structure. Both quotes must be VERBATIM from the actual data — never invent
 text. If no clean comparison exists, return null instead of fabricating one.
 
+═══ CULTURAL TIMING ═══
+
+When cultural_calendar is present in the DATA:
+• Treat upcoming cultural moments as first-class intelligence — not optional colour.
+• If urgency is 'immediate': the brief's first or second action MUST address it. A brand that misses a cultural moment its competitors are riding is a real risk.
+• If urgency is 'this_week': include at least one action or signal. Frame as a time-sensitive window.
+• If urgency is 'upcoming': include as a strategic action. Give specific preparation advice, not vague "plan ahead" language.
+• Reference the event by name. State how many days away it is. Recommend a specific content type.
+• If the workspace category is in the event's category_boost list, weight the recommendation as higher priority.
+• Do not surface cultural moments the brand has no plausible way to connect with (e.g. a B2B SaaS brand and Valentine's Day in a conservative market). Use judgement.
+
 Final reminder: this brief lands in someone's inbox at 6 AM. They have coffee in one hand and 90 seconds. Earn that 90 seconds. If your verdict could have been written without seeing their data, it's wrong. Rewrite it.`;
 
 // Tone presets layered on top of the base prompt. Per-workspace override
@@ -572,6 +606,266 @@ VERBOSITY — medium-high. Give the verdict body and action bodies room to
 breathe so the opening feels real, not clipped. Signals stay tight.`,
 };
 
+// ── Language + Cultural Intelligence context ─────────────────────────────────
+// Returns a prompt block injected into every brief generation.
+// Tells the AI:
+//   1. What language(s) the content is likely in
+//   2. How to analyse non-English content with proper depth
+//   3. What cultural register and signals matter for this market
+//   4. What language to write the brief output in
+//
+// This is the core of Mashal's global intelligence — not translation,
+// but genuine cultural comprehension baked into every analysis.
+
+const LANGUAGE_PROFILES = {
+  SA: {
+    name: 'Saudi Arabia',
+    content_languages: ['Arabic (Gulf dialect)', 'English'],
+    primary: 'ar',
+    dialect_note: 'Gulf Arabic (Saudi) differs from Egyptian and Levantine dialects in vocabulary, cultural references, and engagement patterns. Analyse captions in their native dialect, not Modern Standard Arabic.',
+    cultural_signals: [
+      'Ramadan content windows (pre-Ramadan hype, daily iftar posts, Laylat al-Qadr peak, Eid surge)',
+      'Saudi National Day 23 September — patriotic content peaks sharply',
+      'White Friday (November) — Saudi equivalent of Black Friday, highest e-commerce conversion window',
+      'Eid Al-Fitr and Eid Al-Adha — gifting, fashion, food categories spike',
+      'Arabic-first captions consistently outperform bilingual on engagement in this market',
+      'Snapchat has unusually strong penetration — weight it appropriately',
+      'Prayer times affect posting windows — post-Maghrib is peak scroll time',
+    ],
+    platform_notes: 'TikTok ad reach exceeds adult population. Snapchat Stories outperform Feed. Instagram skews female with high social commerce activity.',
+  },
+  AE: {
+    name: 'United Arab Emirates',
+    content_languages: ['Arabic', 'English'],
+    primary: 'bilingual',
+    dialect_note: 'UAE audience is highly bilingual and multicultural. Arabic content should be Gulf-register. English content is equally valid. Bilingual captions typically outperform single-language.',
+    cultural_signals: [
+      'UAE National Day 2 December — high patriotic content engagement',
+      'Dubai Shopping Festival (January) — retail and luxury peak',
+      'Expo and major events drive content spikes',
+      'Ramadan and Eid windows',
+      'Aspirational and premium positioning outperforms discount-led copy',
+    ],
+    platform_notes: 'Highest Instagram ad reach in the region. LinkedIn unusually strong for B2B. TikTok purchasing power per viewer is high.',
+  },
+  KW: {
+    name: 'Kuwait',
+    content_languages: ['Arabic (Gulf dialect)', 'English'],
+    primary: 'ar',
+    dialect_note: 'Kuwaiti Gulf Arabic. Influencer endorsements carry disproportionate weight here. Analyse for influencer collaboration signals.',
+    cultural_signals: [
+      'Ramadan and Eid windows',
+      'National Day 25 February and Liberation Day 26 February — back-to-back public holiday period',
+      'Arabic-first content. Cultural humour and family scenarios outperform product-only posts',
+    ],
+    platform_notes: 'Highest per-capita Instagram penetration globally. Snapchat dominant for under-25.',
+  },
+  QA: {
+    name: 'Qatar',
+    content_languages: ['Arabic (Gulf dialect)', 'English'],
+    primary: 'ar',
+    dialect_note: 'Qatari Gulf Arabic. Sports and events carry high cultural weight (World Cup legacy, PSG connection). Multicultural expat audience means English is also viable.',
+    cultural_signals: [
+      'National Day 18 December',
+      'Ramadan and Eid windows',
+      'Sports events drive significant engagement spikes',
+    ],
+    platform_notes: 'High social media penetration. Instagram and TikTok primary.',
+  },
+  EG: {
+    name: 'Egypt',
+    content_languages: ['Arabic (Egyptian dialect)'],
+    primary: 'ar',
+    dialect_note: 'Egyptian Arabic dialect is distinct from Gulf Arabic and is the most widely understood Arabic dialect across the region. Comedy and relatable everyday content travel furthest. Affordable/value framing strongly outperforms premium positioning.',
+    cultural_signals: [
+      'Ramadan is the single biggest content window in Egypt — TV, social, and ad spend all peak',
+      'Eid windows for gifting and fashion',
+      'Egyptian National Day and football (soccer) events drive spikes',
+      'Value and affordability messaging resonates strongly given economic context',
+    ],
+    platform_notes: 'Facebook still primary for adults 30+. TikTok dominant for youth. YouTube strong for long-form.',
+  },
+  PK: {
+    name: 'Pakistan',
+    content_languages: ['Urdu', 'English', 'Regional languages (Punjabi, Sindhi, Pashto)'],
+    primary: 'ur',
+    dialect_note: 'Urdu is the national language and content lingua franca. Urdu captions consistently outperform English in reach. Cricket references, family occasions, and food content are reliable engagement drivers across all regions.',
+    cultural_signals: [
+      'Pakistan Day 23 March and Independence Day 14 August — patriotic content peaks',
+      'Ramadan and both Eid windows',
+      'Cricket match days (especially Pakistan vs India) — single highest engagement spikes',
+      'Wedding season (October–December and April–May) — fashion, jewellery, food, decor all peak',
+      'Basant (regional) and other cultural festivals vary by province',
+    ],
+    platform_notes: 'TikTok dominant daily active. Facebook primary for 25+. YouTube strong for Urdu-language content. Instagram urban-skewed.',
+  },
+  IN: {
+    name: 'India',
+    content_languages: ['Hindi', 'English', 'Regional languages (Tamil, Telugu, Marathi, Bengali, Kannada)'],
+    primary: 'hi',
+    dialect_note: 'India is linguistically diverse. Hindi content reaches the broadest national audience. Regional-language Reels reach 5–8× equivalent English content in their respective states. Analyse captions in their actual language — do not default to treating all Indian content as Hindi.',
+    cultural_signals: [
+      'Diwali (October/November) — largest gifting and retail window',
+      'Holi (March)',
+      'Raksha Bandhan, Dussehra, Navratri',
+      'IPL cricket season (March–May) — massive engagement spike across categories',
+      'Independence Day 15 August and Republic Day 26 January',
+      'Wedding season (November–February)',
+      'Regional festivals (Onam, Pongal, Bihu, Durga Puja) matter enormously in their states',
+    ],
+    platform_notes: 'Largest YouTube market globally. Instagram Reels driving highest reach. TikTok banned — replaced by Instagram Reels and YouTube Shorts.',
+  },
+  TR: {
+    name: 'Turkey',
+    content_languages: ['Turkish'],
+    primary: 'tr',
+    dialect_note: 'Turkish is the primary language. Content humour and storytelling have a distinct register — sarcasm and dry wit travel well. National pride content performs strongly around key dates.',
+    cultural_signals: [
+      'Republic Day 29 October',
+      'Victory Day 30 August',
+      'Ramadan and Eid windows (Turkey is majority Muslim)',
+      'Summer season (June–August) — tourism, fashion, outdoor content peaks',
+    ],
+    platform_notes: 'Instagram very strong. TikTok growing rapidly. YouTube significant. Twitter/X has cultural relevance for opinion-forming content.',
+  },
+  BR: {
+    name: 'Brazil',
+    content_languages: ['Portuguese (Brazilian)'],
+    primary: 'pt-BR',
+    dialect_note: 'Brazilian Portuguese is distinct from European Portuguese in vocabulary, humour register, and cultural references. Do not treat them as equivalent. Brazilian content is high-energy, humour-forward, and community-oriented.',
+    cultural_signals: [
+      'Carnaval (February/March) — highest cultural engagement window of the year',
+      'Festa Junina (June) — popular culture moment',
+      'Black Friday (November) — Brazilian retail has fully adopted this',
+      'Brazilian Independence Day 7 September',
+      'Football (soccer) — any major Brazil match drives content spikes across all categories',
+    ],
+    platform_notes: 'Instagram and TikTok dominant. YouTube significant. WhatsApp key for community commerce (not directly trackable but important context).',
+  },
+  ID: {
+    name: 'Indonesia',
+    content_languages: ['Bahasa Indonesia', 'Javanese', 'Sundanese'],
+    primary: 'id',
+    dialect_note: 'Bahasa Indonesia is the national and content language. Local-language captions are essential — English content severely underperforms. TikTok Shop is a dominant commerce channel; live shopping during Maghrib (sunset) converts highest.',
+    cultural_signals: [
+      'Ramadan and Eid Al-Fitr (Lebaran) — single largest commerce window in Indonesia',
+      'Harbolnas 12.12 (December 12) — Indonesia\'s largest online shopping day',
+      '11.11 Singles Day',
+      'Independence Day 17 August',
+      'Batik Day 2 October — cultural pride content',
+    ],
+    platform_notes: 'Largest TikTok user base outside the US. TikTok Shop dominant commerce path. Instagram Reels strong. Facebook significant for older demographics.',
+  },
+  CA: {
+    name: 'Canada',
+    content_languages: ['English', 'French (Quebec)'],
+    primary: 'en',
+    dialect_note: 'English is primary in most provinces. Quebec French is a completely distinct market with its own cultural references, humour, and content preferences — do not treat Quebec French as European French.',
+    cultural_signals: [
+      'Canada Day 1 July',
+      'Thanksgiving (second Monday of October — not November)',
+      'Black Friday and Cyber Monday (November)',
+      'Back to school (late August/September)',
+      'Winter holiday season (December)',
+      'Hockey playoff season (April–June) — national engagement event',
+    ],
+    platform_notes: 'Instagram, TikTok, and YouTube primary. LinkedIn active for professional/B2B. Snapchat relevant for under-25.',
+  },
+  US: {
+    name: 'United States',
+    content_languages: ['English', 'Spanish'],
+    primary: 'en',
+    dialect_note: 'English primary. Spanish content reaches a large and underserved audience on most platforms. Native vertical video without heavy branding consistently outperforms polished brand content.',
+    cultural_signals: [
+      'Super Bowl (February)',
+      'Valentines Day, St. Patrick\'s Day, Easter',
+      'Memorial Day weekend (late May)',
+      'Fourth of July',
+      'Labor Day (early September)',
+      'Halloween (October)',
+      'Thanksgiving (fourth Thursday November)',
+      'Black Friday / Cyber Monday / holiday season',
+    ],
+    platform_notes: 'Highest TikTok watch-time of any market. Instagram Reels reach plateauing — carousels performing well. YouTube Shorts growing.',
+  },
+  GB: {
+    name: 'United Kingdom',
+    content_languages: ['English'],
+    primary: 'en',
+    dialect_note: 'British English register. Dry and observational humour travels far. US-style hyperbole reads as inauthentic to British audiences — avoid it.',
+    cultural_signals: [
+      'Bank holidays (Easter, May bank holidays, August bank holiday)',
+      'Black Friday (November — fully adopted)',
+      'Christmas and Boxing Day',
+      'Back to school (September)',
+      'Football (Premier League season September–May)',
+      'Wimbledon (June–July)',
+    ],
+    platform_notes: 'Instagram Reels outpacing Feed. TikTok strong for beauty and lifestyle. YouTube long-form strong. LinkedIn significant B2B market.',
+  },
+};
+
+// Fallback for countries not yet in the profiles above.
+// Instructs the AI to do its best based on detected language.
+const GENERIC_LANGUAGE_PROFILE = {
+  name: 'Global',
+  content_languages: ['Detected from content'],
+  primary: 'en',
+  dialect_note: 'Detect the language of each caption and analyse it in its native language. Do not assume English. If captions are in a non-English language, assess them for cultural meaning, tone, and local engagement signals in that language.',
+  cultural_signals: [
+    'Religious and national holidays relevant to the content language',
+    'Local sports and cultural events',
+    'Seasonal commerce windows',
+  ],
+  platform_notes: 'Apply platform-specific knowledge for the detected market.',
+};
+
+export function buildLanguageContext(workspace) {
+  const country = (workspace?.country || 'GLOBAL').toUpperCase();
+  const briefLanguage = workspace?.brief_language || 'en';
+
+  const profile = LANGUAGE_PROFILES[country] || GENERIC_LANGUAGE_PROFILE;
+
+  // Output language instruction
+  const outputLanguageMap = {
+    en:    'English',
+    ar:    'Arabic',
+    fr:    'French',
+    tr:    'Turkish',
+    ur:    'Urdu',
+    'pt-BR': 'Brazilian Portuguese',
+    id:    'Bahasa Indonesia',
+    hi:    'Hindi',
+    es:    'Spanish',
+  };
+  const outputLang = outputLanguageMap[briefLanguage] || 'English';
+  const outputInstruction = briefLanguage === 'en'
+    ? ''
+    : `\nOUTPUT LANGUAGE — Write the entire brief (verdict title, verdict body, all action titles and bodies, all signal titles and bodies) in ${outputLang}. All data labels (platform names, numbers, percentages) remain unchanged. Do not mix languages within a single field.`;
+
+  return `
+═══ LANGUAGE & CULTURAL INTELLIGENCE ═══
+
+MARKET: ${profile.name}
+CONTENT LANGUAGES: ${profile.content_languages.join(', ')}
+
+LANGUAGE ANALYSIS RULES:
+• Read every caption in its actual language. Do not skip or summarise non-English captions.
+• ${profile.dialect_note}
+• When referencing post content in the brief, use the original language for titles/quotes, then provide context in the brief language.
+• Assess engagement patterns, tone, and cultural resonance through the lens of this market — not through an English-language filter.
+• Detect when content is deliberately bilingual and note whether this is helping or hurting based on the market profile above.
+
+CULTURAL SIGNALS TO WATCH:
+${profile.cultural_signals.map(s => `• ${s}`).join('\n')}
+
+PLATFORM CONTEXT FOR THIS MARKET:
+${profile.platform_notes}
+
+CULTURAL TIMING: If any of the above cultural windows are within 3 weeks, the brief MUST include at least one action or signal addressing it. Do not wait for the brand to post about it first — surface the upcoming window proactively.
+${outputInstruction}`;
+}
+
 // Resolve the tone for a workspace.
 //
 // Creator-tier always gets the encouraging coach tone. Migration 012
@@ -590,15 +884,19 @@ function resolveTone(workspace) {
   return 'strategic';
 }
 
-function buildUserMessage(payload, tone) {
+function buildUserMessage(payload, tone, workspace) {
   const toneBlock = TONE_GUIDANCE[tone] ? `\n${TONE_GUIDANCE[tone]}\n` : '';
+  // Language + cultural intelligence block. Tells the model what language
+  // the content is in, how to read it through the right cultural lens,
+  // and what language to write the brief output in.
+  const langBlock = buildLanguageContext(workspace);
   // Natural-language nudge for ad intelligence. Only attached when the
   // workspace has configured Ad Intelligence settings + has ad data —
   // buildAdsIntelPrompt returns '' otherwise. Sits BELOW the JSON payload
   // so the model treats it as additional guidance, not data to summarise.
   const adsBlock = buildAdsIntelPrompt(payload.ads_intel);
   const adsTail = adsBlock ? `\n\n${adsBlock}` : '';
-  return `Generate today's Mashal brief for this workspace.${toneBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}${adsTail}\n\nReturn the JSON only.`;
+  return `Generate today's Mashal brief for this workspace.${toneBlock}${langBlock}\nDATA:\n${JSON.stringify(payload, null, 2)}${adsTail}\n\nReturn the JSON only.`;
 }
 
 // Re-export the prompt-building flow so the compare-models endpoint can
@@ -606,7 +904,7 @@ function buildUserMessage(payload, tone) {
 // from the workspace and threaded into the user message.
 export function buildBriefPrompt({ workspace, accounts, posts, snapshots, competitors }) {
   const payload = buildPayload({ workspace, accounts, posts, snapshots, competitors });
-  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, resolveTone(workspace)) };
+  return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, resolveTone(workspace), workspace) };
 }
 
 // ── Persist generated brief into signals table ─────────────────────────────────
@@ -954,7 +1252,7 @@ export async function generateBrief(workspace, { manual = true } = {}) {
   const tone = resolveTone(workspace);
   const result = await generateIntelligence({
     system: SYSTEM_PROMPT,
-    user:   buildUserMessage(payload, tone),
+    user:   buildUserMessage(payload, tone, workspace),
     max_tokens: 6000,
     temperature: 0.6,
   });
@@ -1073,7 +1371,7 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
   try {
     for await (const ev of geminiCallStream({
       system: SYSTEM_PROMPT,
-      user:   buildUserMessage(payload, tone),
+      user:   buildUserMessage(payload, tone, workspace),
       max_tokens: 6000,
       temperature: 0.6,
     })) {

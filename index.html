@@ -6242,7 +6242,8 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
   const [form, setForm] = React.useState({
     name: '', user_type: 'creator', category: 'music',
     country: 'CA', focus_regions: [],
-    account_age: '6-12mo'
+    account_age: '6-12mo',
+    brief_language: 'en',
   });
   const toggleFocus = (id) =>
     setForm(f => ({
@@ -6359,10 +6360,11 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           weekly_digest_enabled: !!wsData.workspace.weekly_digest_enabled,
           digest_email:  wsData.workspace.digest_email || '',
           featured_on_homepage: !!wsData.workspace.featured_on_homepage,
+          brief_language: wsData.workspace.brief_language || 'en',
         });
       } catch (e) {
         // Not yet authenticated — show form with defaults
-        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false });
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false, brief_language: 'en' });
       } finally {
         setLoading(false);
       }
@@ -6751,6 +6753,40 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               <div className="h-px bg-line dark:bg-lineDark" />
             </>
           )}
+
+          {/* Brief language — available to all tiers. The shell stays in
+              English; only the AI-written brief (verdict, actions, signals)
+              switches language. Saved as part of the workspace form. */}
+          <div id="settings-brief-language" style={{ scrollMarginTop: '80px' }}>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-0.5">Brief language</h3>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-3">
+              The language Mashal writes your daily brief in. The app interface stays in English — only the AI-generated verdict, actions, and signals change language.
+            </p>
+            <select
+              value={form.brief_language || 'en'}
+              onChange={e => setForm(f => ({ ...f, brief_language: e.target.value }))}
+              className="w-full max-w-xs h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+            >
+              <option value="en">English</option>
+              <option value="ar">Arabic — عربي</option>
+              <option value="fr">French — Français</option>
+              <option value="tr">Turkish — Türkçe</option>
+              <option value="ur">Urdu — اردو</option>
+              <option value="pt-BR">Portuguese (Brazil) — Português</option>
+              <option value="id">Bahasa Indonesia</option>
+              <option value="hi">Hindi — हिन्दी</option>
+              <option value="es">Spanish — Español</option>
+            </select>
+            {(form.brief_language && form.brief_language !== 'en') && (
+              <p className="text-[11.5px] text-ultra dark:text-lime mt-2 font-mono">
+                Your next brief will be written in {
+                  { ar: 'Arabic', fr: 'French', tr: 'Turkish', ur: 'Urdu', 'pt-BR': 'Brazilian Portuguese', id: 'Bahasa Indonesia', hi: 'Hindi', es: 'Spanish' }[form.brief_language]
+                }. The Mashal interface stays in English.
+              </p>
+            )}
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
 
           {/* Competitors — comparative accounts pulled via Apify (or YouTube
               direct). Nothing is scraped unless the user adds at least one. */}

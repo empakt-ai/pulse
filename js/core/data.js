@@ -23,6 +23,7 @@ const D = {
   workspace: 'Workspace',
   workspaces: [],
   activeWorkspaceId: null,
+  briefLanguage: 'en',
   lastSync: null,
   nextSync: null,
   intelScore: null,
@@ -100,6 +101,10 @@ const hydrateD = (brief) => {
   D.workspace = brief.workspace?.name || 'Workspace';
   D.workspaces = brief.workspaces || (brief.workspace ? [brief.workspace] : []);
   D.activeWorkspaceId = brief.workspace?.id || null;
+  // Brief output language — the language the AI writes the brief in.
+  // The shell stays in English regardless. Kept as a sibling field
+  // because D.workspace itself is the name string, not the row.
+  D.briefLanguage = brief.workspace?.brief_language || 'en';
 
   // Sync timings
   D.lastSync = formatSync(brief.lastSync);
