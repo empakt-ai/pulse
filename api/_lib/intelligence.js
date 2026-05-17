@@ -348,9 +348,33 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     cross_platform_groups: cross_platform,
     single_platform_top,
     recent_24h: recent,
-    competitors: (competitors || []).slice(0, 10).map(c => ({
-      platform: c.platform, handle: c.handle, followers: c.followers || 0,
-    })),
+    // Competitors — each entry now carries up to 5 of the competitor's
+    // top recent posts (caption + metrics). Captions stay in their
+    // original language so the prompt's LANGUAGE & CULTURAL INTELLIGENCE
+    // section can do native-language analysis. Powers competitor
+    // positioning, the rewrite block (which needs verbatim competitor
+    // quotes), and caption_language_split signals.
+    competitors: (competitors || []).slice(0, 10).map(c => {
+      const cPosts = (posts || [])
+        .filter(p => p.source === 'competitor' && p.competitor_id === c.id)
+        .sort((a, b) => (b.views || 0) - (a.views || 0))
+        .slice(0, 5)
+        .map(p => ({
+          caption: (p.caption || '').slice(0, 140),
+          posted_at: p.posted_at,
+          views: p.views || 0,
+          likes: p.likes || 0,
+          comments: p.comments || 0,
+          engagement_rate: p.engagement_rate || 0,
+        }));
+      return {
+        platform:     c.platform,
+        handle:       c.handle,
+        display_name: c.display_name || null,
+        followers:    c.followers || 0,
+        top_posts:    cPosts,
+      };
+    }),
     // Ad Intelligence — present only for workspaces with ads + configured
     // settings. Carries per-platform spot scores, the benchmark each was
     // compared against, and up to 5 ranked recommendations. The natural-
@@ -532,6 +556,15 @@ The "rewrite" object pairs a top competitor post with one of the user's
 posts and shows what their post would look like in the competitor's winning
 structure. Both quotes must be VERBATIM from the actual data — never invent
 text. If no clean comparison exists, return null instead of fabricating one.
+
+═══ COMPETITOR CONTENT ANALYSIS ═══
+
+The payload's \`competitors\` field includes each competitor's top 5 recent posts with caption, posted_at, and engagement metrics. Read each competitor caption in its NATIVE language — never translate or transliterate it before analysing. Then:
+• Compare hook structures, caption length, language register, and emoji/hashtag density against the user's top posts.
+• Surface specific topics, formats, or local idioms the competitor uses that the user does not.
+• If the user's content is in one language and a top-performing competitor publishes in another (e.g. user posts in English, competitor wins in Arabic in the same market), emit a \`caption_language_split\` signal — naming both languages, the engagement delta, and a recommended caption-language test for the user.
+• When picking the \`rewrite.competitor_quote\`, it MUST be VERBATIM from one of the competitor.top_posts captions, in the original language (do not translate it). The matching \`your_quote\` must also be verbatim from one of the user's recent posts. Pair them on topic similarity, not language similarity.
+• If a competitor has zero top_posts (e.g. scrape pending), skip them for the rewrite — never invent a competitor quote.
 
 ═══ CULTURAL TIMING ═══
 
