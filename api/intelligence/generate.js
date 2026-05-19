@@ -10,6 +10,7 @@
 
 import { authenticate, json } from '../_lib/auth.js';
 import { generateBrief } from '../_lib/intelligence.js';
+import { assertRole } from '../_lib/permissions.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
@@ -18,6 +19,12 @@ export default async function handler(req, res) {
   if (auth.error) return json(res, auth.status, { error: auth.error });
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
+
+  // Regenerating the brief spends the workspace's monthly quota and
+  // mutates the signals feed — member+ only. Viewers (clients) see the
+  // current brief read-only and can't burn the quota.
+  const denied = assertRole(auth, 'member');
+  if (denied) return json(res, denied.status, denied.body);
 
   // Auto-fire paths (Agency session-start regen, first-brief bootstrap,
   // cron passing through here in future) tag themselves with ?source=auto

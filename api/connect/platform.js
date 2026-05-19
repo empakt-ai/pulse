@@ -7,6 +7,7 @@ import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
 import { buildAuthUrl as buildYouTubeAuthUrl } from '../_lib/youtube.js';
+import { assertRole } from '../_lib/permissions.js';
 
 // Most platforms go through Zernio's hosted OAuth. YouTube uses Google's
 // OAuth directly so we get a refresh_token + Analytics API access scoped to
@@ -54,6 +55,12 @@ export default async function handler(req, res) {
   const auth = await authenticate(req);
   if (auth.error) return json(res, auth.status, { error: auth.error });
   if (!auth.workspace) return json(res, 404, { error: 'Workspace not found' });
+
+  // Initiating OAuth connects a social account to the workspace — admin
+  // territory. Members can see existing connections but can't add new
+  // ones (matches the DELETE/POST gates on /api/accounts).
+  const denied = assertRole(auth, 'admin');
+  if (denied) return json(res, denied.status, denied.body);
 
   const platform = req.query?.platform || (req.url.match(/\/connect\/([^/?]+)/) || [])[1];
   if (!platform || !SUPPORTED.includes(platform)) {

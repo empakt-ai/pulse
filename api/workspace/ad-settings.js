@@ -15,6 +15,7 @@
 
 import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
+import { assertRole } from '../_lib/permissions.js';
 
 const VALID_GOALS = new Set(['sales', 'leads', 'awareness', 'followers', 'traffic']);
 const VALID_CATEGORIES = new Set([
@@ -38,6 +39,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
+    const denied = assertRole(auth, 'admin');
+    if (denied) return json(res, denied.status, denied.body);
+
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     body = body || {};

@@ -17,6 +17,7 @@ import { supabase } from './_lib/supabase.js';
 import { zernio, extractFollowers } from './_lib/zernio.js';
 import { claimHandle, releaseHandle, isAvailable } from './_lib/handle-registry.js';
 import { checkAccountCap } from './_lib/tiers.js';
+import { assertRole } from './_lib/permissions.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -36,6 +37,12 @@ export default async function handler(req, res) {
 
   // ── POST: sync from Zernio + refresh follower counts ──────────────────
   if (req.method === 'POST') {
+    // Connecting / re-syncing accounts is admin+ — touches workspace
+    // configuration. Members and viewers see existing accounts but
+    // can't bind new ones.
+    const denied = assertRole(auth, 'admin');
+    if (denied) return json(res, denied.status, denied.body);
+
     // Locked trial — no new connections, no syncs.
     const locked = trialLockoutEnvelope(ws);
     if (locked) return json(res, locked.status, locked.body);
@@ -191,6 +198,9 @@ export default async function handler(req, res) {
 
   // ── DELETE: disconnect (Zernio + local soft-delete) ───────────────────
   if (req.method === 'DELETE') {
+    const denied = assertRole(auth, 'admin');
+    if (denied) return json(res, denied.status, denied.body);
+
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const id = body?.id || req.query?.id;

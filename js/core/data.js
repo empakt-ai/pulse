@@ -24,6 +24,12 @@ const D = {
   workspaces: [],
   activeWorkspaceId: null,
   briefLanguage: 'en',
+  // Caller's role on the active workspace, plus a write-allowed boolean
+  // for UI gating. Hydrated from /api/brief. Defaults to 'owner' so the
+  // first paint (before the brief resolves) doesn't briefly hide buttons
+  // the owner has every right to click.
+  workspaceRole: 'owner',
+  canWrite: true,
   lastSync: null,
   nextSync: null,
   intelScore: null,
@@ -177,6 +183,13 @@ const hydrateD = (brief) => {
   D.isAdmin = !!brief.is_admin;
   D.asTier  = brief.as_tier || null;
   D.flags   = (brief.flags && typeof brief.flags === 'object') ? brief.flags : {};
+
+  // Workspace role (owner/admin/member/viewer) — drives UI write-action
+  // gating. canWrite is a derived convenience: viewers see read-only,
+  // everyone else can mutate. API enforces this too; the UI gating is
+  // just to avoid showing buttons that would 403.
+  D.workspaceRole = brief.role || 'owner';
+  D.canWrite      = D.workspaceRole !== 'viewer';
 };
 
 // Expose to the rest of the SPA (still inside index.html). Same pattern

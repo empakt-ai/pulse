@@ -13,6 +13,7 @@
 
 import { authenticate } from '../_lib/auth.js';
 import { generateBriefStream } from '../_lib/intelligence.js';
+import { assertRole } from '../_lib/permissions.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -29,6 +30,14 @@ export default async function handler(req, res) {
   if (!ws) {
     res.statusCode = 404;
     return res.end(JSON.stringify({ error: 'Workspace not found' }));
+  }
+
+  // Member+ only — Viewers can read the existing brief via /api/brief
+  // but can't burn quota on regenerations.
+  const denied = assertRole(auth, 'member');
+  if (denied) {
+    res.statusCode = denied.status;
+    return res.end(JSON.stringify(denied.body));
   }
 
   // Auto-fire paths (Agency session-start regen, first-brief bootstrap)

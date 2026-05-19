@@ -27,6 +27,7 @@ import { supabase } from './_lib/supabase.js';
 import { checkCompetitorCap } from './_lib/tiers.js';
 import { syncCompetitorsForWorkspace } from './_lib/competitor-sync.js';
 import { classifyCaption } from './_lib/caption-patterns.js';
+import { assertRole } from './_lib/permissions.js';
 
 export default async function handler(req, res) {
   const auth = await authenticate(req);
@@ -102,6 +103,11 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    // Adding competitors and triggering scrapes is a member+ action.
+    // Viewers (read-only) can't mutate competitor state.
+    const denied = assertRole(auth, 'member');
+    if (denied) return json(res, denied.status, denied.body);
+
     // Locked trial — no new tracking, no scrapes.
     const locked = trialLockoutEnvelope(ws);
     if (locked) return json(res, locked.status, locked.body);
@@ -150,6 +156,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
+    const denied = assertRole(auth, 'member');
+    if (denied) return json(res, denied.status, denied.body);
+
     const id = req.query?.id;
     if (!id) return json(res, 400, { error: 'id required' });
     try {

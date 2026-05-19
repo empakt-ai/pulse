@@ -358,6 +358,10 @@ export default async function handler(req, res) {
     is_admin: !!auth.isAdmin,
     as_tier:  auth.asTier || null,
     flags:    featureFlags,
+    // Caller's role on the active workspace ('owner' | 'admin' |
+    // 'member' | 'viewer'). Drives the SPA's write-action gating via
+    // D.workspaceRole / D.canWrite.
+    role:     auth.role || null,
     user: {
       id: auth.user.id,
       email: auth.user.email,

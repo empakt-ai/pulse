@@ -22,6 +22,7 @@ import { supabase } from '../_lib/supabase.js';
 import { runActor, estimateScrapeCost } from '../_lib/apify.js';
 import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
 import { TRIAL_LIMITS } from '../_lib/tiers.js';
+import { assertRole } from '../_lib/permissions.js';
 
 // How deep we go on a backfill. Apify actors top out around 100-200 posts
 // on a single sync run before timeouts bite; 100 is the practical sweet
@@ -53,6 +54,11 @@ export default async function handler(req, res) {
   if (auth.error) return json(res, auth.status, { error: auth.error });
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
+
+  // Backfill scrapes against an account the user owns — admin+ only,
+  // matching the account connect/disconnect permission.
+  const denied = assertRole(auth, 'admin');
+  if (denied) return json(res, denied.status, denied.body);
 
   // Locked trials lose access to backfill; active trials get a shallower
   // pull. Both branches still upsert with source='own' — same schema.

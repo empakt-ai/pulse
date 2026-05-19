@@ -21,27 +21,32 @@ export async function authenticate(req) {
     return { error: 'Invalid token', status: 401 };
   }
 
-  // Profile + workspace fetch in parallel. Profile reads three admin-
+  // Profile + memberships fetch in parallel. Profile reads three admin-
   // managed fields:
   //   - is_admin       → gates /api/admin
   //   - is_disabled    → blocks every API call for the user
   //   - tier_override  → admin-only "view as" tier (honored only for admins)
+  //
+  // Workspace access goes through workspace_members (migration 024). The
+  // owner has role='owner' in that table — backfilled by the migration
+  // and inserted on every new workspace create. Member/viewer rows are
+  // created by team invite-accept. This is the ONLY path that resolves
+  // workspace access; we never fall back to workspaces.owner_id alone,
+  // because permissions.js is the audit boundary.
   const requestedWsId =
     req.headers?.['x-workspace-id'] || req.headers?.['X-Workspace-Id'] || null;
 
-  const [profileRow, ownedResult] = await Promise.all([
+  const [profileRow, memberships] = await Promise.all([
     supabase.select('profiles', {
       select: 'is_admin,is_disabled,disabled_reason,tier_override',
       eq: { id: user.id },
       single: true,
     }).catch(() => null),
-    supabase.select('workspaces', {
-      select: '*',
-      eq: { owner_id: user.id },
-      order: 'created_at.asc',
+    supabase.select('workspace_members', {
+      select: 'workspace_id,role',
+      eq: { user_id: user.id },
     }).catch(() => []),
   ]);
-  const owned = ownedResult || [];
   const isAdmin = profileRow?.is_admin === true;
 
   // Hard gate: a disabled profile cannot transact at all. We deliberately
@@ -56,11 +61,28 @@ export async function authenticate(req) {
     };
   }
 
+  // workspace_id → role lookup for the accessible set.
+  const roleMap = {};
+  for (const m of (memberships || [])) roleMap[m.workspace_id] = m.role;
+  const accessibleIds = Object.keys(roleMap);
+
+  // Pull every accessible workspace in one shot. Member workspaces sit
+  // alongside owned ones in the same list so the TopBar switcher and
+  // every "auth.workspaces" consumer treat them uniformly.
+  let accessible = [];
+  if (accessibleIds.length) {
+    accessible = await supabase.select('workspaces', {
+      select: '*',
+      in: { id: accessibleIds },
+      order: 'created_at.asc',
+    }).catch(() => []);
+  }
+
   let workspace = null;
   if (requestedWsId) {
-    workspace = owned.find(w => w.id === requestedWsId) || null;
+    workspace = accessible.find(w => w.id === requestedWsId) || null;
   }
-  if (!workspace) workspace = owned[0] || null;
+  if (!workspace) workspace = accessible[0] || null;
 
   // Derive trial state on every request so downstream handlers can gate
   // features without re-querying. Three computed flags:
@@ -70,33 +92,36 @@ export async function authenticate(req) {
   // We attach them to the workspace object in-memory only; the persisted
   // `trial_locked` boolean column is set by the trial-sweep cron.
   if (workspace) attachTrialState(workspace);
-  for (const w of owned) attachTrialState(w);
+  for (const w of accessible) attachTrialState(w);
 
   // Admin-only tier override. Reads from the admin's own profile row, so
   // there's no way a non-admin gets a tier upgrade by writing into their
   // own row — auth.js refuses to honor it unless is_admin=true. Applies
-  // to every workspace the admin owns (including the active one) so the
-  // gated experience is uniform across the dashboard.
+  // only to workspaces this user OWNS — being a member of someone else's
+  // workspace doesn't get you their override.
   const tierOverride = (isAdmin && typeof profileRow?.tier_override === 'string'
     && ['creator', 'brand', 'agency'].includes(profileRow.tier_override))
     ? profileRow.tier_override
     : null;
   if (tierOverride) {
-    if (workspace) {
-      workspace.tier = tierOverride;
-      workspace.tier_overridden = true;
-    }
-    for (const w of owned) {
-      w.tier = tierOverride;
-      w.tier_overridden = true;
+    for (const w of accessible) {
+      if (roleMap[w.id] === 'owner') {
+        w.tier = tierOverride;
+        w.tier_overridden = true;
+      }
     }
   }
+
+  // Current user's role on the ACTIVE workspace — drives assertRole()
+  // checks in every workspace-scoped route via api/_lib/permissions.js.
+  const role = workspace ? (roleMap[workspace.id] || null) : null;
 
   return {
     user,
     workspace,
     token,
-    workspaces: owned,
+    workspaces: accessible,
+    role,
     isAdmin,
     asTier: tierOverride,
   };

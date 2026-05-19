@@ -30,6 +30,25 @@ import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 import { recordReferralAttribution } from './_lib/referral.js';
+import { assertRole } from './_lib/permissions.js';
+
+// Insert the owner's workspace_members row right after a workspace is
+// created so the auth layer (which routes access through workspace_members
+// — migration 024) immediately recognises it. ON CONFLICT DO NOTHING in
+// case the migration backfill or another path got there first.
+async function ensureOwnerMembership(workspace, ownerId) {
+  if (!workspace?.id || !ownerId) return;
+  try {
+    await supabase.upsert('workspace_members', {
+      user_id:      ownerId,
+      workspace_id: workspace.id,
+      role:         'owner',
+      accepted_at:  workspace.created_at || new Date().toISOString(),
+    }, { onConflict: 'user_id,workspace_id' });
+  } catch (e) {
+    console.warn('[workspaces] ensureOwnerMembership failed (non-fatal):', e.message);
+  }
+}
 
 // Tier is intentionally NOT in this list — a client PATCH could otherwise
 // upgrade itself from Creator to Agency for free. tier changes happen
@@ -56,6 +75,7 @@ export default async function handler(req, res) {
     });
     workspace = inserted?.[0] || null;
     if (!workspace) return json(res, 500, { error: 'Workspace not found and could not be created' });
+    await ensureOwnerMembership(workspace, auth.user.id);
   }
 
   // ── GET: full active context ──────────────────────────────────────────
@@ -110,7 +130,9 @@ export default async function handler(req, res) {
         trial_ends_at: endsAt.toISOString(),
         trial_intent_tier: intentTier,
       });
-      return json(res, 200, { workspace: inserted?.[0] || null });
+      const created = inserted?.[0] || null;
+      if (created) await ensureOwnerMembership(created, auth.user.id);
+      return json(res, 200, { workspace: created });
     } catch (e) {
       return json(res, 500, { error: e.message });
     }
@@ -118,6 +140,11 @@ export default async function handler(req, res) {
 
   // ── PATCH: update settings for active workspace ───────────────────────
   if (req.method === 'PATCH') {
+    // Settings edits are admin+. Members and viewers can't change
+    // workspace-wide config (category, country, language, etc.).
+    const denied = assertRole(auth, 'admin');
+    if (denied) return json(res, denied.status, denied.body);
+
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const patch = {};
@@ -188,7 +215,19 @@ export default async function handler(req, res) {
     const targetId = req.query?.id;
     if (!targetId) return json(res, 400, { error: 'id is required' });
 
-    // Only owner of the workspace can delete it.
+    // Delete is owner-only — billing holder is the only one who can
+    // remove the workspace. assertRole reads auth.role for the active
+    // workspace, so we re-resolve for the target instead.
+    const targetMembership = await supabase.select('workspace_members', {
+      select: 'role',
+      eq: { user_id: auth.user.id, workspace_id: targetId },
+      single: true,
+    }).catch(() => null);
+    if (targetMembership?.role !== 'owner') {
+      return json(res, 403, { error: 'Only the workspace owner can delete a workspace.' });
+    }
+
+    // Belt-and-braces ownership check on the workspace row itself.
     const target = await supabase.select('workspaces', {
       select: 'id,owner_id,name',
       eq: { id: targetId, owner_id: auth.user.id },
