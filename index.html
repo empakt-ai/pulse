@@ -2544,9 +2544,9 @@ const Onboarding = ({ onDone }) => {
 
             <div className="grid sm:grid-cols-3 gap-2.5 mb-7">
               {[
-                { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · weekly brief' },
-                { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · daily brief + ads' },
-                { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · white-label + ads' },
+                { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · weekly brief · solo' },
+                { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · 3 team seats · daily brief + ads' },
+                { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · 10 team seats · white-label + ads' },
               ].map(t => (
                 <button
                   key={t.id}
@@ -7240,9 +7240,9 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                       </div>
                     )}
                     <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
-                      {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · weekly brief'
-                       : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · daily brief + ads'
-                                           : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · daily brief + alerts'}
+                      {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · weekly brief · solo'
+                       : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats · daily brief + ads'
+                                           : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats · daily brief + alerts'}
                     </p>
                     {usage && (
                       <div className="pt-4 border-t border-paper/10">
