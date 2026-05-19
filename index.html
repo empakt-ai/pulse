@@ -5,24 +5,24 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <link rel="icon" type="image/png" href="/images/mashal-favicon.png" />
 <link rel="apple-touch-icon" href="/images/mashal-logo.png" />
-<title>Mashal — Social intelligence for serious creators</title>
+<title>Mashal. Social intelligence for serious creators</title>
 <link rel="canonical" href="https://mashal.app/" />
-<meta name="description" content="Mashal is daily social intelligence for serious creators, brands, and agencies. One landscape brief at 6 AM: verdict, three actions, six signals — across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Built by Empakt Financial Inc." />
+<meta name="description" content="Mashal is daily social intelligence for serious creators, brands, and agencies. One landscape brief at 6 AM with verdict, three actions, and six signals across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Built by Empakt Financial Inc." />
 <meta name="keywords" content="social media intelligence, social analytics, creator analytics, brand analytics, agency analytics, daily brief, Instagram analytics, TikTok analytics, YouTube analytics, Snapchat analytics, GCC social media, Saudi Arabia social media, Empakt Financial Inc." />
 <meta name="author" content="Empakt Financial Inc." />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Mashal by Empakt Financial Inc." />
 <meta property="og:url" content="https://mashal.app/" />
-<meta property="og:title" content="Mashal — Social intelligence for serious creators" />
-<meta property="og:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals — across every platform that matters. Built by Empakt Financial Inc." />
+<meta property="og:title" content="Mashal. Social intelligence for serious creators" />
+<meta property="og:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals across every platform that matters. Built by Empakt Financial Inc." />
 <meta property="og:locale" content="en_US" />
 <meta property="og:image" content="https://mashal.app/images/og-card.png" />
-<meta property="og:image:alt" content="Mashal — Daily social intelligence for serious creators, brands, and agencies." />
+<meta property="og:image:alt" content="Mashal. Daily social intelligence for serious creators, brands, and agencies." />
 <meta name="twitter:site" content="@getmashalapp">
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:image" content="https://mashal.app/images/og-card.png" />
-<meta name="twitter:title" content="Mashal — Social intelligence for serious creators" />
-<meta name="twitter:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals — across every platform that matters." />
+<meta name="twitter:title" content="Mashal. Social intelligence for serious creators" />
+<meta name="twitter:description" content="One landscape brief at 6 AM. Verdict, three actions, six signals across every platform that matters." />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -1370,7 +1370,7 @@ const Landing = ({ onSignIn, onSignUp, theme, toggleTheme, heroVariant = 'gradie
 const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => (
   <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
     <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal — go to homepage"><MashalLogo /></a>
+      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal home"><MashalLogo /></a>
       <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
         <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
         <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
@@ -1982,7 +1982,7 @@ const Footer = () => (
     <div className="max-w-7xl mx-auto px-5 sm:px-8 py-12">
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-8">
         <div className="lg:col-span-2">
-          <a href="/" className="inline-block hover:opacity-80 transition" aria-label="Mashal — go to homepage"><MashalLogo /></a>
+          <a href="/" className="inline-block hover:opacity-80 transition" aria-label="Mashal home"><MashalLogo /></a>
           <p className="text-[13.5px] text-mute dark:text-muteDark mt-4 max-w-xs">Daily social intelligence for serious creators, brands and agencies.</p>
           <nav aria-label="Follow Mashal" className="flex gap-2.5 mt-4">
             <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram" className="w-9 h-9 rounded-lg border border-line dark:border-lineDark text-mute dark:text-muteDark inline-flex items-center justify-center hover:text-ultra hover:border-ultra transition">
@@ -2564,8 +2564,8 @@ const Onboarding = ({ onDone }) => {
             <div className="grid sm:grid-cols-3 gap-2.5 mb-7">
               {[
                 { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · weekly brief · solo' },
-                { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · 3 team seats · daily brief + ads' },
-                { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · 10 team seats · white-label + ads' },
+                { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · 3 team seats, unlimited Viewer · daily brief, ads' },
+                { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · 10 team seats, unlimited Viewer · white-label, ads' },
               ].map(t => (
                 <button
                   key={t.id}
@@ -7260,8 +7260,8 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                     )}
                     <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
                       {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · weekly brief · solo'
-                       : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats · daily brief + ads'
-                                           : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats · daily brief + alerts'}
+                       : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats, unlimited Viewer access · daily brief, ads'
+                                           : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats, unlimited Viewer access · daily brief, alerts'}
                     </p>
                     {usage && (
                       <div className="pt-4 border-t border-paper/10">
@@ -7390,30 +7390,40 @@ const BriefGenerating = ({ onGoToSettings }) => (
 //   3. TrialLockedCard — inline teaser for paid-only features (audience
 //      demos, ad performance, daily-only data) during the active trial.
 
-const TrialBanner = ({ trial, intentTier, onUpgrade }) => {
+const TrialBanner = ({ trial, intentTier, referralUnlockAvailable, onUpgrade, onReferralUnlock }) => {
   if (!trial?.active) return null;
   const days = trial.days_left ?? 0;
+  // Referred Creators see a lime "Add card to unlock 30 days" CTA. It
+  // takes priority over the urgency-tinted upgrade CTA because the
+  // 30-day extension is the more generous, lower-friction action.
   const urgency = days <= 1 ? 'magenta' : days <= 3 ? 'amber' : 'ultra';
   const colorMap = {
     magenta: 'bg-magenta text-paper',
     amber:   'bg-amber text-ink',
     ultra:   'bg-ultra text-paper',
+    lime:    'bg-lime text-ink',
   };
+  const tone = referralUnlockAvailable ? 'lime' : urgency;
   return (
     <div className={cls(
       'w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap',
-      colorMap[urgency]
+      colorMap[tone]
     )}>
       <span>
-        Trial · {days === 0 ? 'last day' : days === 1 ? '1 day left' : `${days} days left`}
-        {intentTier && <> · upgrading to {intentTier.charAt(0).toUpperCase() + intentTier.slice(1)}</>}
+        {referralUnlockAvailable
+          ? <>You were invited to Mashal. Add a card to unlock your first month free, no charge for 30 days.</>
+          : <>
+              Trial · {days === 0 ? 'last day' : days === 1 ? '1 day left' : `${days} days left`}
+              {intentTier && <> · upgrading to {intentTier.charAt(0).toUpperCase() + intentTier.slice(1)}</>}
+            </>
+        }
       </span>
       <button
         type="button"
-        onClick={onUpgrade}
-        className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-paper/15 hover:bg-paper/25 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
+        onClick={referralUnlockAvailable ? onReferralUnlock : onUpgrade}
+        className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-ink/15 hover:bg-ink/25 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
       >
-        Upgrade now <Icon name="arrowRight" className="w-3 h-3" />
+        {referralUnlockAvailable ? 'Add card' : 'Upgrade now'} <Icon name="arrowRight" className="w-3 h-3" />
       </button>
     </div>
   );
@@ -7637,6 +7647,10 @@ function App() {
   // etc. Settings reads it on mount and scrolls to the matching section.
   const [settingsAnchor, setSettingsAnchor] = React.useState(null);
   const [upgradeOpen, setUpgradeOpen]       = React.useState(false);
+  // Optional trial-days override when opening the UpgradeDialog. Used by
+  // the referral-unlock CTA on the TrialBanner to launch Stripe Checkout
+  // with a 30-day trial period instead of an immediate paid conversion.
+  const [upgradeTrialDays, setUpgradeTrialDays] = React.useState(null);
 
   // Global listeners so any component (including ones rendered via the
   // screen registry, which don't have direct access to setTab) can:
@@ -7647,7 +7661,10 @@ function App() {
       setSettingsAnchor(e?.detail?.anchor || null);
       setTab('Settings');
     };
-    const onUpgrade = () => setUpgradeOpen(true);
+    const onUpgrade = (e) => {
+      setUpgradeTrialDays(e?.detail?.trialDays || null);
+      setUpgradeOpen(true);
+    };
     window.addEventListener('pulse:gotoSettings', onGo);
     window.addEventListener('pulse:openUpgrade', onUpgrade);
     return () => {
@@ -8123,12 +8140,15 @@ function App() {
 
       {/* Upgrade dialog — mounted at App root so it overlays everything
           else. Triggered by pulse:openUpgrade events from the trial
-          banner, paywall, Ads tab, and any other locked-feature card. */}
+          banner, paywall, Ads tab, and any other locked-feature card.
+          trialDays is set when the referral-unlock CTA triggers checkout
+          (Stripe-side 30-day trial instead of immediate paid conversion). */}
       <UpgradeDialog
         open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
+        onClose={() => { setUpgradeOpen(false); setUpgradeTrialDays(null); }}
         intentTier={briefData?.trial?.intent_tier || briefData?.tier?.key}
         trial={briefData?.trial}
+        trialDays={upgradeTrialDays}
       />
 
       {/* Trial paywall — full-screen takeover. Bypasses TopBar/Account
@@ -8149,7 +8169,9 @@ function App() {
           <TrialBanner
             trial={briefData?.trial}
             intentTier={briefData?.trial?.intent_tier || briefData?.tier?.key}
-            onUpgrade={() => setUpgradeOpen(true)}
+            referralUnlockAvailable={!!briefData?.referral_unlock_available}
+            onUpgrade={() => { setUpgradeTrialDays(null); setUpgradeOpen(true); }}
+            onReferralUnlock={() => { setUpgradeTrialDays(30); setUpgradeOpen(true); }}
           />
           {/* Subscription state banner — past_due / canceled / cancel-pending.
               Mutually exclusive with TrialBanner in practice (only one of

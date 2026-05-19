@@ -12,7 +12,7 @@
 // components defined inline in index.html.
 // ═════════════════════════════════════════════════════════════════════════
 
-const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
+const UpgradeDialog = ({ open, onClose, intentTier, trial, trialDays }) => {
   const [loading, setLoading] = React.useState(false);
   const [error, setError]     = React.useState(null);
 
@@ -20,6 +20,7 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
   const tierLabel = intentTier
     ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
     : 'Your plan';
+  const isTrialFlow = Number(trialDays) > 0;
   const supportEmail = 'hello@mashal.app';
 
   const startCheckout = async () => {
@@ -28,7 +29,13 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
     try {
       const r = await api('/stripe?action=checkout', {
         method: 'POST',
-        body: JSON.stringify({ tier: intentTier || undefined }),
+        body: JSON.stringify({
+          tier: intentTier || undefined,
+          // Only forward trial_days when the dialog was opened in trial
+          // mode (referral-unlock CTA). The server validates eligibility
+          // before honouring it.
+          ...(isTrialFlow ? { trial_days: Number(trialDays) } : {}),
+        }),
       });
       if (!r?.url) throw new Error('No checkout URL returned');
       window.location.href = r.url;
@@ -54,12 +61,14 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial }) => {
             <Icon name="x" className="w-4 h-4" />
           </button>
         </div>
-        <Eyebrow color="text-ultra">Upgrade to {tierLabel}</Eyebrow>
+        <Eyebrow color="text-ultra">{isTrialFlow ? `Unlock ${trialDays} days free` : `Upgrade to ${tierLabel}`}</Eyebrow>
         <h2 className="font-display text-[28px] font-semibold tracking-tightest mt-2 mb-2 leading-tight">
-          Continue to Stripe.
+          {isTrialFlow ? 'Add your card. No charge for 30 days.' : 'Continue to Stripe.'}
         </h2>
         <p className="text-[14px] text-mute dark:text-muteDark leading-relaxed mb-5">
-          We'll redirect you to Stripe's secure checkout to start your {tierLabel} subscription. You can cancel or change plans anytime from Settings → Billing.
+          {isTrialFlow
+            ? `We'll redirect you to Stripe's secure checkout to save your card and start your ${trialDays}-day free trial on ${tierLabel}. You won't be charged for ${trialDays} days, and you can cancel anytime from Settings → Billing.`
+            : `We'll redirect you to Stripe's secure checkout to start your ${tierLabel} subscription. You can cancel or change plans anytime from Settings → Billing.`}
         </p>
         {trial?.days_left != null && !trial.locked && (
           <div className="rounded-xl bg-chalk dark:bg-coalsoft p-3 text-[12.5px] text-mute dark:text-muteDark mb-5">

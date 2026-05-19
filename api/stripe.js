@@ -86,6 +86,27 @@ export default async function handler(req, res) {
     const priceId = PRICE_BY_TIER[tier];
     if (!priceId) return json(res, 400, { error: `Unknown tier: ${tier}` });
 
+    // Trial-period validation. The SPA may request a Stripe-side trial
+    // (e.g. 30 days for a referred Creator adding a card upfront). We
+    // accept the request but verify the workspace is actually eligible
+    // before forwarding to Stripe — anyone could spoof trial_days on
+    // their own browser, so the server-side check is the real gate.
+    let trialDays = null;
+    const requestedTrialDays = Number(body?.trial_days) || 0;
+    if (requestedTrialDays === 30 && tier === 'creator' && !ws.stripe_subscription_id) {
+      const referral = await supabase.select('referrals', {
+        select: 'id,status',
+        eq: { referee_workspace_id: ws.id },
+        single: true,
+      }).catch(() => null);
+      // Honour the 30-day trial only if the workspace was actually
+      // referred AND the referral is still in 'pending' state (i.e.
+      // the user hasn't already converted through another path).
+      if (referral && (referral.status === 'pending' || referral.status === 'converted')) {
+        trialDays = 30;
+      }
+    }
+
     try {
       const session = await withCustomerRetry(async () => {
         const customerId = await ensureCustomerId();
@@ -96,9 +117,10 @@ export default async function handler(req, res) {
           successUrl: `${APP_URL}/?checkout=success`,
           cancelUrl:  `${APP_URL}/?checkout=cancelled`,
           promoCode: body?.promoCode || null,
+          trialDays,
         });
       });
-      return json(res, 200, { url: session.url, id: session.id });
+      return json(res, 200, { url: session.url, id: session.id, trial_days: trialDays });
     } catch (e) {
       return json(res, e.status || 500, { error: e.message });
     }

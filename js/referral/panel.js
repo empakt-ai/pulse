@@ -87,7 +87,7 @@ const ReferralPanel = () => {
           : `Earn a free month for every friend who upgrades.`}
       </h3>
       <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed mb-4">
-        Your friend gets a 14-day trial (instead of 7). You get one month of Creator credited to your next invoice when they upgrade. Cap of {maxRewards} rewards per account.
+        Your friend gets their first month free when they add a card at signup. You get one month of Creator credited to your next invoice when they upgrade to a paying plan. Cap of {maxRewards} rewards per account to start.
       </p>
 
       {/* Counter row — pending + earned visible at a glance */}

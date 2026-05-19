@@ -24,8 +24,10 @@ const INVITE_TTL_DAYS = 7;
 const APP_URL = process.env.APP_URL || 'https://mashal.app';
 
 // Count distinct seats used by an owner across ALL their workspaces.
-// Owner's own row in workspace_members counts as 1 seat (so Brand=3
-// means owner + 2 invitees, matching the spec's pricing copy).
+// Owner + Admin + Member roles count against the seat cap. Viewer
+// access is uncapped — clients on Viewer don't consume seats, which
+// is the whole point of the role (an Agency might give 20 clients
+// Viewer logins without burning their internal seat budget).
 async function countSeatsUsed(ownerId) {
   const owned = await supabase.select('workspaces', {
     select: 'id',
@@ -36,17 +38,20 @@ async function countSeatsUsed(ownerId) {
 
   const [memberRows, pendingRows] = await Promise.all([
     supabase.select('workspace_members', {
-      select: 'user_id',
+      select: 'user_id,role',
       in: { workspace_id: wsIds },
     }).catch(() => []),
     supabase.select('team_invitations', {
-      select: 'email',
+      select: 'email,role',
       in: { workspace_id: wsIds },
       eq: { status: 'pending' },
     }).catch(() => []),
   ]);
-  const uniqueUsers   = new Set((memberRows  || []).map(m => m.user_id));
-  const pendingEmails = new Set((pendingRows || []).map(p => String(p.email).toLowerCase()));
+  // Viewers don't count against the seat cap.
+  const internalMembers = (memberRows  || []).filter(m => m.role !== 'viewer');
+  const internalPending = (pendingRows || []).filter(p => p.role !== 'viewer');
+  const uniqueUsers   = new Set(internalMembers.map(m => m.user_id));
+  const pendingEmails = new Set(internalPending.map(p => String(p.email).toLowerCase()));
   return { members: uniqueUsers.size, pending: pendingEmails.size };
 }
 
@@ -114,14 +119,19 @@ export default async function handler(req, res) {
   // this owner's workspaces. The owner is reckoned as ws.owner_id, not
   // auth.user.id — an admin invited by the owner can issue invites but
   // the cap belongs to the billing owner.
+  // Viewer invites are uncapped — useful for agencies sharing read-only
+  // access with their clients without burning the internal seat budget.
+  // Only Admin/Member invites count against the cap.
   const ownerId = ws.owner_id || auth.user.id;
-  const { members, pending } = await countSeatsUsed(ownerId);
-  const limit = SEAT_LIMITS[tier];
-  if (members + pending >= limit) {
-    return json(res, 402, {
-      error: `Seat limit reached. Your ${tier} plan includes ${limit} seats. Per-seat add-ons are coming soon.`,
-      members, pending, limit,
-    });
+  if (role !== 'viewer') {
+    const { members, pending } = await countSeatsUsed(ownerId);
+    const limit = SEAT_LIMITS[tier];
+    if (members + pending >= limit) {
+      return json(res, 402, {
+        error: `Seat limit reached. Your ${tier} plan includes ${limit} team seats for Admins and Members. Viewer invites stay uncapped, or per-seat add-ons are coming soon.`,
+        members, pending, limit,
+      });
+    }
   }
 
   // If this email already has a pending invite for THIS workspace,

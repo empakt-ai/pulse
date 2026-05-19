@@ -30,9 +30,9 @@ const ROLE_LABEL = {
 };
 
 const ROLE_DESCRIPTION = {
-  admin:  'Invite/remove members, edit workspace settings, full brief access.',
-  member: 'Full brief + content + competitors. No settings changes.',
-  viewer: 'Read-only — brief, signals, reports. Useful for clients.',
+  admin:  'Invite or remove members, edit workspace settings, full brief access. Counts as an internal seat.',
+  member: 'Full brief, content, and competitors. No settings changes. Counts as an internal seat.',
+  viewer: 'Read-only access to the brief, signals, and reports. Great for sharing with clients, and never counts against your seat limit.',
 };
 
 const ROLE_CLS = {
@@ -175,7 +175,7 @@ const TeamPanel = () => {
     <div id="settings-team" style={{ scrollMarginTop: '80px' }}>
       <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Team</h3>
       <p className="text-[13px] text-mute dark:text-muteDark mb-4">
-        Invite teammates and clients. Owners and admins manage access. Members can edit content and competitors. Viewers see read-only briefs — useful for sharing with clients.
+        Invite teammates and clients. Owners and admins manage access. Members can edit content and competitors. Viewers see read-only briefs, which is useful for sharing the workspace with clients. Viewer invites are uncapped, so client access never burns an internal seat.
       </p>
 
       {error && (

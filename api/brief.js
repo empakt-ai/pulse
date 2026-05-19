@@ -347,6 +347,23 @@ export default async function handler(req, res) {
     .sort()
     .pop();
 
+  // Referral unlock — true for Creator workspaces that were referred but
+  // haven't yet added a card. Drives the "Add card to unlock your free
+  // month" banner. Anyone else gets false and the banner stays hidden.
+  let referralUnlockAvailable = false;
+  if (String(ws.tier || '').toLowerCase() === 'creator'
+      && !ws.stripe_subscription_id
+      && ws.trial_promo_code) {
+    const referral = await supabase.select('referrals', {
+      select: 'id,status',
+      eq: { referee_workspace_id: ws.id },
+      single: true,
+    }).catch(() => null);
+    if (referral && (referral.status === 'pending' || referral.status === 'converted')) {
+      referralUnlockAvailable = true;
+    }
+  }
+
   return json(res, 200, {
     workspace: ws,
     workspaces: auth.workspaces || [],
@@ -362,6 +379,10 @@ export default async function handler(req, res) {
     // 'member' | 'viewer'). Drives the SPA's write-action gating via
     // D.workspaceRole / D.canWrite.
     role:     auth.role || null,
+    // True when this workspace was referred by another Creator and the
+    // referee can still add a card to unlock the 30-day free trial.
+    // Drives the TrialBanner "Add card. Free for 30 days" CTA.
+    referral_unlock_available: referralUnlockAvailable,
     user: {
       id: auth.user.id,
       email: auth.user.email,

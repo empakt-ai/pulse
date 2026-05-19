@@ -30,6 +30,9 @@ const D = {
   // the owner has every right to click.
   workspaceRole: 'owner',
   canWrite: true,
+  // Referral unlock — surfaces the "Add card to unlock 30-day trial" CTA
+  // on TrialBanner when this Creator workspace was referred.
+  referralUnlockAvailable: false,
   lastSync: null,
   nextSync: null,
   intelScore: null,
@@ -190,6 +193,12 @@ const hydrateD = (brief) => {
   // just to avoid showing buttons that would 403.
   D.workspaceRole = brief.role || 'owner';
   D.canWrite      = D.workspaceRole !== 'viewer';
+
+  // Referral unlock — true when this Creator workspace was referred and
+  // can still add a card to extend the trial from 7 to 30 days. The
+  // TrialBanner reads this to swap its CTA from "Upgrade now" to
+  // "Add card. Free for 30 days".
+  D.referralUnlockAvailable = !!brief.referral_unlock_available;
 };
 
 // Expose to the rest of the SPA (still inside index.html). Same pattern

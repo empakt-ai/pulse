@@ -25,7 +25,7 @@
 // ═════════════════════════════════════════════════════════════════════════
 
 import { supabase } from './_lib/supabase.js';
-import { verifyWebhookSignature, TIER_BY_PRICE } from './_lib/stripe.js';
+import { verifyWebhookSignature, TIER_BY_PRICE, getSubscription } from './_lib/stripe.js';
 import { logAdminAction } from './_lib/admin.js';
 import {
   convertReferralIfAny,
@@ -155,17 +155,38 @@ async function handleCheckoutCompleted(session) {
     });
   }
 
-  // The session payload doesn't include the full subscription; we'll
-  // record the subscription id here and let the subsequent
-  // customer.subscription.created event fill in the rest. We also stamp
-  // trial_converted_at + trial_locked=false so the user immediately exits
-  // trial state on payment success.
+  // The session payload doesn't include the full subscription. We
+  // fetch it directly so we can tell whether this checkout completion
+  // is a real paid conversion (status=active) or a card-upfront trial
+  // signup (status=trialing). For trial signups we extend the workspace
+  // trial window to match Stripe's trial_end, but DO NOT stamp
+  // trial_converted_at — that happens later when the trial actually
+  // converts (handled in handleSubscriptionUpsert when status moves
+  // from trialing to active).
+  let isStripeTrialing = false;
+  let stripeTrialEnd = null;
+  if (subscriptionId) {
+    try {
+      const sub = await getSubscription(subscriptionId);
+      if (sub?.status === 'trialing' && sub.trial_end) {
+        isStripeTrialing = true;
+        stripeTrialEnd = new Date(sub.trial_end * 1000).toISOString();
+      }
+    } catch (e) {
+      console.warn('[stripe-webhook] failed to fetch subscription for trial check:', e.message);
+    }
+  }
+
   const patch = {
     stripe_subscription_id: subscriptionId || null,
-    trial_converted_at: ws.trial_converted_at || new Date().toISOString(),
     trial_locked: false,
     stripe_last_event_at: new Date().toISOString(),
   };
+  if (isStripeTrialing) {
+    patch.trial_ends_at = stripeTrialEnd;
+  } else {
+    patch.trial_converted_at = ws.trial_converted_at || new Date().toISOString();
+  }
   await supabase.update('workspaces', patch, { eq: { id: workspaceId } });
 
   await logAdminAction({
@@ -225,7 +246,7 @@ async function handleSubscriptionUpsert(sub, eventType) {
   const periodEnd = sub.current_period_end ? new Date(sub.current_period_end * 1000).toISOString() : null;
 
   const before = await supabase.select('workspaces', {
-    select: 'id,owner_id,tier,stripe_subscription_id,stripe_subscription_status,stripe_price_id',
+    select: 'id,owner_id,tier,stripe_subscription_id,stripe_subscription_status,stripe_price_id,trial_converted_at',
     eq: { id: workspaceId },
     single: true,
   }).catch(() => null);
@@ -246,6 +267,19 @@ async function handleSubscriptionUpsert(sub, eventType) {
   // with null — if a manual Stripe edit pointed to an unknown price we
   // keep the last good tier rather than blanking the row.
   if (derivedTier && derivedTier !== before.tier) patch.tier = derivedTier;
+
+  // Trial-state transitions:
+  //   - trialing: a card is on file but Stripe hasn't charged yet. Mirror
+  //     the trial_end onto trial_ends_at so the SPA's trial banner shows
+  //     the extended window correctly.
+  //   - active: the trial has converted to a paying subscription. Stamp
+  //     trial_converted_at if it isn't already set (handles both direct
+  //     paid conversions and the trialing → active transition).
+  if (sub.status === 'trialing' && sub.trial_end) {
+    patch.trial_ends_at = new Date(sub.trial_end * 1000).toISOString();
+  } else if (sub.status === 'active' && !before.trial_converted_at) {
+    patch.trial_converted_at = new Date().toISOString();
+  }
 
   await supabase.update('workspaces', patch, { eq: { id: workspaceId } });
 
