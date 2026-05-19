@@ -101,6 +101,24 @@ tailwind.config = {
   }
   .marquee { animation: scroll-x 40s linear infinite; }
 
+  /* Custom dropdown indicator — Tailwind's preflight resets <select>
+     styling so the native chevron disappears. Apply a chevron-down SVG
+     as a background image to every <select>, with enough right padding
+     so the arrow doesn't overlap the selected option text. Inline data
+     URI keeps it dependency-free. */
+  select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%236B6B6B' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='1 1 5 5 9 1'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px !important;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+  }
+  html.dark select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none' stroke='%23A6A6A6' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='1 1 5 5 9 1'/%3E%3C/svg%3E");
+  }
+
   /* Mashal dot */
   @keyframes ping-pulse {
     0%   { transform: scale(1); opacity: .8; }

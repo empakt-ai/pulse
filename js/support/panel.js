@@ -94,25 +94,23 @@ const SupportPanel = () => {
       </p>
 
       <form onSubmit={submit} className="space-y-2.5">
-        <div className="flex flex-col sm:flex-row gap-2">
-          <select
-            value={form.type}
-            onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-            className="h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink text-[13px] focus:outline-none focus:border-ultra transition sm:w-36"
-          >
-            <option value="suggestion">Suggestion</option>
-            <option value="bug">Bug</option>
-            <option value="question">Question</option>
-          </select>
-          <input
-            type="text"
-            value={form.subject}
-            maxLength={140}
-            onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
-            placeholder="One-line summary"
-            className="flex-1 h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink text-[13.5px] focus:outline-none focus:border-ultra transition"
-          />
-        </div>
+        <select
+          value={form.type}
+          onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
+          className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink text-[13px] focus:outline-none focus:border-ultra transition"
+        >
+          <option value="suggestion">Suggestion</option>
+          <option value="bug">Bug</option>
+          <option value="question">Question</option>
+        </select>
+        <input
+          type="text"
+          value={form.subject}
+          maxLength={140}
+          onChange={e => setForm(f => ({ ...f, subject: e.target.value }))}
+          placeholder="One-line summary"
+          className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink text-[13.5px] focus:outline-none focus:border-ultra transition"
+        />
         <textarea
           value={form.body}
           maxLength={5000}

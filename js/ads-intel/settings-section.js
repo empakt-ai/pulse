@@ -78,70 +78,94 @@ const AdsIntelSettings = ({ onToast }) => {
         Set your advertising goal and category so Mashal can benchmark your ad performance and surface the highest-performing spots.
       </p>
       <Card className="!p-5 space-y-4">
-        <div>
-          <label className="text-[12px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark mb-1.5 block">
-            Primary ad goal
-          </label>
-          <select
-            value={form.goal}
-            onChange={e => setForm(f => ({ ...f, goal: e.target.value }))}
-            disabled={loading}
-            className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra"
-          >
-            <option value="">Select goal…</option>
-            <option value="sales">Sales / Conversions</option>
-            <option value="leads">Lead generation</option>
-            <option value="awareness">Brand awareness</option>
-            <option value="followers">Audience growth</option>
-            <option value="traffic">Website traffic</option>
-          </select>
-        </div>
+        {/* Goal + category — two compact dropdowns side-by-side on
+            desktop, stacking on narrower screens so labels don't truncate. */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-[12px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark mb-1.5 block">
+              Primary ad goal
+            </label>
+            <select
+              value={form.goal}
+              onChange={e => setForm(f => ({ ...f, goal: e.target.value }))}
+              disabled={loading}
+              className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra"
+            >
+              <option value="">Select goal…</option>
+              <option value="sales">Sales / Conversions</option>
+              <option value="leads">Lead generation</option>
+              <option value="awareness">Brand awareness</option>
+              <option value="followers">Audience growth</option>
+              <option value="traffic">Website traffic</option>
+            </select>
+          </div>
 
-        <div>
-          <label className="text-[12px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark mb-1.5 block">
-            Industry category
-          </label>
-          <select
-            value={form.category}
-            onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
-            disabled={loading}
-            className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra"
-          >
-            <option value="">Select category…</option>
-            <option value="food_beverage">Food & Beverage</option>
-            <option value="automotive">Automotive</option>
-            <option value="fashion">Fashion & Apparel</option>
-            <option value="saas">SaaS / Tech</option>
-            <option value="health_wellness">Health & Wellness</option>
-            <option value="real_estate">Real Estate</option>
-            <option value="finance">Finance</option>
-            <option value="retail">Retail / Ecommerce</option>
-            <option value="media">Media & Entertainment</option>
-            <option value="other">Other</option>
-          </select>
+          <div>
+            <label className="text-[12px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark mb-1.5 block">
+              Industry category
+            </label>
+            <select
+              value={form.category}
+              onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+              disabled={loading}
+              className="w-full h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra"
+            >
+              <option value="">Select category…</option>
+              <option value="food_beverage">Food & Beverage</option>
+              <option value="automotive">Automotive</option>
+              <option value="fashion">Fashion & Apparel</option>
+              <option value="saas">SaaS / Tech</option>
+              <option value="health_wellness">Health & Wellness</option>
+              <option value="real_estate">Real Estate</option>
+              <option value="finance">Finance</option>
+              <option value="retail">Retail / Ecommerce</option>
+              <option value="media">Media & Entertainment</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
         </div>
 
         <div className="flex items-start justify-between gap-4 pt-2 border-t border-line dark:border-lineDark">
-          <div>
+          <div className="min-w-0">
             <div className="text-[13px] font-medium mb-0.5">Contribute to Mashal benchmarks</div>
             <div className="text-[12px] text-mute dark:text-muteDark leading-relaxed">
               Your anonymised ad metrics (no content, no creative, no account identity) help improve spot-score benchmarks for every Mashal workspace.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setForm(f => ({ ...f, network_opt_in: !f.network_opt_in }))}
-            className={cls(
-              'flex-shrink-0 w-10 h-6 rounded-full transition-colors relative',
-              form.network_opt_in ? 'bg-ultra dark:bg-lime' : 'bg-line dark:bg-lineDark'
-            )}
-            aria-label="Toggle network contribution"
-          >
+          {/* Toggle switch — On/Off label travels with the track so the
+              state is unambiguous regardless of theme contrast. Inline
+              left/transform values avoid Tailwind class-detection misses
+              on translate-x-* (these are loaded from an external babel
+              file the Tailwind JIT may not scan). */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             <span className={cls(
-              'absolute top-1 w-4 h-4 rounded-full bg-white transition-transform',
-              form.network_opt_in ? 'translate-x-5' : 'translate-x-1'
-            )} />
-          </button>
+              'text-[10.5px] font-mono uppercase tracking-[0.14em]',
+              form.network_opt_in ? 'text-limeDeep dark:text-lime' : 'text-mute dark:text-muteDark'
+            )}>
+              {form.network_opt_in ? 'On' : 'Off'}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={!!form.network_opt_in}
+              onClick={() => setForm(f => ({ ...f, network_opt_in: !f.network_opt_in }))}
+              className={cls(
+                'flex-shrink-0 w-11 h-6 rounded-full transition-colors relative border',
+                form.network_opt_in
+                  ? 'bg-ultra dark:bg-lime border-ultra dark:border-lime'
+                  : 'bg-line dark:bg-lineDark border-line dark:border-lineDark'
+              )}
+              aria-label="Toggle network contribution"
+            >
+              <span
+                className="absolute top-1/2 w-4 h-4 rounded-full bg-white shadow transition-all"
+                style={{
+                  left: form.network_opt_in ? '22px' : '4px',
+                  transform: 'translateY(-50%)',
+                }}
+              />
+            </button>
+          </div>
         </div>
 
         <Btn variant="ink" onClick={save} disabled={saving || loading || !fieldDirty}>
