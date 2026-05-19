@@ -2018,6 +2018,7 @@ Object.assign(window, { Landing });
 <script type="text/babel" src="js/billing/upgrade-dialog.js"></script>
 <script type="text/babel" src="js/ads-intel/settings-section.js"></script>
 <script type="text/babel" src="js/ads-intel/ads-panels.js"></script>
+<script type="text/babel" src="js/referral/panel.js"></script>
 <script type="text/babel">
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
@@ -2256,8 +2257,11 @@ const Onboarding = ({ onDone }) => {
   const [workspaceName, setWorkspaceName] = React.useState('');
   // Tier intent + promo capture for the trial. Defaults to whatever
   // userType was selected in step 0 so the picker arrives pre-filled.
+  // If the user landed via a referral link (mashal.app/?ref=NAWAZ7K),
+  // App() stashed the code in localStorage; pre-fill the promo input
+  // so they don't have to retype.
   const [intentTier, setIntentTier] = React.useState('creator');
-  const [promoCode, setPromoCode]   = React.useState('');
+  const [promoCode, setPromoCode]   = React.useState(() => readStoredRefCode() || '');
   const [saving, setSaving]       = React.useState(false);
   const toggleFocus = (id) =>
     setFocusRegions(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -7276,6 +7280,14 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
             );
           })()}
 
+          {/* Refer & earn — paid Creator-tier only. Trialing Creators
+              don't get to invite (credit only makes sense once they have
+              a subscription, and the trial referrer is an abuse vector).
+              The Panel hides itself on 403 too, but we gate the mount
+              so Brand/Agency/trialing users don't even issue the fetch.
+              See js/referral/panel.js. */}
+          {tier === 'creator' && !workspace?.trial_active && window.Referral?.Panel && <window.Referral.Panel />}
+
           {/* Privacy note */}
           <div className="p-3.5 rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/20 text-[12px] leading-relaxed text-ultra dark:text-ultra/80">
             <Icon name="sparkle" className="w-3.5 h-3.5 inline mr-1" />
@@ -7448,7 +7460,50 @@ const DEFAULTS = /*EDITMODE-BEGIN*/{
   "persona": "creator"
 }/*EDITMODE-END*/;
 
+// ── Referral attribution capture ─────────────────────────────────────────
+// /?ref=NAWAZ7K → stash the code in localStorage with a timestamp and
+// strip it from the URL so the address bar stays clean. Read back in
+// OnboardingScreen when the user hits the promo-code step. 30-day TTL
+// matches industry-standard referral cookies.
+const REF_STORAGE_KEY = 'pulse_ref_code';
+const REF_TTL_MS = 30 * 86400000;
+
+function captureRefFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (!ref) return;
+    const code = String(ref).trim().toUpperCase();
+    if (!code) return;
+    localStorage.setItem(REF_STORAGE_KEY, JSON.stringify({ code, savedAt: Date.now() }));
+    // Strip ?ref from the URL so it doesn't stick around or get re-shared
+    // accidentally. Preserves other params (e.g. ?route=signup).
+    params.delete('ref');
+    const qs = params.toString();
+    const next = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+    window.history.replaceState({}, '', next);
+  } catch {}
+}
+
+function readStoredRefCode() {
+  try {
+    const raw = localStorage.getItem(REF_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.code || !parsed?.savedAt) return null;
+    if (Date.now() - parsed.savedAt > REF_TTL_MS) {
+      localStorage.removeItem(REF_STORAGE_KEY);
+      return null;
+    }
+    return parsed.code;
+  } catch { return null; }
+}
+
 function App() {
+  // Capture ?ref=CODE on the very first render before anything else
+  // touches the URL. Idempotent — no-op if there's no ?ref param.
+  React.useMemo(() => { captureRefFromUrl(); }, []);
+
   // Synchronous init — read localStorage during the first render so the
   // browser never paints the loading spinner for returning users. Magic
   // links still need an async exchange and fall through to 'loading'.

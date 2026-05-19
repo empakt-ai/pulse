@@ -29,6 +29,7 @@
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
+import { recordReferralAttribution } from './_lib/referral.js';
 
 // Tier is intentionally NOT in this list — a client PATCH could otherwise
 // upgrade itself from Creator to Agency for free. tier changes happen
@@ -142,6 +143,23 @@ export default async function handler(req, res) {
 
     try {
       const rows = await supabase.update('workspaces', patch, { eq: { id: workspace.id } });
+
+      // Referral attribution — best-effort. If trial_promo_code was just
+      // set and maps to a real referral_codes row, log a referrals entry
+      // in 'pending' state. Self-referrals, non-referral promo codes, and
+      // duplicate attributions are dropped silently by the helper.
+      if (patch.trial_promo_code) {
+        try {
+          await recordReferralAttribution({
+            refereeWorkspaceId: workspace.id,
+            refereeUserId:      auth.user.id,
+            code:               patch.trial_promo_code,
+          });
+        } catch (e) {
+          console.warn('[workspaces] referral attribution failed (non-fatal):', e.message);
+        }
+      }
+
       return json(res, 200, { workspace: rows?.[0] || null });
     } catch (e) {
       // Schema fallback: strip newer columns and retry if their migration

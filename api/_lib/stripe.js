@@ -157,6 +157,21 @@ export const listSubscriptionsForCustomer = (customerId) =>
 export const listInvoices = (customerId, { limit = 20 } = {}) =>
   call(`/invoices?customer=${encodeURIComponent(customerId)}&limit=${limit}`);
 
+// ── Customer balance credit (used by the referral reward path) ──────────
+// Negative `amount` adds a credit that Stripe auto-applies to the next
+// invoice. We pass an idempotency key derived from the referral row so
+// webhook retries can't double-credit a referrer.
+export const createCustomerCredit = ({ customerId, amountCents, currency = 'usd', description, idempotencyKey }) =>
+  call(`/customers/${encodeURIComponent(customerId)}/balance_transactions`, {
+    method: 'POST',
+    idempotencyKey,
+    body: {
+      amount: -Math.abs(amountCents),       // negative = credit
+      currency,
+      description: description || 'Mashal referral credit',
+    },
+  });
+
 // ── Webhook signature verification ──────────────────────────────────────
 // Stripe signs every webhook body with the endpoint's signing secret. We
 // recompute the HMAC and compare with constant-time equality, also

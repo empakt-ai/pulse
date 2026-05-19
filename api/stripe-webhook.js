@@ -27,6 +27,11 @@
 import { supabase } from './_lib/supabase.js';
 import { verifyWebhookSignature, TIER_BY_PRICE } from './_lib/stripe.js';
 import { logAdminAction } from './_lib/admin.js';
+import {
+  convertReferralIfAny,
+  applyReferralCredit,
+  applyOutstandingReferralCredits,
+} from './_lib/referral.js';
 
 // Tell Vercel not to parse the body — signature verification needs the
 // raw text exactly as Stripe sent it.
@@ -172,6 +177,35 @@ async function handleCheckoutCompleted(session) {
     after:  { trial_converted_at: patch.trial_converted_at, stripe_subscription_id: subscriptionId || null },
     reason: `Stripe Checkout completed (customer=${customerId || 'unknown'})`,
   }).catch(() => {});
+
+  // ── Referral conversion ────────────────────────────────────────────────
+  // This workspace just paid. Two things may need to happen:
+  //   1. If this workspace was attributed to a referrer (pending row),
+  //      flip it to 'converted' and try to apply the credit to the
+  //      referrer's Stripe customer.
+  //   2. If the OWNER of this workspace has any deferred 'converted'
+  //      rewards from their own past referrals (they were on trial when
+  //      a friend converted), flush those now — the profile.stripe_
+  //      customer_id was stamped above, so the credit call can find it.
+  //
+  // All best-effort: a referral failure must never stop the checkout
+  // event from being marked processed.
+  try {
+    const referral = await convertReferralIfAny(workspaceId);
+    if (referral) {
+      await applyReferralCredit(referral).catch(e =>
+        console.warn('[stripe-webhook] referral credit apply failed:', e.message));
+    }
+  } catch (e) {
+    console.warn('[stripe-webhook] convertReferralIfAny failed:', e.message);
+  }
+  try {
+    if (ws.owner_id) {
+      await applyOutstandingReferralCredits(ws.owner_id);
+    }
+  } catch (e) {
+    console.warn('[stripe-webhook] applyOutstandingReferralCredits failed:', e.message);
+  }
 }
 
 // customer.subscription.{created,updated} carries the canonical state.
