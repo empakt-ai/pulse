@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/images/mashal-favicon.png">
+<link rel="apple-touch-icon" href="/images/mashal-logo.png">
+<title>Updates — Mashal | What we shipped this week</title>
+<link rel="canonical" href="https://mashal.app/updates">
+<meta name="description" content="A weekly log of what shipped on Mashal — what changed, why it was built, and what it means for creators, brands, and agencies using the product.">
+<meta property="og:title" content="Mashal Updates — Weekly product log">
+<meta property="og:description" content="What shipped, why it was built, and what it changes — on Mashal, every week.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mashal.app/updates">
+<meta property="og:site_name" content="Mashal by Empakt Financial Inc.">
+<meta property="og:image" content="https://mashal.app/images/og-card.png">
+<meta property="og:image:alt" content="Mashal — Daily social intelligence for serious creators, brands, and agencies.">
+<meta name="twitter:site" content="@getmashalapp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mashal.app/images/og-card.png">
+<meta name="twitter:title" content="Mashal Updates — Weekly product log">
+<meta name="twitter:description" content="What shipped, why it was built, and what it changes — on Mashal, every week.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<script>
+  (function(){try{if(localStorage.getItem('pulse_theme')==='dark')document.documentElement.classList.add('dark');}catch(_){} })();
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Empakt Financial Inc.",
+  "description": "Toronto-based corporation. Maker of Mashal — daily social intelligence for creators, brands, and agencies.",
+  "foundingDate": "2019",
+  "email": "hello@mashal.app",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Toronto",
+    "addressRegion": "ON",
+    "addressCountry": "CA"
+  }
+}
+</script>
+<style>
+  .updates-feed { max-width: 720px; margin: 0 auto; }
+  .update-entry { padding: 36px 0; border-top: 1px solid var(--line, rgba(10,10,11,0.08)); }
+  .update-entry:first-child { border-top: none; padding-top: 0; }
+  .update-meta {
+    display: flex; align-items: center; gap: 12px;
+    font-family: 'Geist Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--mute); margin-bottom: 14px;
+  }
+  .update-meta .dot-sep { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+  .update-meta .badge {
+    padding: 2px 8px; border-radius: 999px;
+    background: rgba(107,91,255,0.1); color: var(--ultra, #6B5BFF);
+    letter-spacing: 0.1em;
+  }
+  .update-entry h3 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 26px; font-weight: 600; letter-spacing: -0.02em;
+    margin: 0 0 18px; line-height: 1.15;
+  }
+  .update-entry p { font-size: 15px; line-height: 1.65; color: var(--ink, #0A0A0B); margin: 0 0 14px; max-width: 64ch; }
+  .update-entry p:last-child { margin-bottom: 0; }
+  html.dark .update-entry p { color: rgba(245,241,232,0.85); }
+  html.dark .update-entry { border-top-color: rgba(245,241,232,0.08); }
+  .updates-footnote {
+    margin-top: 56px; padding: 20px;
+    border-radius: 16px;
+    background: var(--chalk, rgba(10,10,11,0.03));
+    font-size: 13.5px; color: var(--mute); line-height: 1.55;
+  }
+  html.dark .updates-footnote { background: rgba(245,241,232,0.04); }
+  .updates-footnote a { color: var(--ultra, #6B5BFF); text-decoration: none; }
+  .updates-footnote a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo" aria-label="Mashal — go to homepage">
+      <img src="/images/mashal-logo.png" alt="" class="logo-img" />
+      <span>Mashal<span class="dot">.</span></span>
+    </a>
+    <nav class="nav-links">
+      <a href="/features">Features</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/updates" aria-current="page">Updates</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/?route=signin" class="nav-signin">Sign in</a>
+      <a href="/?route=signup" class="nav-cta">Start free trial</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="hero-tag">Updates</span>
+    <h1 class="h1">What shipped this week.</h1>
+    <p class="lead">A short log of what's new on Mashal — what changed, why it was built, and what it means if you're already using the product. Updated weekly, in the founder's voice.</p>
+  </section>
+
+  <section class="wrap">
+    <div class="updates-feed">
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-18">18 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Team</span>
+        </div>
+        <h3>Team access — invite teammates and clients to a workspace.</h3>
+        <p>Brand and Agency workspaces now support multiple users with four roles: Owner, Admin, Member, and Viewer. Brand includes three seats per workspace; Agency includes ten. Agency owners also get a per-workspace assignment view so an account manager can have Member access on three specific clients without seeing the rest of the portfolio.</p>
+        <p>The blocker showed up in two separate conversations last week — agencies trying to share one login across a small account-services team, and brands wanting their marketing lead to see the brief without handing over billing access. Both were workarounds for the same missing feature.</p>
+        <p>The Viewer role is the part that matters most. An agency can now give every client a real login that opens straight to their workspace's daily brief, read-only. No screenshots, no PDF email threads, no client wondering whether the deck they were sent last Tuesday is still current.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-17">17 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Growth</span>
+        </div>
+        <h3>Creator referrals — earn a free month for every friend who upgrades.</h3>
+        <p>Every paid Creator now has a personal referral code in Settings (something like NAWAZ7K). When a friend signs up using that link and converts to a paying plan, the referrer earns one month of Creator credit on their next invoice. The referee gets a 14-day extended trial instead of 7. Capped at three rewarded referrals per account during v1 to keep the math sane.</p>
+        <p>Creator-to-creator word of mouth is already how tools in this space spread. A two-sided incentive aligned to actual conversion — not signups — captures that flow without opening the door to fraud. The referee benefit also tilts the trial-to-paid conversion rate in our favour, so it pays back on retention, not just acquisition.</p>
+        <p>You don't need to ask for the link or opt in. It's been there in Settings since the feature shipped, sitting under the Plan card. Open it, copy it, share it whenever feels natural.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-16">16 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Intelligence</span>
+        </div>
+        <h3>Multilingual &amp; cultural intelligence — Mashal now reads your market.</h3>
+        <p>The intelligence engine now applies a country-specific cultural lens to every brief. A workspace in Saudi Arabia gets Gulf Arabic dialect analysis and Ramadan / White Friday / National Day timing. Pakistan gets Urdu-first reading and cricket-season awareness. Brazil gets Brazilian Portuguese and a Carnaval-aware calendar. You can also pick the language Mashal writes the brief in — Arabic, French, Turkish, Urdu, Hindi, Portuguese, Indonesian, Spanish, or English — independent of the language of your content.</p>
+        <p>The underlying model already understands these languages fluently; the prompt just wasn't instructing it to. That meant a Saudi workspace was getting analysis filtered through an English lens, which strips out the cultural texture that actually drives engagement in those markets. The fix was a prompt-engineering job, not a translation job — that distinction mattered for getting it right.</p>
+        <p>If your audience is anywhere outside the US/UK, expect the next brief to feel materially different. The cultural calendar also fires proactively, so upcoming windows show up as actions before competitors get there first.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-14">14 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Paid</span>
+        </div>
+        <h3>Ad Intelligence — spot scores and network benchmarks for paid spend.</h3>
+        <p>Brand and Agency workspaces with connected ad accounts now get a paid-performance module alongside the organic brief. Each platform earns a 0–100 spot score against a category-and-region benchmark — anonymised network data from the wider Mashal customer base, not generic industry numbers. The brief surfaces a ranked list of recommendations for where to shift budget, with the spot score as the anchor.</p>
+        <p>"Is my CTR good?" has been the most common question paid teams ask, and the honest answer without a benchmark is "compared to what?" A network rollup specific to the categories and regions Mashal actually serves was the only way to answer it for real.</p>
+        <p>If you're already running ads on Meta, TikTok, or X, the next brief will fold the paid performance into the strategic verdict instead of treating organic and paid as separate stories.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-08">08 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Voice</span>
+        </div>
+        <h3>Brief tone — pick how the daily brief reads.</h3>
+        <p>Agency-tier workspaces can now switch between three tone presets in Settings: Analytical (numbers-heavy, minimal narrative), Strategic (the default balance of data and recommendation), and Executive (one-paragraph CMO memo, action-first). Each preset layers on top of the same underlying analysis — the data doesn't change, only the voice.</p>
+        <p>The same brief lands in front of a data-fluent operator and a time-pressed founder. One wants the numbers up front. The other wants the call to make. A single voice across both was a compromise neither side loved, and that showed up in feedback from agencies trying to forward briefs to different stakeholders.</p>
+        <p>Creators stay on the encouraging coach tone automatically — that's the right register for a solo operator reading their numbers at 6 AM. The switcher only appears for Agency-tier workspaces where briefs get re-read by multiple people.</p>
+      </article>
+
+    </div>
+
+    <div class="updates-footnote">
+      <strong>Have a feature request or saw a bug?</strong> The Suggestions box in Settings goes directly to the founder's inbox and gets reviewed daily. We'll write back as soon as a fix ships or a suggestion lands on the build queue.
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <a href="/" class="logo" aria-label="Mashal — go to homepage"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+      <nav class="social-row" aria-label="Follow Mashal">
+        <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a>
+        <a href="https://tiktok.com/@getmashal" target="_blank" rel="noopener" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.05a8.16 8.16 0 0 0 4.77 1.52V6.11a4.85 4.85 0 0 1-1.84-.42z"/></svg></a>
+        <a href="https://facebook.com/getmashal" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 22v-8h3l1-4h-4V7.5a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5V10H5v4h4v8z"/></svg></a>
+        <a href="https://x.com/getmashalapp" target="_blank" rel="noopener" aria-label="X (Twitter)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+      </nav>
+    </div>
+    <div>
+      <h4>Product</h4>
+      <ul><li><a href="/features">Features</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/updates">Updates</a></li></ul>
+    </div>
+    <div>
+      <h4>Company</h4>
+      <ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul>
+    </div>
+    <div>
+      <h4>Legal</h4>
+      <ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul>
+    </div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 Empakt Financial Inc. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+<script src="/js/marketing.js" defer></script>
+</body>
+</html>

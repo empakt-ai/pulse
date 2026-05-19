@@ -2650,10 +2650,169 @@ const OverviewScreen = ({ setToast, onNavigate }) => {
 };
 
 // ═════════════════════════════════════════════════════════════════════════
+// Tickets — support submissions from Settings → Suggestions in the SPA.
+// Each row is editable inline: pick a new status, optionally attach a
+// founder note, click Save. Notify emails to the submitter fire from
+// the backend automatically when status moves to a notify-worthy state.
+// ═════════════════════════════════════════════════════════════════════════
+const TICKET_STATUSES = ['open','in_review','accepted','in_progress','resolved','declined'];
+const TICKET_STATUS_TONE = {
+  open:        'bg-paper/10 text-paper',
+  in_review:   'bg-amber/15 text-amber',
+  accepted:    'bg-ultra/15 text-ultra',
+  in_progress: 'bg-ultra/15 text-ultra',
+  resolved:    'bg-lime/20 text-lime',
+  declined:    'bg-magenta/15 text-magenta',
+};
+
+const TicketsScreen = ({ setToast }) => {
+  const [tickets, setTickets]   = React.useState([]);
+  const [filter,  setFilter]    = React.useState('open');
+  const [loading, setLoading]   = React.useState(true);
+  const [drafts,  setDrafts]    = React.useState({});   // ticket_id → { status, note }
+  const [savingId, setSavingId] = React.useState(null);
+
+  const load = async (statusFilter = filter) => {
+    setLoading(true);
+    try {
+      const q = statusFilter === 'all' ? '' : `&status=${encodeURIComponent(statusFilter)}`;
+      const r = await api(`/admin?action=tickets${q}`);
+      setTickets(r.tickets || []);
+      // Seed drafts from current values so changes are tracked per-row.
+      const seeded = {};
+      for (const t of r.tickets || []) seeded[t.id] = { status: t.status, note: t.founder_note || '' };
+      setDrafts(seeded);
+    } catch (e) {
+      setToast?.({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(filter); /* eslint-disable-next-line */ }, [filter]);
+
+  const save = async (t) => {
+    const draft = drafts[t.id] || {};
+    const reason = prompt(`Reason for ${draft.status} (audit log requires it):`, '');
+    if (!reason || !reason.trim()) return;
+    setSavingId(t.id);
+    try {
+      const r = await api('/admin?action=ticket-set', {
+        method: 'POST',
+        body: JSON.stringify({
+          ticket_id:    t.id,
+          status:       draft.status,
+          founder_note: draft.note || null,
+          reason:       reason.trim(),
+        }),
+      });
+      setToast?.({
+        message: r.email_status === 'sent'
+          ? `Ticket updated and notification sent.`
+          : r.email_status === 'failed'
+            ? `Ticket updated, but the user email failed to send.`
+            : `Ticket updated.`,
+        tone: r.email_status === 'failed' ? 'warn' : 'ok',
+      });
+      load(filter);
+    } catch (e) {
+      setToast?.({ message: e.message, tone: 'err' });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-[960px]">
+      <Card title="Tickets" sub="Suggestions, bug reports, and questions submitted from Settings → Suggestions. Use the filter to triage; status changes fire an email to the submitter.">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mr-1">Filter</span>
+          {['open','in_review','accepted','in_progress','resolved','declined','all'].map(s => (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={cls(
+                'px-2.5 h-7 rounded-full text-[11.5px] font-mono uppercase tracking-[0.1em] border transition',
+                filter === s
+                  ? 'bg-paper text-ink border-paper'
+                  : 'border-lineDark text-muteDark hover:text-paper hover:border-paper/30'
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading tickets…</div>
+        ) : tickets.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No tickets in this view.</div>
+        ) : (
+          <div className="space-y-3">
+            {tickets.map(t => {
+              const draft = drafts[t.id] || { status: t.status, note: t.founder_note || '' };
+              const dirty = draft.status !== t.status || (draft.note || '') !== (t.founder_note || '');
+              return (
+                <div key={t.id} className="rounded-xl border border-lineDark p-4 bg-coalsoft/40">
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium">{t.subject}</div>
+                      <div className="text-[11px] font-mono uppercase tracking-[0.1em] text-muteDark mt-0.5">
+                        {t.type} · {t.user_email || t.user_id} · {fmtTs(t.created_at)}
+                      </div>
+                    </div>
+                    <span className={cls('inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.12em] flex-shrink-0', TICKET_STATUS_TONE[t.status] || 'bg-paper/10 text-paper')}>
+                      {t.status}
+                    </span>
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-paper/85 mb-3">{t.body}</pre>
+
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muteDark">Set status</span>
+                    <select
+                      value={draft.status}
+                      onChange={e => setDrafts(d => ({ ...d, [t.id]: { ...d[t.id], status: e.target.value } }))}
+                      className="h-7 px-2 rounded-md border border-lineDark bg-coalsoft text-[12px] text-paper focus:outline-none focus:border-paper"
+                    >
+                      {TICKET_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <textarea
+                    value={draft.note || ''}
+                    onChange={e => setDrafts(d => ({ ...d, [t.id]: { ...d[t.id], note: e.target.value } }))}
+                    placeholder="Optional note that emails the user with the status change…"
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-md border border-lineDark bg-coalsoft text-[12.5px] text-paper focus:outline-none focus:border-paper resize-y"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={() => save(t)}
+                      disabled={!dirty || savingId === t.id}
+                      className={cls(
+                        'h-8 px-3 rounded-md text-[12px] font-medium transition',
+                        dirty && savingId !== t.id
+                          ? 'bg-paper text-ink hover:opacity-90'
+                          : 'bg-paper/10 text-muteDark cursor-not-allowed'
+                      )}
+                    >
+                      {savingId === t.id ? 'Saving…' : 'Save & notify'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
 // Sidebar + shell
 // ═════════════════════════════════════════════════════════════════════════
 const NAV = [
   { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 0 },
+  { id: 'tickets',      label: 'Tickets',          section: 'monitoring',  phase: 0 },
   { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 0 },
   { id: 'users',        label: 'Users',            section: 'control',     phase: 0 },
   { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 0 },
@@ -2833,6 +2992,7 @@ const App = () => {
       case 'reports':    return <ReportsScreen setToast={setToast} />;
       case 'overview':   return <OverviewScreen setToast={setToast} onNavigate={setActive} />;
       case 'billing':    return <BillingScreen setToast={setToast} />;
+      case 'tickets':    return <TicketsScreen setToast={setToast} />;
       default:           return <Stub title="Coming soon" plannedIn="future phase" />;
     }
   })();

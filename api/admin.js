@@ -51,6 +51,7 @@ import { getPlatformSettings, setSettings } from './_lib/platform-settings.js';
 import { tierFor } from './_lib/tiers.js';
 import { normaliseHandle } from './_lib/handle-registry.js';
 import { getSubscription, listInvoices, TIER_BY_PRICE } from './_lib/stripe.js';
+import { sendEmail } from './_lib/email.js';
 
 const AI_PROVIDERS = new Set(['gemini', 'anthropic']);
 const SETTABLE_KEYS = new Set(['ai_provider', 'feature_flags', 'brief_prompt_version', 'caps']);
@@ -1291,7 +1292,145 @@ export default async function handler(req, res) {
     });
   }
 
+  // ── Support tickets (admin view) ──────────────────────────────────────
+  // GET ?action=tickets[&status=open|...]  → list tickets, newest-first.
+  // Decorates each row with the submitter's email so the admin UI can
+  // render it without an additional per-row lookup.
+  if (action === 'tickets' && req.method === 'GET') {
+    const statusFilter = (req.query?.status || '').toString().toLowerCase();
+    const params = { select: '*', order: 'created_at.desc', limit: 200 };
+    if (TICKET_STATUSES.has(statusFilter)) params.eq = { status: statusFilter };
+    const tickets = await supabase.select('support_tickets', params).catch(() => []);
+
+    const userIds = [...new Set((tickets || []).map(t => t.user_id))];
+    const users = userIds.length ? await listAuthUsers({ ids: userIds }) : [];
+    const userById = indexBy(users, 'id');
+
+    return json(res, 200, {
+      tickets: (tickets || []).map(t => ({
+        ...t,
+        user_email: userById.get(t.user_id)?.email || null,
+      })),
+    });
+  }
+
+  // POST ?action=ticket-set { ticket_id, status, founder_note?, reason }
+  // Updates the ticket's status + optional founder note, audit-logs, and
+  // emails the submitter when the new status is one the user cares
+  // about (accepted / in_progress / resolved / declined). Skips email on
+  // open → in_review transitions to avoid pinging users on internal
+  // triage events.
+  if (action === 'ticket-set' && req.method === 'POST') {
+    const body = parseBody(req);
+    const r = requireReason(body);
+    if (r.envelope) return json(res, r.envelope.status, r.envelope.body);
+
+    const ticketId   = String(body.ticket_id || '').trim();
+    const nextStatus = String(body.status    || '').toLowerCase().trim();
+    const note       = body.founder_note != null ? String(body.founder_note).slice(0, 2000) : null;
+
+    if (!ticketId)                       return json(res, 400, { error: 'ticket_id required' });
+    if (!TICKET_STATUSES.has(nextStatus)) {
+      return json(res, 400, { error: `status must be one of ${[...TICKET_STATUSES].join(', ')}` });
+    }
+
+    const before = await supabase.select('support_tickets', {
+      select: '*', eq: { id: ticketId }, single: true,
+    }).catch(() => null);
+    if (!before) return json(res, 404, { error: 'Ticket not found' });
+
+    const patch = {
+      status:     nextStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (note != null) patch.founder_note = note;
+    if ((nextStatus === 'resolved' || nextStatus === 'declined') && !before.resolved_at) {
+      patch.resolved_at = new Date().toISOString();
+    }
+
+    let after;
+    try {
+      const rows = await supabase.update('support_tickets', patch, { eq: { id: ticketId } });
+      after = rows?.[0] || null;
+    } catch (e) {
+      return json(res, 500, { error: e.message });
+    }
+
+    await logAdminAction({
+      actor:      auth.user.id,
+      action:     'support.ticket.status',
+      targetType: 'support_ticket',
+      targetId:   ticketId,
+      before:     { status: before.status, founder_note: before.founder_note || null },
+      after:      { status: after?.status, founder_note: after?.founder_note || null },
+      reason:     body.reason,
+    }).catch(() => {});
+
+    // Best-effort user notification — only on status changes the user
+    // genuinely wants to hear about.
+    let email_status = 'skipped';
+    if (NOTIFY_STATUSES.has(nextStatus) && nextStatus !== before.status) {
+      const users = await listAuthUsers({ ids: [before.user_id] });
+      const recipient = users[0]?.email || null;
+      if (recipient) {
+        try {
+          await sendEmail({
+            to:      recipient,
+            subject: `[Mashal] Update on your ${before.type}: ${before.subject}`.slice(0, 180),
+            html:    ticketStatusEmailHtml({ status: nextStatus, ticket: before, note: patch.founder_note }),
+            text:    ticketStatusEmailText({ status: nextStatus, ticket: before, note: patch.founder_note }),
+          });
+          email_status = 'sent';
+        } catch (e) {
+          email_status = 'failed';
+          console.warn('[admin] ticket status email failed:', e.message);
+        }
+      }
+    }
+
+    return json(res, 200, { ticket: after, email_status });
+  }
+
   return json(res, 400, { error: 'Unknown or unsupported action', action });
+}
+
+// Status workflow for support_tickets — mirrored from migration 025's
+// CHECK constraint. NOTIFY_STATUSES is the subset where the submitter
+// actually wants an email; in_review and back-to-open transitions are
+// internal triage and stay silent.
+const TICKET_STATUSES = new Set(['open','in_review','accepted','in_progress','resolved','declined']);
+const NOTIFY_STATUSES = new Set(['accepted','in_progress','resolved','declined']);
+
+const STATUS_HEADLINE = {
+  accepted:    "Your suggestion is on the build queue.",
+  in_progress: "We've started on this.",
+  resolved:    "We've shipped a fix / answered your question.",
+  declined:    "We won't be doing this — here's why.",
+};
+
+function ticketStatusEmailHtml({ status, ticket, note }) {
+  const safeSubject = String(ticket.subject).slice(0, 200).replace(/</g, '&lt;');
+  const safeNote = note ? String(note).replace(/</g, '&lt;').replace(/\n/g, '<br/>') : null;
+  const headline = STATUS_HEADLINE[status] || `Your ticket is now ${status}.`;
+  return `<!doctype html>
+<html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#F5F1E8; padding:32px; color:#0A0A0B;">
+  <div style="max-width:520px; margin:0 auto; background:#FFFFFF; border-radius:16px; padding:32px;">
+    <div style="font-family: 'Geist Mono', monospace; font-size:11px; text-transform:uppercase; letter-spacing:0.14em; color:#6B5BFF;">Mashal · Ticket update</div>
+    <h1 style="font-size:22px; margin:12px 0 6px;">${headline}</h1>
+    <p style="font-size:13.5px; color:#5C5A53; margin:0 0 16px;">On your ${ticket.type}: <strong>${safeSubject}</strong></p>
+    ${safeNote ? `<div style="font-size:14px; line-height:1.55; padding:14px; background:#F5F1E8; border-radius:10px; margin:0 0 18px;">${safeNote}</div>` : ''}
+    <p style="font-size:12px; color:#8E8B84;">You can view this ticket and submit more from Settings → Suggestions inside Mashal.</p>
+  </div>
+</body></html>`;
+}
+
+function ticketStatusEmailText({ status, ticket, note }) {
+  const headline = STATUS_HEADLINE[status] || `Your ticket is now ${status}.`;
+  return `${headline}
+
+On your ${ticket.type}: ${ticket.subject}
+
+${note ? `${note}\n\n` : ''}You can view this ticket from Settings → Suggestions inside Mashal.`;
 }
 
 // Pure derivation of the trial-state label + days_left from a workspace

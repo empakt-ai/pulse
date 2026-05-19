@@ -2020,6 +2020,7 @@ Object.assign(window, { Landing });
 <script type="text/babel" src="js/ads-intel/ads-panels.js"></script>
 <script type="text/babel" src="js/referral/panel.js"></script>
 <script type="text/babel" src="js/team/panel.js"></script>
+<script type="text/babel" src="js/support/panel.js"></script>
 <script type="text/babel">
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
@@ -7299,6 +7300,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               so Brand/Agency/trialing users don't even issue the fetch.
               See js/referral/panel.js. */}
           {tier === 'creator' && !workspace?.trial_active && window.Referral?.Panel && <window.Referral.Panel />}
+
+          {/* Suggestions & bugs — available to every authenticated user
+              regardless of tier or role. Goes straight to the founder
+              inbox; status changes email back to the submitter. See
+              js/support/panel.js. */}
+          {window.Support?.Panel && <window.Support.Panel />}
 
           {/* Privacy note */}
           <div className="p-3.5 rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/20 text-[12px] leading-relaxed text-ultra dark:text-ultra/80">
