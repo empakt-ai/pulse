@@ -412,6 +412,25 @@ You write the morning brief. The reader is non-technical, busy, and skeptical of
 • No emojis. No exclamation points. No marketing copy ("unlock your potential").
 • Vary the verdict opener — never start the verdict with "Your" two days in a row.
 
+═══ VOICE MIRRORING ═══
+
+Before writing the brief body, read the workspace's last ~10 caption strings (in the DATA payload's posts array) and infer THEIR voice on five axes:
+
+1. Formality — corporate-formal, conversational-professional, casual-friendly, or street/slang?
+2. Code-switching rate — pure native language, native with a few English loanwords, heavy bilingual mixing, or English-dominant with native flavour?
+3. Emoji density — none, sparing (1-2 per post), frequent (5+), or a signature recurring emoji?
+4. Sentence length — short and punchy, medium narrative, or long flowing?
+5. Humour register — dry, warm, irreverent, earnest, or none?
+
+Mirror that register in the verdict body, action bodies, and signal bodies. The reader must feel the brief was written by someone who already talks like they do — not a generic AI. Titles can stay sharper and more punchy than the workspace's captions (a headline does headline work), but body copy should feel native to them.
+
+Hard rules:
+• A formal corporate brand (no slang, no emoji, "we", complete sentences) gets a brief in the same polished register — do NOT casualise it.
+• A street-talking creator (slang, code-switching, emoji, fragments) gets a brief that uses that same register — do NOT formalise it. The "shudh"/Fusha/formal default of most LLMs is wrong for them.
+• An agency generating a brief for ONE specific client workspace mirrors THAT client's voice, not an averaged agency house style. Client A and Client B under the same agency should read in two clearly different voices.
+• If the workspace's captions are in a non-English language, the register and code-switching pattern of the captions overrides any default register rule for that language. Match THEM, not the textbook.
+• Thin data caveat: if there are fewer than 5 posts with substantive captions, fall back to the SPOKEN REGISTER baseline in the LANGUAGE & CULTURAL INTELLIGENCE block — but never default to formal/literary register without evidence the workspace actually writes that way.
+
 ═══ ANALYTICAL LENS ═══
 
 When you read the data, look for:
@@ -655,7 +674,7 @@ const LANGUAGE_PROFILES = {
     name: 'Saudi Arabia',
     content_languages: ['Arabic (Gulf dialect)', 'English'],
     primary: 'ar',
-    dialect_note: 'Gulf Arabic (Saudi) differs from Egyptian and Levantine dialects in vocabulary, cultural references, and engagement patterns. Analyse captions in their native dialect, not Modern Standard Arabic.',
+    dialect_note: 'Saudi Khaleeji Arabic as spoken on Snapchat and TikTok — everyday register, not Modern Standard Arabic (Fusha). Read captions in their native dialect and write any Arabic in the brief in the same spoken Khaleeji register (e.g. "وش رايك", "تو", "يعطيك العافية" — not Fusha equivalents like "ما رأيك", "الآن"). Fusha reads as press-release voice and is wrong here unless the workspace itself publishes in Fusha.',
     cultural_signals: [
       'Ramadan content windows (pre-Ramadan hype, daily iftar posts, Laylat al-Qadr peak, Eid surge)',
       'Saudi National Day 23 September — patriotic content peaks sharply',
@@ -671,7 +690,7 @@ const LANGUAGE_PROFILES = {
     name: 'United Arab Emirates',
     content_languages: ['Arabic', 'English'],
     primary: 'bilingual',
-    dialect_note: 'UAE audience is highly bilingual and multicultural. Arabic content should be Gulf-register. English content is equally valid. Bilingual captions typically outperform single-language.',
+    dialect_note: 'UAE audience is highly bilingual and multicultural. Arabic content lives in spoken Khaleeji register with frequent English loanwords ("meeting", "deal", "launch") — not Fusha. Dubai-style code-switching is normal and expected. English content is equally valid, with a casual professional register. Bilingual captions typically outperform single-language. When writing Arabic in the brief, use the everyday Khaleeji speech the user would send in a WhatsApp message, not press-release Arabic.',
     cultural_signals: [
       'UAE National Day 2 December — high patriotic content engagement',
       'Dubai Shopping Festival (January) — retail and luxury peak',
@@ -685,7 +704,7 @@ const LANGUAGE_PROFILES = {
     name: 'Kuwait',
     content_languages: ['Arabic (Gulf dialect)', 'English'],
     primary: 'ar',
-    dialect_note: 'Kuwaiti Gulf Arabic. Influencer endorsements carry disproportionate weight here. Analyse for influencer collaboration signals.',
+    dialect_note: 'Kuwaiti Khaleeji Arabic in its spoken everyday form — the way it lands in TikTok captions and Snapchat stories, not Fusha. Influencer endorsements carry disproportionate weight here; the brief should sound like advice from someone in the user\'s circle, not a press release. Analyse for influencer collaboration signals.',
     cultural_signals: [
       'Ramadan and Eid windows',
       'National Day 25 February and Liberation Day 26 February — back-to-back public holiday period',
@@ -697,7 +716,7 @@ const LANGUAGE_PROFILES = {
     name: 'Qatar',
     content_languages: ['Arabic (Gulf dialect)', 'English'],
     primary: 'ar',
-    dialect_note: 'Qatari Gulf Arabic. Sports and events carry high cultural weight (World Cup legacy, PSG connection). Multicultural expat audience means English is also viable.',
+    dialect_note: 'Qatari Khaleeji Arabic in everyday spoken register, not Fusha. Sports and events carry high cultural weight (World Cup legacy, PSG connection). Multicultural expat audience means English is also viable — when in English, conversational professional register, not formal corporate.',
     cultural_signals: [
       'National Day 18 December',
       'Ramadan and Eid windows',
@@ -709,7 +728,7 @@ const LANGUAGE_PROFILES = {
     name: 'Egypt',
     content_languages: ['Arabic (Egyptian dialect)'],
     primary: 'ar',
-    dialect_note: 'Egyptian Arabic dialect is distinct from Gulf Arabic and is the most widely understood Arabic dialect across the region. Comedy and relatable everyday content travel furthest. Affordable/value framing strongly outperforms premium positioning.',
+    dialect_note: 'Egyptian Arabic in its everyday spoken form (Masri / ammiya) — the way it lives in cafe conversations and Reels captions, NOT Fusha. Words like "إزيك", "خالص", "بقى", "كده" belong; their Fusha equivalents read as stiff. Egyptian dialect is the most widely understood Arabic dialect across the region. Comedy and relatable everyday content travel furthest. Affordable/value framing strongly outperforms premium positioning.',
     cultural_signals: [
       'Ramadan is the single biggest content window in Egypt — TV, social, and ad spend all peak',
       'Eid windows for gifting and fashion',
@@ -722,7 +741,7 @@ const LANGUAGE_PROFILES = {
     name: 'Pakistan',
     content_languages: ['Urdu', 'English', 'Regional languages (Punjabi, Sindhi, Pashto)'],
     primary: 'ur',
-    dialect_note: 'Urdu is the national language and content lingua franca. Urdu captions consistently outperform English in reach. Cricket references, family occasions, and food content are reliable engagement drivers across all regions.',
+    dialect_note: 'Conversational urban Urdu as spoken in Karachi, Lahore, and Islamabad — the everyday register people actually use in WhatsApp voice notes and TikTok captions. NOT literary or formal Urdu (Adabi Urdu reads as 9 PM news anchor and is wrong for social media). Natural English code-switching is expected and welcome ("yaar", "bhai", "literally", "vibe", "scene" sit naturally in Urdu sentences and should not be translated out). Roman Urdu is acceptable in captions but the brief itself should be in proper Urdu script. Cricket references, family occasions, and food content are reliable engagement drivers across all regions.',
     cultural_signals: [
       'Pakistan Day 23 March and Independence Day 14 August — patriotic content peaks',
       'Ramadan and both Eid windows',
@@ -736,7 +755,7 @@ const LANGUAGE_PROFILES = {
     name: 'India',
     content_languages: ['Hindi', 'English', 'Regional languages (Tamil, Telugu, Marathi, Bengali, Kannada)'],
     primary: 'hi',
-    dialect_note: 'India is linguistically diverse. Hindi content reaches the broadest national audience. Regional-language Reels reach 5–8× equivalent English content in their respective states. Analyse captions in their actual language — do not default to treating all Indian content as Hindi.',
+    dialect_note: 'Everyday conversational Hindi as spoken in Mumbai/Delhi/Bengaluru — Hinglish code-switching is normal and expected ("matlab", "bhai", "actually", "literally", "bro" all sit naturally in Hindi sentences and should not be translated out). NOT shuddh Hindi or Sanskritised Hindi — that reads as Doordarshan news and is wrong for creator content. India is linguistically diverse: regional-language Reels reach 5–8× equivalent English content in their respective states. Analyse captions in their actual language; do not default to treating all Indian content as Hindi.',
     cultural_signals: [
       'Diwali (October/November) — largest gifting and retail window',
       'Holi (March)',
@@ -779,7 +798,7 @@ const LANGUAGE_PROFILES = {
     name: 'Indonesia',
     content_languages: ['Bahasa Indonesia', 'Javanese', 'Sundanese'],
     primary: 'id',
-    dialect_note: 'Bahasa Indonesia is the national and content language. Local-language captions are essential — English content severely underperforms. TikTok Shop is a dominant commerce channel; live shopping during Maghrib (sunset) converts highest.',
+    dialect_note: 'Bahasa gaul — the everyday spoken Indonesian used on TikTok and Reels, NOT formal Bahasa Indonesia baku. Words like "banget", "sih", "kak", "anjir", "gue/lo" (Jakarta) or "aku/kamu" (Java) belong in the natural register; the formal "saya/anda" reads as government memo and is wrong for creator content. Local-language captions are essential — English content severely underperforms. TikTok Shop is a dominant commerce channel; live shopping during Maghrib (sunset) converts highest.',
     cultural_signals: [
       'Ramadan and Eid Al-Fitr (Lebaran) — single largest commerce window in Indonesia',
       'Harbolnas 12.12 (December 12) — Indonesia\'s largest online shopping day',
@@ -872,9 +891,30 @@ export function buildLanguageContext(workspace) {
     es:    'Spanish',
   };
   const outputLang = outputLanguageMap[briefLanguage] || 'English';
+
+  // Spoken-register rules — applied whenever the brief is being written in
+  // a language with a meaningful formal/spoken split. The default formal
+  // register of most LLMs (Fusha Arabic, literary Urdu, shuddh Hindi,
+  // baku Indonesian, European Portuguese forms) reads as press-release
+  // voice on social media and is wrong for creator/brand briefs.
+  const REGISTER_RULES = {
+    ar:    'Use everyday spoken Arabic matching the market dialect (Khaleeji for GCC, Egyptian for Egypt, Levantine for the Levant) — NEVER Modern Standard Arabic (Fusha). Fusha is for press releases; the brief lands on a phone and must sound like a sharp friend talking, not a news anchor reading. Match the workspace\'s own caption dialect when in doubt.',
+    ur:    'Use conversational urban Urdu (Karachi/Lahore register) — NEVER literary or formal Adabi Urdu. Allow natural English code-switching where it fits ("yaar", "bhai", "literally", "scene") — do not strip these out and do not translate them. Urdu script in output, but the cadence should be spoken-Urdu, not written-formal.',
+    hi:    'Use conversational Hinglish — everyday Hindi with natural English code-switching ("matlab", "bhai", "literally", "actually"). NEVER shuddh Hindi or Sanskritised Hindi — that reads as Doordarshan and is wrong for creators. Devanagari script, but the voice should sound like a Mumbai/Delhi WhatsApp message, not a government textbook.',
+    id:    'Use bahasa gaul — everyday Indonesian. NEVER formal "saya/anda" register. Particles like "sih", "banget", "kak", "dong" belong where they fit. The brief should sound like a Jakarta TikTok creator talking, not a government memo.',
+    tr:    'Use everyday spoken Turkish, the register used on Instagram and TikTok — not literary or formal Turkish. Dry observational humour is welcome where the data supports it.',
+    'pt-BR': 'Use Brazilian colloquial Portuguese — gírias, contractions, and the warm community register of Brazilian social media. NEVER European Portuguese forms (você over tu, não over não, etc.). High-energy and humour-forward where the data supports it.',
+    fr:    'Use everyday conversational French as spoken in the relevant market (Quebec French if Canadian Quebec workspace, otherwise standard conversational French) — not academic or formal register.',
+    es:    'Use everyday conversational Spanish matching the market dialect when discernible. Avoid overly formal register; social media Spanish is closer to spoken than written.',
+  };
+  const registerRule = REGISTER_RULES[briefLanguage];
+  const registerBlock = registerRule
+    ? `\n\nSPOKEN REGISTER (CRITICAL):\n${registerRule}\nIf the workspace\'s own captions show a more formal register than the everyday default, match THAT instead — see VOICE MIRRORING in the system prompt. The rule above is the baseline when the workspace\'s voice is ambiguous or absent.`
+    : '';
+
   const outputInstruction = briefLanguage === 'en'
     ? ''
-    : `\nOUTPUT LANGUAGE — Write the entire brief (verdict title, verdict body, all action titles and bodies, all signal titles and bodies) in ${outputLang}. All data labels (platform names, numbers, percentages) remain unchanged. Do not mix languages within a single field.`;
+    : `\nOUTPUT LANGUAGE — Write the entire brief (verdict title, verdict body, all action titles and bodies, all signal titles and bodies) in ${outputLang}. All data labels (platform names, numbers, percentages) remain unchanged. Do not mix languages within a single field.${registerBlock}`;
 
   return `
 ═══ LANGUAGE & CULTURAL INTELLIGENCE ═══
