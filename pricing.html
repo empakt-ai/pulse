@@ -120,9 +120,9 @@
       <img src="/images/mashal-logo.png" alt="" class="logo-img" />
       <span>Mashal<span class="dot">.</span></span>
     </a>
-    <nav class="nav-links">
+    <nav class="nav-links" id="primary-nav">
       <a href="/features">Features</a>
-      <a href="/pricing">Pricing</a>
+      <a href="/pricing" aria-current="page">Pricing</a>
       <a href="/updates">Updates</a>
       <a href="/about">About</a>
       <a href="/contact">Contact</a>
@@ -134,6 +134,10 @@
       </button>
       <a href="/?route=signin" class="nav-signin">Sign in</a>
       <a href="/?route=signup" class="nav-cta">Start free trial</a>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
+        <svg class="icon-menu"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6"  y2="18"/><line x1="6"  y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   </div>
 </header>
@@ -157,7 +161,7 @@
           <li>5 social accounts total</li>
           <li>5 competitors tracked</li>
           <li>5 platforms — IG · TT · YT · FB · LI</li>
-          <li>Weekly intelligence brief</li>
+          <li>Daily morning brief</li>
           <li>7-day free trial — no credit card</li>
         </ul>
         <a href="/" class="btn btn-outline">Start free trial</a>
@@ -214,8 +218,8 @@
         <tr><td class="label">Platforms</td><td>IG · TT · YT · FB · LI</td><td>All 7 incl. X &amp; Snap</td><td>All 7 incl. X &amp; Snap</td></tr>
 
         <tr><td class="label" colspan="4" style="background: rgba(10,10,11,0.02); font-family: 'Geist Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--mute); font-weight: 600;">Intelligence</td></tr>
-        <tr><td class="label">Daily brief</td><td class="dash">—</td><td class="check">✓</td><td class="check">✓</td></tr>
-        <tr><td class="label">Weekly brief</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Morning brief</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td class="label">Weekly recap</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
         <tr><td class="label">Live signal alerts</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
         <tr><td class="label">Competitor analysis</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
         <tr><td class="label">AI verdict + signals</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>

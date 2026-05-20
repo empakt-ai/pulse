@@ -115,12 +115,12 @@
       <img src="/images/mashal-logo.png" alt="" class="logo-img" />
       <span>Mashal<span class="dot">.</span></span>
     </a>
-    <nav class="nav-links">
+    <nav class="nav-links" id="primary-nav">
       <a href="/features">Features</a>
       <a href="/pricing">Pricing</a>
       <a href="/updates">Updates</a>
       <a href="/about">About</a>
-      <a href="/contact">Contact</a>
+      <a href="/contact" aria-current="page">Contact</a>
     </nav>
     <div class="nav-actions">
       <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
@@ -129,6 +129,10 @@
       </button>
       <a href="/?route=signin" class="nav-signin">Sign in</a>
       <a href="/?route=signup" class="nav-cta">Start free trial</a>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
+        <svg class="icon-menu"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6"  y2="18"/><line x1="6"  y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   </div>
 </header>

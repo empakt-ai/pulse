@@ -13,13 +13,40 @@
 // ═════════════════════════════════════════════════════════════════════════
 
 (function () {
-  function init() {
+  function initThemeToggle() {
     var btn = document.querySelector('[data-theme-toggle]');
     if (!btn) return;
     btn.addEventListener('click', function () {
       var isDark = document.documentElement.classList.toggle('dark');
       try { localStorage.setItem('pulse_theme', isDark ? 'dark' : 'light'); } catch (_) {}
     });
+  }
+  function initNavToggle() {
+    var toggle = document.querySelector('[data-nav-toggle]');
+    var links  = document.querySelector('.nav-links');
+    if (!toggle || !links) return;
+    function close() {
+      links.classList.remove('is-open');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+    function open() {
+      links.classList.add('is-open');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+    toggle.addEventListener('click', function () {
+      if (links.classList.contains('is-open')) close(); else open();
+    });
+    // Close the panel after a link tap (anchors within the same page) and
+    // whenever the viewport grows back past the mobile breakpoint so the
+    // open class doesn't leak into the desktop layout.
+    links.querySelectorAll('a').forEach(function (a) { a.addEventListener('click', close); });
+    window.addEventListener('resize', function () {
+      if (window.innerWidth > 720) close();
+    });
+  }
+  function init() {
+    initThemeToggle();
+    initNavToggle();
   }
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

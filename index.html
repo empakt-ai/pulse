@@ -1367,35 +1367,97 @@ const Landing = ({ onSignIn, onSignUp, theme, toggleTheme, heroVariant = 'gradie
   );
 };
 
-const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => (
-  <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
-    <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-      <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal home"><MashalLogo /></a>
-      <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
-        <a href="#features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
-        <a href="#how" className="hover:text-ink dark:hover:text-paper transition">How it works</a>
-        <a href="#pricing" className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
-        <a href="#compare" className="hover:text-ink dark:hover:text-paper transition">Compare</a>
-        <a href="#faq" className="hover:text-ink dark:hover:text-paper transition">FAQ</a>
-      </nav>
-      <div className="flex items-center gap-2">
-        {toggleTheme && (
+const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => {
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  // Close the mobile menu on Escape and on viewport widen so the open state
+  // doesn't leak into the desktop layout if the user resizes mid-toggle.
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
+    const onResize = () => { if (window.innerWidth >= 768) setMenuOpen(false); };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('resize', onResize);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('resize', onResize); };
+  }, [menuOpen]);
+
+  return (
+    <header className="sticky top-0 z-40 backdrop-blur-md bg-paper/80 dark:bg-ink/80 border-b border-line dark:border-lineDark">
+      <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal home"><MashalLogo /></a>
+        <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
+          <a href="/features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
+          <a href="/pricing"  className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
+          <a href="/updates"  className="hover:text-ink dark:hover:text-paper transition">Updates</a>
+          <a href="/about"    className="hover:text-ink dark:hover:text-paper transition">About</a>
+          <a href="/contact"  className="hover:text-ink dark:hover:text-paper transition">Contact</a>
+        </nav>
+        <div className="flex items-center gap-2">
+          {toggleTheme && (
+            <button
+              type="button"
+              onClick={toggleTheme}
+              className="hidden md:inline-flex w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 items-center justify-center transition"
+              title="Toggle theme"
+              aria-label="Toggle theme"
+            >
+              <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+            </button>
+          )}
+          <div className="hidden md:inline-flex"><Btn variant="ghost" size="sm" onClick={onSignIn}>Sign in</Btn></div>
+          <Btn variant="ink" size="sm" onClick={onSignUp}>Start free trial</Btn>
           <button
             type="button"
-            onClick={toggleTheme}
-            className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center justify-center transition"
-            title="Toggle theme"
-            aria-label="Toggle theme"
+            onClick={() => setMenuOpen(o => !o)}
+            className="md:hidden w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 inline-flex items-center justify-center transition"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={menuOpen}
+            aria-controls="landing-mobile-nav"
           >
-            <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+            <Icon name={menuOpen ? 'x' : 'menu'} className="w-5 h-5" />
           </button>
-        )}
-        <Btn variant="ghost" size="sm" onClick={onSignIn}>Sign in</Btn>
-        <Btn variant="ink" size="sm" onClick={onSignUp}>Start free trial</Btn>
+        </div>
       </div>
-    </div>
-  </header>
-);
+      {menuOpen && (
+        <nav
+          id="landing-mobile-nav"
+          className="md:hidden absolute left-0 right-0 top-16 bg-paper/95 dark:bg-ink/95 backdrop-blur-md border-b border-line dark:border-lineDark px-5 pb-3"
+        >
+          {[
+            { t: 'Features', u: '/features' },
+            { t: 'Pricing',  u: '/pricing'  },
+            { t: 'Updates',  u: '/updates'  },
+            { t: 'About',    u: '/about'    },
+            { t: 'Contact',  u: '/contact'  },
+          ].map(l => (
+            <a
+              key={l.u}
+              href={l.u}
+              onClick={() => setMenuOpen(false)}
+              className="block py-3.5 text-[15px] text-ink dark:text-paper border-b border-line dark:border-lineDark"
+            >{l.t}</a>
+          ))}
+          <div className="flex items-center justify-between pt-3">
+            <button
+              type="button"
+              onClick={() => { setMenuOpen(false); onSignIn && onSignIn(); }}
+              className="text-[14px] text-ink dark:text-paper"
+            >Sign in</button>
+            {toggleTheme && (
+              <button
+                type="button"
+                onClick={toggleTheme}
+                className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 inline-flex items-center justify-center transition"
+                aria-label="Toggle theme"
+              >
+                <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+    </header>
+  );
+};
 
 const Hero = ({ variant, onSignUp }) => {
   if (variant === 'editorial') return <HeroEditorial onSignUp={onSignUp} />;
@@ -1703,8 +1765,8 @@ const COMPARE_GROUPS = [
     { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
   ]},
   { category: 'Intelligence', rows: [
-    { label: 'Daily brief',        creator: false,        brand: true,              agency: true },
-    { label: 'Weekly brief',       creator: true,         brand: true,              agency: true },
+    { label: 'Morning brief',      creator: true,         brand: true,              agency: true },
+    { label: 'Weekly recap',       creator: true,         brand: true,              agency: true },
     { label: 'Live signal alerts', creator: false,        brand: false,             agency: true },
     { label: 'Competitor analysis',creator: true,         brand: true,              agency: true },
     { label: 'AI verdict + signals',creator: true,        brand: true,              agency: true },
@@ -1829,7 +1891,7 @@ const Pricing = ({ activePlan, onSignUp }) => {
         '5 social accounts total',
         '5 competitors tracked',
         '5 platforms (IG, TT, YT, FB, LI)',
-        'Weekly intelligence brief',
+        'Daily morning brief',
         '7-day free trial — no credit card'
       ],
       cta: 'Start free trial', featured: false },
@@ -2000,7 +2062,7 @@ const Footer = () => (
           </nav>
         </div>
         {[
-          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Pricing', u: '/pricing' }] },
+          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Pricing', u: '/pricing' }, { t: 'Updates', u: '/updates' }] },
           { h: 'Company', l: [{ t: 'About',    u: '/about'    }, { t: 'Contact', u: '/contact' }] },
           { h: 'Legal',   l: [{ t: 'Privacy',  u: '/privacy'  }, { t: 'Terms',   u: '/terms'   }] },
         ].map((g, i) => (
@@ -2563,7 +2625,7 @@ const Onboarding = ({ onDone }) => {
 
             <div className="grid sm:grid-cols-3 gap-2.5 mb-7">
               {[
-                { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · weekly brief · solo' },
+                { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · daily brief · solo' },
                 { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · 3 team seats, unlimited Viewer · daily brief, ads' },
                 { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · 10 team seats, unlimited Viewer · white-label, ads' },
               ].map(t => (
@@ -7259,7 +7321,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                       </div>
                     )}
                     <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
-                      {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · weekly brief · solo'
+                      {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · daily brief · solo'
                        : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats, unlimited Viewer access · daily brief, ads'
                                            : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats, unlimited Viewer access · daily brief, alerts'}
                     </p>
