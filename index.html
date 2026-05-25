@@ -1354,11 +1354,7 @@ const Landing = ({ onSignIn, onSignUp, theme, toggleTheme, heroVariant = 'gradie
       <LandingNav onSignIn={onSignIn} onSignUp={onSignUp} theme={theme} toggleTheme={toggleTheme} />
       <Hero variant={heroVariant} onSignUp={onSignUp} />
       <SocialProofMarquee />
-      {/* DashboardPreview now lives inside HeroGradient (split layout)
-          so the product visual is above the fold. The standalone slot
-          here would duplicate the same MockBrief; remove rather than
-          re-render. The legacy DashboardPreview component is still
-          defined below in case alternate hero variants want it back. */}
+      <DashboardPreview />
       <HowItWorks />
       <Features />
       <Integrations />
@@ -1471,81 +1467,59 @@ const Hero = ({ variant, onSignUp }) => {
   return <HeroGradient onSignUp={onSignUp} />;
 };
 
-// Hero split — copy + 3-step strip on the left, browser-chrome MockBrief
-// on the right. The reviewer feedback that triggered this redesign asked
-// for (a) a more direct headline naming the core outcome, (b) the "how
-// it works" flow above the fold, (c) benefit-focused CTA copy, and
-// (d) a product visual in view immediately. All four land here.
+// Hero — spacey single-column layout. Above-fold reviewer feedback is
+// addressed by the new headline, benefit-focused CTA, and the 3-step
+// "how it works" strip. The product visual lives in the standalone
+// DashboardPreview section directly below the hero (full-width), not
+// crammed into a hero column — that experiment squeezed the brief
+// mockup uncomfortably.
 const HeroGradient = ({ onSignUp }) => (
   <section className="relative overflow-hidden">
     <div className="blob bg-ultra" style={{ width: 600, height: 600, top: -200, left: -100 }} />
     <div className="blob bg-magenta" style={{ width: 500, height: 500, top: -150, right: -100, opacity: 0.4 }} />
     <div className="blob bg-lime" style={{ width: 400, height: 400, bottom: -150, left: '40%', opacity: 0.5 }} />
 
-    <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 pt-14 sm:pt-20 pb-16 sm:pb-20">
-      <div className="grid lg:grid-cols-12 gap-10 lg:gap-12 items-center">
-
-        {/* Left column — copy, CTA, 3-step strip */}
-        <div className="lg:col-span-6">
-          <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full border border-line dark:border-lineDark bg-chalk/70 dark:bg-coalsoft/70 backdrop-blur mb-6">
-            <MashalDot color="bg-magenta" />
-            <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Now live · Be among the first</span>
-          </div>
-
-          <h1 className="font-display text-[40px] sm:text-[56px] lg:text-[64px] leading-[0.96] font-semibold tracking-tightest mb-6">
-            Know what to post <span className="text-ultra">tomorrow</span>.
-            <br />
-            <span className="italic font-serif font-normal tracking-tight">Before</span> you wake up.
-          </h1>
-
-          <p className="text-[16px] sm:text-[18px] leading-snug text-mute dark:text-muteDark max-w-xl mb-8">
-            A 2-minute morning brief on what's working, what's not, and the one thing to do today — across all seven of your platforms.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-3 mb-9">
-            <Btn variant="ink" size="lg" onClick={onSignUp}>
-              See your first brief by 6 AM
-              <Icon name="arrowRight" className="w-4 h-4" />
-            </Btn>
-            <span className="text-[12px] text-mute dark:text-muteDark">No credit card · Cancel anytime</span>
-          </div>
-
-          {/* 3-step "how it works" strip — teaches the flow in one glance.
-              Sits inside the hero so first-time visitors don't have to
-              scroll to understand what they're signing up for. */}
-          <div className="grid grid-cols-3 gap-3 sm:gap-5 pt-7 border-t border-line dark:border-lineDark">
-            {[
-              { n: '01', t: 'Connect',        d: 'Authorize once. 90 seconds.' },
-              { n: '02', t: 'Brief by 6 AM',  d: 'Mashal reads your numbers overnight.' },
-              { n: '03', t: 'Act today',      d: 'Verdict, actions, signals. Open with coffee.' },
-            ].map((s) => (
-              <div key={s.n}>
-                <div className="font-mono text-[10.5px] text-mute dark:text-muteDark uppercase tracking-[0.12em] mb-2">{s.n}</div>
-                <div className="font-display text-[14px] sm:text-[15px] font-semibold tracking-tight leading-tight mb-1.5">{s.t}</div>
-                <div className="text-[11.5px] sm:text-[12px] text-mute dark:text-muteDark leading-snug">{s.d}</div>
-              </div>
-            ))}
-          </div>
+    <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-8 pt-16 sm:pt-24 pb-16 sm:pb-24">
+      <div className="max-w-5xl">
+        <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full border border-line dark:border-lineDark bg-chalk/70 dark:bg-coalsoft/70 backdrop-blur mb-7">
+          <MashalDot color="bg-magenta" />
+          <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Now live · Be among the first</span>
         </div>
 
-        {/* Right column — browser-chrome MockBrief, the visual demo above
-            the fold. On mobile this stacks below the copy. Pulled in from
-            the legacy DashboardPreview slot so the standalone section
-            below the hero is no longer needed. */}
-        <div className="lg:col-span-6">
-          <div className="relative rounded-3xl overflow-hidden border border-line dark:border-lineDark shadow-pop bg-chalk dark:bg-coalsoft">
-            <div className="absolute inset-x-0 top-0 h-9 bg-ink/[0.03] dark:bg-paper/[0.04] border-b border-line dark:border-lineDark flex items-center px-3.5 gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-ink/15" />
-              <span className="w-2 h-2 rounded-full bg-ink/15" />
-              <span className="w-2 h-2 rounded-full bg-ink/15" />
-              <span className="ml-2 text-[10.5px] font-mono text-mute">mashal.app/brief</span>
-            </div>
-            <div className="pt-11 p-4 sm:p-6">
-              <MockBrief />
-            </div>
-          </div>
+        <h1 className="font-display text-[44px] sm:text-[72px] lg:text-[88px] leading-[0.94] font-semibold tracking-tightest mb-7">
+          Know what to post <span className="text-ultra">tomorrow</span>.
+          <br />
+          <span className="italic font-serif font-normal tracking-tight">Before</span> you wake up.
+        </h1>
+
+        <p className="text-[17px] sm:text-[20px] leading-snug text-mute dark:text-muteDark max-w-3xl mb-9">
+          A 2-minute morning brief on what's working, what's not, and the one thing to do today — across all seven of your platforms.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 mb-12">
+          <Btn variant="ink" size="lg" onClick={onSignUp}>
+            See your first brief by 6 AM
+            <Icon name="arrowRight" className="w-4 h-4" />
+          </Btn>
+          <span className="text-[12px] text-mute dark:text-muteDark ml-2">No credit card · Cancel anytime</span>
         </div>
 
+        {/* 3-step "how it works" strip — teaches the flow in one glance.
+            Sits inside the hero so first-time visitors don't have to
+            scroll to understand what they're signing up for. */}
+        <div className="grid grid-cols-3 gap-x-4 gap-y-5 sm:gap-x-8 pt-7 border-t border-line dark:border-lineDark">
+          {[
+            { n: '01', t: 'Connect',        d: 'Authorize once. 90 seconds, no password sharing.' },
+            { n: '02', t: 'Brief by 6 AM',  d: 'Mashal reads your numbers overnight, writes the memo.' },
+            { n: '03', t: 'Act today',      d: 'Verdict, actions, signals. Open with your coffee.' },
+          ].map((s) => (
+            <div key={s.n}>
+              <div className="font-mono text-[10.5px] text-mute dark:text-muteDark uppercase tracking-[0.12em] mb-2">{s.n}</div>
+              <div className="font-display text-[15px] sm:text-[17px] font-semibold tracking-tight leading-tight mb-1.5">{s.t}</div>
+              <div className="text-[12px] sm:text-[13px] text-mute dark:text-muteDark leading-snug">{s.d}</div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   </section>
@@ -1679,7 +1653,7 @@ const MockBrief = () => (
       <p className="text-[14px] text-paper/70 max-w-md mb-6">Replying to top comments now extends the algorithm window by ~14 hours. Your tutorial-format posts earn 6× more saves than reels.</p>
       <div className="flex flex-wrap gap-2">
         <Btn variant="lime" size="sm">Open comments →</Btn>
-        <Btn variant="outline" size="sm" className="border-paper/20 text-paper">Schedule TikTok</Btn>
+        <Btn variant="outline" size="sm" className="border-paper/20 text-paper">See full action plan</Btn>
       </div>
     </div>
     <div className="lg:col-span-4 grid grid-cols-2 gap-3">
