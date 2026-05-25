@@ -32,7 +32,25 @@ export default async function handler(req, res) {
       eq: { workspace_id: ws.id, is_active: true },
       order: 'connected_at.asc',
     }).catch(() => []);
-    return json(res, 200, { accounts: accounts || [] });
+    // SECURITY (audit, May 2026): connected_accounts.metadata holds the
+    // Google OAuth refresh_token + access_token for YouTube connections.
+    // Returning select: '*' exposes those credentials to any role with
+    // read access on the workspace — including Viewer-tier clients.
+    // Sanitise the metadata before sending it down the wire so token
+    // material never crosses the API boundary in a list response.
+    const SENSITIVE_KEYS = new Set([
+      'refresh_token', 'access_token', 'id_token', 'token',
+      'scope', 'token_type', 'expires_at',
+    ]);
+    const sanitised = (accounts || []).map(a => {
+      if (!a.metadata || typeof a.metadata !== 'object') return a;
+      const safe = {};
+      for (const [k, v] of Object.entries(a.metadata)) {
+        if (!SENSITIVE_KEYS.has(k)) safe[k] = v;
+      }
+      return { ...a, metadata: safe };
+    });
+    return json(res, 200, { accounts: sanitised });
   }
 
   // ── POST: sync from Zernio + refresh follower counts ──────────────────

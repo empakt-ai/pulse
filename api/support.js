@@ -17,6 +17,7 @@
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { sendEmail } from './_lib/email.js';
+import { escapeHtml } from './_lib/escape-html.js';
 
 const VALID_TYPES = ['bug', 'suggestion', 'question'];
 const SUBJECT_MAX = 140;
@@ -24,18 +25,18 @@ const BODY_MAX    = 5000;
 const ADMIN_EMAIL = process.env.MASHAL_ADMIN_EMAIL || 'hello@mashal.app';
 
 function adminNotificationHtml({ user, workspace, ticket }) {
-  const safeBody = String(ticket.body).slice(0, BODY_MAX).replace(/</g, '&lt;');
-  const safeSubject = String(ticket.subject).slice(0, SUBJECT_MAX).replace(/</g, '&lt;');
+  const safeBody = escapeHtml(String(ticket.body).slice(0, BODY_MAX));
+  const safeSubject = escapeHtml(String(ticket.subject).slice(0, SUBJECT_MAX));
   return `<!doctype html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#F5F1E8; padding:24px; color:#0A0A0B;">
   <div style="max-width:560px; margin:0 auto; background:#FFFFFF; border-radius:14px; padding:24px;">
-    <div style="font-family: 'Geist Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.14em; color:#6B5BFF;">Mashal · New ticket · ${ticket.type}</div>
+    <div style="font-family: 'Geist Mono', monospace; font-size:10px; text-transform:uppercase; letter-spacing:0.14em; color:#6B5BFF;">Mashal · New ticket · ${escapeHtml(ticket.type)}</div>
     <h2 style="font-size:18px; margin:10px 0 8px;">${safeSubject}</h2>
     <pre style="white-space:pre-wrap; font-family:inherit; font-size:13.5px; line-height:1.55; color:#0A0A0B; margin:0 0 16px;">${safeBody}</pre>
     <div style="font-size:12px; color:#8E8B84; line-height:1.7;">
-      <div><strong>From:</strong> ${user.email || user.id}</div>
-      <div><strong>Workspace:</strong> ${workspace?.name || '—'} (${workspace?.tier || 'no tier'})</div>
-      <div><strong>Ticket id:</strong> <span style="font-family: 'Geist Mono', monospace;">${ticket.id}</span></div>
+      <div><strong>From:</strong> ${escapeHtml(user.email || user.id)}</div>
+      <div><strong>Workspace:</strong> ${escapeHtml(workspace?.name || '—')} (${escapeHtml(workspace?.tier || 'no tier')})</div>
+      <div><strong>Ticket id:</strong> <span style="font-family: 'Geist Mono', monospace;">${escapeHtml(ticket.id)}</span></div>
     </div>
   </div>
 </body></html>`;

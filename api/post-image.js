@@ -55,6 +55,38 @@ const PLATFORM_REFERER = {
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
          + '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+// SSRF defense — only allow thumbnail URLs from the platform CDN hosts
+// we actually scrape. A competitor who controls their own profile can
+// set a custom thumbnail field to an arbitrary URL; without an
+// allowlist, every Mashal user tracking them would scan whatever IP
+// the attacker chose. Suffix-match: '*.cdninstagram.com' allows
+// 'scontent.cdninstagram.com' etc.
+const CDN_HOST_SUFFIXES = [
+  // Instagram
+  'cdninstagram.com', 'fbcdn.net', 'instagram.com',
+  // TikTok
+  'tiktokcdn.com', 'tiktokcdn-us.com', 'tiktokcdn-eu.com', 'tiktok.com',
+  // YouTube
+  'ytimg.com', 'googleusercontent.com', 'youtube.com',
+  // Facebook / Meta CDNs (overlap with IG)
+  'facebook.com',
+  // LinkedIn
+  'licdn.com', 'linkedin.com',
+  // X / Twitter
+  'twimg.com', 'x.com', 'twitter.com',
+  // Snapchat
+  'snapchat.com', 'sc-cdn.net',
+];
+
+function isAllowedCdnHost(urlString) {
+  let u;
+  try { u = new URL(urlString); } catch { return false; }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+  const host = u.hostname.toLowerCase();
+  if (!host) return false;
+  return CDN_HOST_SUFFIXES.some(suffix => host === suffix || host.endsWith('.' + suffix));
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.setHeader('Content-Type', 'application/json');
@@ -98,6 +130,15 @@ export default async function handler(req, res) {
   if (!url) {
     res.setHeader('Content-Type', 'application/json');
     return res.status(404).end(JSON.stringify({ error: 'No thumbnail' }));
+  }
+
+  // SSRF defense — refuse anything not on a known platform CDN host.
+  // Scraped fields are competitor-controlled; without this allowlist
+  // a malicious competitor could redirect Mashal's fetcher to scan
+  // internal networks.
+  if (!isAllowedCdnHost(url)) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(400).end(JSON.stringify({ error: 'Thumbnail host not on allowlist' }));
   }
 
   // 8s upstream timeout — keeps the function from hanging if the CDN is

@@ -33,33 +33,37 @@ const OAUTH_SCOPES = [
 ];
 
 // ── OAuth state signing (HMAC-SHA256) ─────────────────────────────────────────
-// We embed workspace_id in OAuth state so the callback knows which workspace
-// to attach the account to. Sign it so an attacker can't substitute a different
-// workspace_id and steal the account-link.
+// We embed (user_id, workspace_id) in OAuth state so the callback knows
+// which workspace to attach the account to AND which user originated the
+// request. Without the user binding, a leaked state token within its
+// 10-minute TTL could be replayed by a different signed-in user — they
+// authorize against their own Google account, the callback verifies the
+// state, and now the attacker's YouTube channel is bound to the victim's
+// workspace (security audit, May 2026).
 function sign(payload) {
   return crypto.createHmac('sha256', STATE_SECRET || 'unset').update(payload).digest('hex').slice(0, 32);
 }
 
-export function signOAuthState(workspaceId, ttlSec = 600) {
+export function signOAuthState(userId, workspaceId, ttlSec = 600) {
   const expires = Math.floor(Date.now() / 1000) + ttlSec;
-  const payload = `youtube|${workspaceId}|${expires}`;
+  const payload = `youtube|${userId}|${workspaceId}|${expires}`;
   return `${payload}|${sign(payload)}`;
 }
 
 export function verifyOAuthState(state) {
   if (!state || !STATE_SECRET) return null;
   const parts = state.split('|');
-  if (parts.length !== 4) return null;
-  const [provider, workspaceId, expires, sig] = parts;
+  if (parts.length !== 5) return null;
+  const [provider, userId, workspaceId, expires, sig] = parts;
   if (provider !== 'youtube') return null;
   if (Math.floor(Date.now() / 1000) > Number(expires)) return null;
-  if (sig !== sign(`${provider}|${workspaceId}|${expires}`)) return null;
-  return { provider, workspaceId };
+  if (sig !== sign(`${provider}|${userId}|${workspaceId}|${expires}`)) return null;
+  return { provider, userId, workspaceId };
 }
 
 // Build the Google OAuth consent URL. redirectUri MUST match a value in the
 // OAuth client's "Authorized redirect URIs" (Google Cloud Console).
-export function buildAuthUrl(workspaceId, redirectUri) {
+export function buildAuthUrl(userId, workspaceId, redirectUri) {
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -68,7 +72,7 @@ export function buildAuthUrl(workspaceId, redirectUri) {
     access_type: 'offline',         // required for refresh_token
     prompt: 'consent',              // forces refresh_token on repeat consent
     include_granted_scopes: 'true',
-    state: signOAuthState(workspaceId),
+    state: signOAuthState(userId, workspaceId),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }

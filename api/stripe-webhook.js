@@ -149,10 +149,32 @@ async function handleCheckoutCompleted(session) {
     console.warn(`[stripe-webhook] workspace ${workspaceId} not found for checkout`);
     return;
   }
+
+  // SECURITY (audit, May 2026): bind the event to the workspace's owner.
+  // If the owner already has a stripe_customer_id and it doesn't match
+  // the customer on THIS session, the event was created against a
+  // different Stripe account (attacker scenario). Refuse to mutate.
   if (customerId && ws.owner_id) {
-    await supabase.update('profiles', { stripe_customer_id: customerId }, { eq: { id: ws.owner_id } }).catch(e => {
-      console.warn('[stripe-webhook] failed to set profile.stripe_customer_id:', e.message);
-    });
+    const ownerProfile = await supabase.select('profiles', {
+      select: 'id,stripe_customer_id',
+      eq: { id: ws.owner_id },
+      single: true,
+    }).catch(() => null);
+    if (ownerProfile?.stripe_customer_id && ownerProfile.stripe_customer_id !== customerId) {
+      console.warn(`[stripe-webhook] checkout customer mismatch — session ${customerId} != owner ${ownerProfile.stripe_customer_id} for workspace ${workspaceId}. Refusing.`);
+      return;
+    }
+    // Only stamp the owner's customer_id on first sighting (when it was
+    // null). Never overwrite — that would let a second checkout against
+    // a different Stripe account silently rebind the owner.
+    if (!ownerProfile?.stripe_customer_id) {
+      await supabase.update('profiles',
+        { stripe_customer_id: customerId },
+        { eq: { id: ws.owner_id, stripe_customer_id: null } },
+      ).catch(e => {
+        console.warn('[stripe-webhook] failed to set profile.stripe_customer_id:', e.message);
+      });
+    }
   }
 
   // The session payload doesn't include the full subscription. We
@@ -253,6 +275,38 @@ async function handleSubscriptionUpsert(sub, eventType) {
   if (!before) {
     console.warn(`[stripe-webhook] workspace ${workspaceId} not found for ${eventType}`);
     return;
+  }
+
+  // SECURITY (audit, May 2026): bind the event to the workspace's owner.
+  // Stripe's signature only proves "from Stripe" — it does not prove
+  // "from OUR Stripe account". An attacker with their own Stripe account
+  // could create a Subscription with metadata.workspace_id = <victim>
+  // and trigger a webhook delivery; without this check we'd mutate the
+  // victim workspace's billing state with the attacker's subscription id.
+  // The fix: require sub.customer to match the workspace owner's known
+  // stripe_customer_id. If we have no customer_id on file yet (first
+  // conversion), accept and stamp it; subsequent events must match.
+  const customerId = typeof sub.customer === 'string' ? sub.customer : sub.customer?.id;
+  if (!customerId) {
+    console.warn(`[stripe-webhook] ${eventType} missing customer id for workspace ${workspaceId}`);
+    return;
+  }
+  const ownerProfile = await supabase.select('profiles', {
+    select: 'id,stripe_customer_id',
+    eq: { id: before.owner_id },
+    single: true,
+  }).catch(() => null);
+  if (ownerProfile?.stripe_customer_id && ownerProfile.stripe_customer_id !== customerId) {
+    console.warn(`[stripe-webhook] customer mismatch — event customer ${customerId} != owner ${ownerProfile.stripe_customer_id} for workspace ${workspaceId}. Refusing.`);
+    return;
+  }
+  // Stamp the owner's customer_id on first sighting so subsequent events
+  // can match. Only writes when previously null — never overwrites.
+  if (!ownerProfile?.stripe_customer_id && before.owner_id) {
+    await supabase.update('profiles',
+      { stripe_customer_id: customerId },
+      { eq: { id: before.owner_id, stripe_customer_id: null } },
+    ).catch(() => { /* best-effort */ });
   }
 
   const patch = {

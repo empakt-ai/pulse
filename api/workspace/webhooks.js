@@ -25,7 +25,7 @@ import {
   generateWebhookSecret,
   isValidWebhookUrl,
   redactWebhook,
-  dispatchEvent,
+  deliverOne,
 } from '../_lib/webhooks.js';
 
 const MAX_PER_WORKSPACE = 5;
@@ -88,19 +88,17 @@ export default async function handler(req, res) {
     }).catch(() => null);
     if (!row) return json(res, 404, { error: 'Webhook not found' });
 
-    // Dispatch a one-off test event so the user can see the receiver
-    // accepting a signed payload. We don't filter by subscribed events
-    // here — the test fires regardless of subscription.
-    const subscribers = [row];
-    const results = await Promise.all(subscribers.map(async w => {
-      const r = await dispatchEvent(ws.id, 'brief_generated', {
-        test: true,
-        message: 'This is a test delivery from Mashal. If you can read this, the webhook is wired correctly.',
-        workspace_name: ws.name,
-      });
-      return r;
-    }));
-    return json(res, 200, { ok: true, results });
+    // SECURITY (audit, May 2026): fire ONLY to the target webhook. The
+    // previous implementation called dispatchEvent() which fans out to
+    // every subscriber to brief_generated — turning a test click into a
+    // multi-target SSRF amplifier when combined with a malicious URL.
+    // deliverOne is the single-target primitive; use it directly.
+    const result = await deliverOne(row, 'brief_generated', {
+      test: true,
+      message: 'This is a test delivery from Mashal. If you can read this, the webhook is wired correctly.',
+      workspace_name: ws.name,
+    });
+    return json(res, 200, { ok: true, result });
   }
 
   if (req.method === 'POST') {

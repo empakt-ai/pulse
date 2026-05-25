@@ -18,12 +18,20 @@ import { supabase } from '../_lib/supabase.js';
 import { json } from '../_lib/auth.js';
 
 const SECRET = process.env.ZERNIO_WEBHOOK_SECRET || '';
+const IS_PROD = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
 
-// Constant-time signature compare. Returns true on match OR when the
-// secret isn't configured (dev / pre-registration mode — we still accept
-// the delivery but flag it in payload).
+// Constant-time signature compare.
+// SECURITY (audit, May 2026): fail closed in production. The previous
+// behavior accepted every unsigned delivery as "verified: false" when
+// ZERNIO_WEBHOOK_SECRET was unset, which let any caller insert fake
+// inbox_events rows that downstream cron logic would act on. In prod
+// a missing secret is a configuration bug — refuse the request rather
+// than silently degrade.
 function verifySignature(rawBody, signatureHeader) {
-  if (!SECRET) return { ok: true, verified: false };
+  if (!SECRET) {
+    if (IS_PROD) return { ok: false, verified: false, reason: 'secret_missing' };
+    return { ok: true, verified: false };                 // dev only
+  }
   if (!signatureHeader) return { ok: false, verified: false };
   // Zernio may send the signature in a couple of common formats:
   //   "sha256=abc..." or just the hex digest. Handle both.

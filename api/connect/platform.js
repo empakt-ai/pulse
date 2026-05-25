@@ -90,7 +90,7 @@ export default async function handler(req, res) {
     // single registered URI; the platform is identified via OAuth `state`.
     if (platform === 'youtube') {
       const redirectUri = `${appUrl}/api/connect/callback`;
-      const authUrl = buildYouTubeAuthUrl(auth.workspace.id, redirectUri);
+      const authUrl = buildYouTubeAuthUrl(auth.user.id, auth.workspace.id, redirectUri);
       return json(res, 200, { authUrl, platform });
     }
 

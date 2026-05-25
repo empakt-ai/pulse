@@ -37,6 +37,19 @@ export default async function handler(req, res) {
   const action = (req.query?.action || '').toString().toLowerCase();
   if (req.method !== 'POST') return json(res, 405, { error: 'Method not allowed' });
 
+  // SECURITY (audit, May 2026): every billing action is owner-only.
+  // Members + admins + viewers can NOT bind workspace billing to their
+  // own card via checkout, and can NOT open a portal session that
+  // would let them manage the owner's payment method. Previously this
+  // route only required `authenticate`, which meant any role on the
+  // workspace could trigger a conversion.
+  if (auth.role !== 'owner') {
+    return json(res, 403, {
+      error: 'Billing actions are owner-only.',
+      role: auth.role,
+    });
+  }
+
   // Ensure the user has a Stripe Customer. Lazy because we don't want a
   // signup to provision a Customer that never converts.
   async function ensureCustomerId() {

@@ -1409,8 +1409,13 @@ const STATUS_HEADLINE = {
 };
 
 function ticketStatusEmailHtml({ status, ticket, note }) {
-  const safeSubject = String(ticket.subject).slice(0, 200).replace(/</g, '&lt;');
-  const safeNote = note ? String(note).replace(/</g, '&lt;').replace(/\n/g, '<br/>') : null;
+  // SECURITY (audit, May 2026): full HTML escape — was only escaping `<`,
+  // leaving attribute-context injection paths open via `"` and `'`.
+  const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[m]));
+  const safeSubject = escapeHtml(String(ticket.subject).slice(0, 200));
+  const safeNote = note ? escapeHtml(String(note)).replace(/\n/g, '<br/>') : null;
   const headline = STATUS_HEADLINE[status] || `Your ticket is now ${status}.`;
   return `<!doctype html>
 <html><body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; background:#F5F1E8; padding:32px; color:#0A0A0B;">

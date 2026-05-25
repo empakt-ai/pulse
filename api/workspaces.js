@@ -82,9 +82,24 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const tier = tierFor(workspace);
     const usage = await getMonthlyUsage(workspace.id).catch(() => ({ used: 0, cost_cents: 0 }));
+    // SECURITY (audit, May 2026): owners see the full row; everyone else
+    // sees a billing-stripped projection. Same logic as /api/brief.
+    const stripBilling = (w) => {
+      if (!w) return w;
+      const {
+        stripe_customer_id, stripe_subscription_id, stripe_subscription_status,
+        stripe_price_id, stripe_current_period_end, stripe_cancel_at_period_end,
+        stripe_last_invoice_status, stripe_last_event_at, trial_promo_code,
+        ...rest
+      } = w;
+      return rest;
+    };
+    const isOwner = auth.role === 'owner';
     return json(res, 200, {
-      workspace,
-      workspaces: auth.workspaces || [workspace],
+      workspace: isOwner ? workspace : stripBilling(workspace),
+      workspaces: isOwner
+        ? (auth.workspaces || [workspace])
+        : (auth.workspaces || [workspace]).map(stripBilling),
       tier: { ...tier, key: workspace.tier || 'creator' },
       usage: { used: usage.used, limit: tier.runs_per_month, cost_cents: usage.cost_cents },
     });

@@ -18,6 +18,7 @@
 // Auth: Vercel Cron sends `Authorization: Bearer ${CRON_SECRET}` automatically
 // when you set CRON_SECRET as an env var. Reject any call without it.
 
+import crypto from 'node:crypto';
 import { supabase } from '../_lib/supabase.js';
 import { json } from '../_lib/auth.js';
 import { runSync } from '../_lib/sync.js';
@@ -290,9 +291,16 @@ async function runTrialSweep() {
 
 export default async function handler(req, res) {
   // Auth: CRON_SECRET via Bearer header (Vercel Cron injects this).
+  // SECURITY (audit, May 2026): timing-safe comparison so a remote
+  // attacker can't byte-by-byte deduce the secret via response timing.
+  // Vercel's edge layer also fronts this so realistic exploitability
+  // is low, but the fix is one line.
   const secret = process.env.CRON_SECRET;
   const header = req.headers?.authorization || '';
-  if (!secret || header !== `Bearer ${secret}`) {
+  const expected = secret ? `Bearer ${secret}` : '';
+  if (!secret
+      || header.length !== expected.length
+      || !crypto.timingSafeEqual(Buffer.from(header), Buffer.from(expected))) {
     return json(res, 401, { error: 'Unauthorized' });
   }
 

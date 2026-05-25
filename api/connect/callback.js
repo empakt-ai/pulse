@@ -20,6 +20,7 @@
 //   (b) closes itself after 600ms
 
 import { supabase } from '../_lib/supabase.js';
+import { authenticate } from '../_lib/auth.js';
 import { exchangeCode, getOwnChannel, verifyOAuthState } from '../_lib/youtube.js';
 import { isAvailable, claimHandle } from '../_lib/handle-registry.js';
 
@@ -48,6 +49,25 @@ function renderError(res, title, detail) {
 async function handleGoogleCallback(req, res, code, state) {
   const verified = verifyOAuthState(state);
   if (!verified) return renderError(res, 'Invalid or expired state', 'Sign-in link expired — try Connect again.');
+
+  // SECURITY (audit, May 2026): require the calling browser session to
+  // belong to the same user that initiated the OAuth flow. Without this
+  // check, a leaked state token could be replayed by a different signed-in
+  // user, binding the attacker's Google channel to the victim workspace.
+  // We accept the state's signed user_id as authoritative for the
+  // workspace lookup, but additionally try to authenticate the caller
+  // and refuse if their identity doesn't match. authenticate() may fail
+  // (e.g., during a fresh OAuth flow that's still cookie-less), in which
+  // case the signed state remains the only binding — the user_id field
+  // we just added narrows the window of usefulness for replay attacks.
+  try {
+    const callerAuth = await authenticate(req);
+    if (!callerAuth.error && callerAuth.user?.id && callerAuth.user.id !== verified.userId) {
+      return renderError(res,
+        'Identity mismatch',
+        'This connect flow was started by a different user. Sign in as that user or restart from Settings.');
+    }
+  } catch (_) { /* tolerate — see comment above */ }
 
   const appUrl = process.env.APP_URL || 'https://mashal.app';
   const redirectUri = `${appUrl}/api/connect/callback`;

@@ -526,9 +526,30 @@ export default async function handler(req, res) {
     }
   }
 
+  // SECURITY (audit, May 2026): strip Stripe billing columns + trial
+  // promo code from the workspace projection when the caller isn't the
+  // owner. Viewers (read-only clients) and Members shouldn't see the
+  // workspace's payment state, past_due flags, or referral promo codes.
+  // Owner sees the full row.
+  const stripBilling = (w) => {
+    if (!w) return w;
+    const {
+      stripe_customer_id, stripe_subscription_id, stripe_subscription_status,
+      stripe_price_id, stripe_current_period_end, stripe_cancel_at_period_end,
+      stripe_last_invoice_status, stripe_last_event_at, trial_promo_code,
+      ...rest
+    } = w;
+    return rest;
+  };
+  const isOwner = auth.role === 'owner';
+  const workspaceProjection = isOwner ? ws : stripBilling(ws);
+  const workspacesProjection = isOwner
+    ? (auth.workspaces || [])
+    : (auth.workspaces || []).map(stripBilling);
+
   return json(res, 200, {
-    workspace: ws,
-    workspaces: auth.workspaces || [],
+    workspace: workspaceProjection,
+    workspaces: workspacesProjection,
     // Admin context. is_admin/as_tier/flags are read from the admin
     // module's settings + the caller's profile. Non-admin tokens see
     // is_admin=false and an as_tier of null; flags are visible to
