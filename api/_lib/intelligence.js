@@ -25,6 +25,7 @@ import { allRulesAsPromptText } from './platform-rules.js';
 import { checkUsageCap } from './tiers.js';
 import { buildAdsIntel, buildAdsIntelPrompt } from './ads-intel.js';
 import { getUpcomingCulturalMoments } from './cultural-calendar.js';
+import { dispatchEvent as dispatchWebhookEvent } from './webhooks.js';
 
 // Short keys for ads' platform aggregate — must match what brief.js emits
 // in `per_platform[i].platform` so benchmark lookups in buildAdsIntel hit
@@ -1559,6 +1560,20 @@ export async function generateBrief(workspace, { manual = true } = {}) {
     run_at: new Date().toISOString(),
   }).catch(e => console.warn('[intelligence] usage_log insert failed:', e.message));
 
+  // Fire-and-forget webhook dispatch. Subscribers to `brief_generated`
+  // receive a POST with the verdict title, intel score, and counts.
+  // Never awaited — if a receiver is slow or down, brief generation
+  // doesn't block on it. Wrapped in a no-op catch to be doubly safe.
+  dispatchWebhookEvent(workspace.id, 'brief_generated', {
+    verdict_title: brief.verdict?.title || null,
+    intel_score: intelScore,
+    action_count: brief.actions?.length || 0,
+    signal_count: brief.signals?.length || 0,
+    model_used: result.model_used,
+    workspace_name: workspace.name || null,
+    workspace_tier: workspace.tier || null,
+  }).catch(() => { /* non-fatal */ });
+
   return {
     ok: true,
     intelScore,
@@ -1684,6 +1699,19 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
     status: 'completed',
     run_at: new Date().toISOString(),
   }).catch(e => console.warn('[intelligence/stream] usage_log insert failed:', e.message));
+
+  // Same fire-and-forget webhook dispatch as the synchronous variant.
+  // The stream consumer has already received the verdict text by the
+  // time this runs, so we don't yield anything about the webhook.
+  dispatchWebhookEvent(workspace.id, 'brief_generated', {
+    verdict_title: brief.verdict?.title || null,
+    intel_score: intelScore,
+    action_count: brief.actions?.length || 0,
+    signal_count: brief.signals?.length || 0,
+    model_used: model,
+    workspace_name: workspace.name || null,
+    workspace_tier: workspace.tier || null,
+  }).catch(() => { /* non-fatal */ });
 
   yield {
     done: true,

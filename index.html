@@ -2133,6 +2133,7 @@ Object.assign(window, { Landing });
 <script type="text/babel" src="js/referral/panel.js"></script>
 <script type="text/babel" src="js/team/panel.js"></script>
 <script type="text/babel" src="js/support/panel.js"></script>
+<script type="text/babel" src="js/webhooks/panel.js"></script>
 <script type="text/babel">
 // ── Auth Screen ───────────────────────────────────────────────────────────────
 const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
@@ -7714,6 +7715,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               so Brand/Agency/trialing users don't even issue the fetch.
               See js/referral/panel.js. */}
           {tier === 'creator' && !workspace?.trial_active && window.Referral?.Panel && <window.Referral.Panel />}
+
+          {/* Outbound webhooks — Slack / Teams / Zapier targets that
+              receive a signed POST when Mashal fires an event. Available
+              to every workspace (no tier gate). Up to 5 per workspace,
+              enforced server-side. See js/webhooks/panel.js. */}
+          {window.Webhooks?.Panel && <window.Webhooks.Panel />}
 
           {/* Suggestions & bugs — available to every authenticated user
               regardless of tier or role. Goes straight to the founder
