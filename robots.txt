@@ -1,7 +1,30 @@
+# Mashal — robots.txt
+# Public marketing pages are fully crawlable. API endpoints, admin
+# surfaces, and authenticated SPA routes are off-limits.
+
 User-agent: *
 Allow: /
 Disallow: /api/
 Disallow: /admin
 Disallow: /admin.html
+# SPA route params (signin, signup, etc.) all serve /index.html;
+# they're never canonical destinations, so don't waste crawl budget on
+# them. The static marketing pages cover the keywords we want indexed.
+Disallow: /?route=
+
+# Block known aggressive AI scrapers that don't honor our content
+# licensing. Search-engine bots (Googlebot, Bingbot) and well-behaved
+# AI agents that read our terms are still welcome.
+User-agent: CCBot
+Disallow: /
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
 
 Sitemap: https://mashal.app/sitemap.xml
