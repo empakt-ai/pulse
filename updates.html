@@ -137,35 +137,11 @@
         <div class="update-meta">
           <time datetime="2026-05-25">25 May 2026</time>
           <span class="dot-sep"></span>
-          <span class="badge">Audience</span>
+          <span class="badge">Integrations</span>
         </div>
-        <h3>Audience demographics. See who's actually following each account.</h3>
-        <p>If you're on Brand or Agency, your Stats screen now shows age, gender, country, city, and language breakdowns for each connected account, refreshed every morning with the regular sync. Instagram is the platform that exposes the most through our integration today, so that's where you'll see the richest data. TikTok and Facebook surface what they expose, which is less than you might expect, and the other platforms either don't publish demographics through their APIs at all or limit them to accounts above a certain size.</p>
-        <p>The whole section sits under the channel scorecard on the Stats tab. Each account gets its own block with the dimensions stacked, sorted by share. If you filter to a single platform from the top tab, the audience view filters with it. There's a "Snapshot" date in the header so you can see exactly how fresh the read is, and if a platform hasn't been able to surface data for a smaller account yet, the card says so plainly instead of showing a half-empty chart.</p>
-        <p>Creator workspaces see a locked teaser for now, since audience demographics fall on the paid side of the Zernio Analytics add-on. If you're on a Brand or Agency trial, the section is teased until conversion for the same reason.</p>
-      </article>
-
-      <article class="update-entry">
-        <div class="update-meta">
-          <time datetime="2026-05-25">25 May 2026</time>
-          <span class="dot-sep"></span>
-          <span class="badge">Site</span>
-        </div>
-        <h3>"In your stack." A page about pairing Mashal with Buffer, Later, or Metricool.</h3>
-        <p>There's a new page at mashal.app/stack that says, in more words than usual, that Mashal isn't trying to replace your scheduler. If you're already using Buffer to queue your week, Later to visualise the IG grid, or Metricool to send the monthly report to a client, you can keep using all of them. Mashal reads the same accounts from the read-only side and writes the daily brief that nobody else is writing. The two products never need to talk to each other.</p>
-        <p>The page lists, for each of those three tools, what they're good at and where Mashal slots in next to them. There's also a "stack we'd actually recommend" section with three configurations, one each for solo creators, in-house brand teams, and agencies running multiple clients. If you've been comparing Mashal against a scheduler and thinking you'd have to pick one, that page is the answer.</p>
-      </article>
-
-      <article class="update-entry">
-        <div class="update-meta">
-          <time datetime="2026-05-25">25 May 2026</time>
-          <span class="dot-sep"></span>
-          <span class="badge">Intel</span>
-        </div>
-        <h3>Competitor ads, live. Mashal now sees every paid Meta ad your competitors are running.</h3>
-        <p>If you're on Brand or Agency and you track Facebook or Instagram competitors, the Intel screen now has a "Competitor ads · live" card that lists every paid Meta ad each one is currently running. Creative type, start date, headline, call to action, and the country it's served in. There's a "View in Ad Library" link on each ad that takes you to Meta's own page for it, so you can see the full creative without leaving the source of truth.</p>
-        <p>This was on the build list for a few weeks out, gated behind a Meta developer-app review. Halfway through writing the queued announcement for it, we double-checked and noticed the Ad Library is fully public, no API approval needed. We were already running Apify for competitor profile scrapes, so wiring an Ad Library actor next to it took the same afternoon. If you're paying for a separate ad-intel tool just to see your competitors' creative, this card is the same data, refreshed every 24 hours, included in your plan.</p>
-        <p>Threads support, which was paired with this in the original "coming next" note, still needs the Meta dev-app pass since it requires writing on the user's behalf. We've started that process and it's still on the way.</p>
+        <h3>Outbound webhooks. Send your brief to Slack, Teams, or Zapier.</h3>
+        <p>There's a new Outbound webhooks section in your Settings that lets you register an HTTPS endpoint Mashal pings when it fires an event. You'll most commonly use this to drop your morning brief into a Slack channel, a Microsoft Teams connector, or a Zapier workflow that fans it out to wherever your team actually lives. Each delivery is a JSON POST with an HMAC-SHA256 signature header your receiver can verify against the per-webhook secret we generate for you at create time. Five webhooks per workspace, and any one that fails five times in a row gets paused so you can fix it without firefighting a noisy receiver.</p>
+        <p>Three events are wired in to start. The one most people will reach for is brief_generated, which fires the moment your daily AI brief lands. weekly_digest_sent fires every Sunday after the weekly recap goes out. signal_detected is allowed in the enum but not firing from any production code path yet, the wiring is there for a future live-signal alerts pass. Available on every plan, no tier gate.</p>
       </article>
 
       <article class="update-entry">
@@ -177,6 +153,63 @@
         <h3>What we're building next. Threads support at Brand and Agency tier.</h3>
         <p>One thing is queued for the next few weeks, and we're flagging it now rather than after it ships so you know it's on the way. Threads support at Brand and Agency tier. Meta's Threads API is its own thing, separate from the rest of the Graph API, so it needs a dedicated OAuth app and a review pass from Meta before it can go live. We've started that process. When it's approved, the Settings tile and the brief integration are ready to ship the same week.</p>
         <p>Realistic estimate: a few weeks, depending on how long Meta takes to approve the app. We'll write this entry's follow-up the day it ships, with the usual "what changed for you" framing rather than a "we did it" announcement.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-23">23 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Intel</span>
+        </div>
+        <h3>Competitor ads, live. Mashal now sees every paid Meta ad your competitors are running.</h3>
+        <p>If you're on Brand or Agency and you track Facebook or Instagram competitors, the Intel screen now has a "Competitor ads · live" card that lists every paid Meta ad each one is currently running. Creative type, start date, headline, call to action, and the country it's served in. There's a "View in Ad Library" link on each ad that takes you to Meta's own page for it, so you can see the full creative without leaving the source of truth.</p>
+        <p>This was on the build list for a few weeks out, gated behind a Meta developer-app review. Halfway through writing the queued announcement for it, we double-checked and noticed the Ad Library is fully public, no API approval needed. We were already running Apify for competitor profile scrapes, so wiring an Ad Library actor next to it took the same afternoon. If you're paying for a separate ad-intel tool just to see your competitors' creative, this card is the same data, refreshed every 24 hours, included in your plan.</p>
+        <p>Threads support, which was paired with this in the original "coming next" note, still needs the Meta dev-app pass since it requires writing on the user's behalf. We've started that process and it's still on the way.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-22">22 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Polish</span>
+        </div>
+        <h3>Mashal on your phone, and sharper hashtag reads in the brief.</h3>
+        <p>Two small things shipped together this morning. First, Mashal is now installable as a progressive web app on iOS, Android, Windows, and Mac. Open mashal.app on your phone and tap Add to Home Screen and you'll get a real app icon that opens straight into your dashboard, no browser chrome. The morning brief reads as a memo, not a webpage, which is closer to how the product wants to feel at 6 AM with one hand on the coffee.</p>
+        <p>Second, the daily brief now reads your hashtags. The AI sees the tags on every post you and your tracked competitors have used in the last 30 days, ranks them by engagement, and surfaces a gap list of tags two or more competitors are riding that you have not used yet. When the brief recommends a content move, it names the specific tags that fit instead of telling you generically to use more hashtags. Workspaces operating on X or Snapchat where hashtags don't drive distribution still see no hashtag mentions, which is deliberate.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-21">21 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Audience</span>
+        </div>
+        <h3>Audience demographics. See who's actually following each account.</h3>
+        <p>If you're on Brand or Agency, your Stats screen now shows age, gender, country, city, and language breakdowns for each connected account, refreshed every morning with the regular sync. Instagram is the platform that exposes the most through our integration today, so that's where you'll see the richest data. TikTok and Facebook surface what they expose, which is less than you might expect, and the other platforms either don't publish demographics through their APIs at all or limit them to accounts above a certain size.</p>
+        <p>The whole section sits under the channel scorecard on the Stats tab. Each account gets its own block with the dimensions stacked, sorted by share. If you filter to a single platform from the top tab, the audience view filters with it. There's a "Snapshot" date in the header so you can see exactly how fresh the read is, and if a platform hasn't been able to surface data for a smaller account yet, the card says so plainly instead of showing a half-empty chart.</p>
+        <p>Creator workspaces see a locked teaser for now, since audience demographics fall on the paid side of the platform analytics add-on. If you're on a Brand or Agency trial, the section is teased until conversion for the same reason.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-20">20 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Site</span>
+        </div>
+        <h3>"In your stack" and a new compare hub. Where Mashal actually fits.</h3>
+        <p>Two new pages went up today that answer the most common question we get on a sales call: how does Mashal compare to Buffer, Later, or Sprout, and should I be using both. The stack page at mashal.app/stack says, in more words than usual, that Mashal isn't trying to replace your scheduler. Buffer, Later, Metricool, all of them stay. Mashal reads the same accounts from the read-only side and writes the daily brief that nobody else is writing.</p>
+        <p>The compare hub at mashal.app/compare goes the other direction. If you landed here after searching "Mashal vs Sprout" or "Mashal vs Hootsuite," there's now a dedicated page for each of the six tools we get compared against most often. Each one has the pricing math, a feature matrix, and a "pick X if, pick Mashal if, pick both if" buyer's guide. Honest writeups on where each competitor actually wins, not strawman comparisons designed to make us look better.</p>
+      </article>
+
+      <article class="update-entry">
+        <div class="update-meta">
+          <time datetime="2026-05-19">19 May 2026</time>
+          <span class="dot-sep"></span>
+          <span class="badge">Site</span>
+        </div>
+        <h3>Integrations page. Exactly what Mashal fetches from each platform.</h3>
+        <p>The homepage used to say "Five platforms, one source of truth" while the rest of the site said seven. That was a leftover from an earlier release and it's been fixed everywhere, but more usefully, there's now a full Integrations page at mashal.app/integrations that lists exactly what data we pull from each of the seven platforms we connect to. Per post engagement, per account demographics where available, what tiers unlock what, which platforms require a Business or Creator account.</p>
+        <p>The page also has a "what we deliberately don't fetch" section, which names every category of data Mashal explicitly stays out of, including your DMs, your inbox, your drafts, and anyone's account but your own. Read-only OAuth on every connection. The link sits in the top nav so it's the easy answer the next time someone on your team asks what Mashal actually has access to in your accounts.</p>
       </article>
 
       <article class="update-entry">
