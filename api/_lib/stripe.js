@@ -29,12 +29,19 @@ if (!SECRET && typeof process !== 'undefined') {
 // Tier ↔ Price mapping. These are LIVE Price IDs from Stripe Dashboard.
 // Test-mode keys/prices would go in a separate map keyed by env.
 export const PRICE_BY_TIER = {
-  creator: 'price_1TWzqUImZCTvR1deBmoqcZdq',
-  brand:   'price_1TWzqmImZCTvR1deNcMzg059',
-  agency:  'price_1TWzr4ImZCTvR1deU87YGUhD',
+  creator:     'price_1TWzqUImZCTvR1deBmoqcZdq',
+  // Pro Creator — Stripe product + price has not been created in the
+  // dashboard yet. Set STRIPE_PRICE_PRO_CREATOR in the Vercel env to wire
+  // it. Until set, attempts to subscribe at Pro Creator fail fast in
+  // api/stripe.js with a 400 instead of silently billing the wrong amount.
+  pro_creator: process.env.STRIPE_PRICE_PRO_CREATOR || '',
+  brand:       'price_1TWzqmImZCTvR1deNcMzg059',
+  agency:      'price_1TWzr4ImZCTvR1deU87YGUhD',
 };
+// Build the reverse map only from non-empty entries so an unset Pro Creator
+// price doesn't shadow the empty string as a valid lookup key.
 export const TIER_BY_PRICE = Object.fromEntries(
-  Object.entries(PRICE_BY_TIER).map(([k, v]) => [v, k]),
+  Object.entries(PRICE_BY_TIER).filter(([_, v]) => !!v).map(([k, v]) => [v, k]),
 );
 
 // Stripe expects application/x-www-form-urlencoded with bracket-notation

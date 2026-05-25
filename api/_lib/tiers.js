@@ -18,6 +18,21 @@ export const TIERS = {
     competitors: 5,
     runs_per_month: 30,
   },
+  // Pro Creator — the mid-creator tier between Creator and Brand. Same
+  // solo-operator scope (no team seats, no Viewer access, no ad stack)
+  // but full platform coverage, deeper competitor tracking, and the
+  // multilingual / market-context brief. Targets serious solo creators
+  // and influencers in MENA / South Asia who need Khaleeji/Urdu brief
+  // support but aren't running ads.
+  pro_creator: {
+    label: 'Pro Creator',
+    price_usd: 29,
+    platforms: 7,                  // all 7 unlocked (vs 5 on Creator)
+    accounts_total: 7,             // 1 per platform
+    accounts_per_platform: 1,
+    competitors: 10,
+    runs_per_month: 60,
+  },
   brand: {
     label: 'Brand',
     price_usd: 99,

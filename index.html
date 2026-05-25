@@ -7632,9 +7632,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                       </div>
                     )}
                     <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
-                      {tier === 'creator' ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · daily brief · solo'
-                       : tier === 'brand'  ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats, unlimited Viewer access · daily brief, ads'
-                                           : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats, unlimited Viewer access · daily brief, alerts'}
+                      {tier === 'creator'     ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · daily brief · solo'
+                       : tier === 'pro_creator' ? '$29/month · 2 workspaces · 7 accounts (1/platform) · 10 competitors · multilingual brief · solo'
+                       : tier === 'brand'      ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats, unlimited Viewer access · daily brief, ads'
+                                                : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats, unlimited Viewer access · daily brief, alerts'}
                     </p>
                     {usage && (
                       <div className="pt-4 border-t border-paper/10">
