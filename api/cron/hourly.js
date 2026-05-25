@@ -51,17 +51,25 @@ function localClock(timezone) {
 // Decide which jobs (if any) should fire for this workspace at this hour.
 function jobsFor(workspace) {
   const { hour, dow } = localClock(workspace.timezone || 'UTC');
+  const tier = String(workspace.tier || 'creator').toLowerCase();
   const jobs = [];
   if (hour === 6) {
     jobs.push('brief');
     if (dow === 0) {
       jobs.push('weekly-deep');
-      // Weekly digest email — only if user opted in. Runs AFTER the brief
-      // job below so we email the freshly-regenerated content.
-      if (workspace.weekly_digest_enabled) jobs.push('weekly-digest');
+      // Weekly digest email — only if user opted in AND tier is Pro
+      // Creator or above. The /pricing comparison sells the daily/weekly
+      // email digest as a Pro Creator+ feature; gate at the cron rather
+      // than the toggle so legacy Creator workspaces that previously
+      // enabled it stop receiving fresh deliveries until they upgrade.
+      if (workspace.weekly_digest_enabled && tier !== 'creator') {
+        jobs.push('weekly-digest');
+      }
     }
   }
   if (hour === 8 || hour === 13 || hour === 18) {
+    // Live signal alerts — Agency tier only (pre-existing behavior,
+    // enforced upstream in the brief generator).
     jobs.push('live-signals');
   }
   return { hour, dow, jobs };

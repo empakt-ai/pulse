@@ -635,7 +635,9 @@ export default async function handler(req, res) {
     })(),
     // Market context — TAM + platform usage signals for the workspace's
     // country. Null when country isn't set or isn't in our reference set.
-    marketContext: getMarketContext(ws.country),
+    // TIER GATE — market context is a Pro Creator+ feature per /pricing.
+    // Creator workspaces get null so the MarketContextCard hides itself.
+    marketContext: wsTier === 'creator' ? null : getMarketContext(ws.country),
     // Full action plan — every action from the current brief, sorted by
     // the urgency order the model returned them in. The Action Plan screen
     // groups these by `when` into Now/Today/This week/This month buckets.

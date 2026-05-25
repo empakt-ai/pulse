@@ -109,6 +109,17 @@ export default async function handler(req, res) {
         trial_locked: !!ws.trial_locked,
       });
     }
+    // TIER GATE — PDF reports are a Pro Creator+ feature. The Creator
+    // tier at $15 stays an organic-brief-only plan; Pro Creator at $29
+    // is where exports unlock. Block here with an upgrade pointer.
+    const wsTier = String(ws.tier || 'creator').toLowerCase();
+    if (wsTier === 'creator') {
+      return json(res, 402, {
+        error: 'PDF reports unlock on Pro Creator and above.',
+        upgrade_tier: 'pro_creator',
+        current_tier: wsTier,
+      });
+    }
     let body = req.body;
     if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
     const wantsEmail = body?.action === 'email';

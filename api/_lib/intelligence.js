@@ -505,6 +505,16 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     45
   );
 
+  // TIER GATE — multilingual brief is a Pro Creator+ feature. Creator
+  // workspaces always get an English brief regardless of what they have
+  // saved in workspace.brief_language. The /pricing comparison sells this
+  // as a Pro Creator upgrade; force the LLM to honor that by overriding
+  // the language in the prompt context before the model sees it.
+  const wsTier = String(workspace?.tier || 'creator').toLowerCase();
+  const briefLanguage = wsTier === 'creator'
+    ? 'en'
+    : (workspace.brief_language || 'en');
+
   return {
     workspace: {
       user_type: workspace.user_type,
@@ -513,7 +523,7 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
       country: workspace.country,
       account_age: workspace.account_age,
       tier: workspace.tier,
-      brief_language: workspace.brief_language || 'en',
+      brief_language: briefLanguage,
     },
     platforms: byPlatform,
     top_posts: topPosts,

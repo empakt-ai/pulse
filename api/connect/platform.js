@@ -67,6 +67,20 @@ export default async function handler(req, res) {
     return json(res, 400, { error: `Unsupported platform: ${platform}` });
   }
 
+  // TIER GATE — X and Snapchat are Pro Creator+ platforms per the /pricing
+  // comparison. The Creator tier supports IG, TT, YT, FB, LI only. Refuse
+  // X / Snapchat OAuth initiation for Creator workspaces with an upgrade
+  // pointer the SPA can use to render an inline upsell.
+  const wsTier = String(auth.workspace.tier || 'creator').toLowerCase();
+  if (wsTier === 'creator' && (platform === 'x' || platform === 'snapchat')) {
+    return json(res, 402, {
+      error: `${platform === 'x' ? 'X' : 'Snapchat'} connections unlock on Pro Creator and above.`,
+      upgrade_tier: 'pro_creator',
+      current_tier: wsTier,
+      platform,
+    });
+  }
+
   const appUrl = process.env.APP_URL || 'https://mashal.app';
 
   try {

@@ -151,13 +151,35 @@ export default async function handler(req, res) {
     for (const k of ALLOWED_FIELDS) if (k in (body || {})) patch[k] = body[k];
     if (!Object.keys(patch).length) return json(res, 400, { error: 'No valid fields to update' });
 
+    // TIER GATES — Creator can't toggle features that the /pricing
+    // comparison reserves for Pro Creator+. Strip these from the patch
+    // silently and respond with the cleaned patch so the SPA can show
+    // the locked state. Trial workspaces bypass this — they preview
+    // the full feature set until conversion.
+    const tier = String(workspace.tier || 'creator').toLowerCase();
+    if (tier === 'creator' && !workspace.trial_active) {
+      // Multilingual brief: force English on the persisted column too.
+      if ('brief_language' in patch && patch.brief_language !== 'en') {
+        delete patch.brief_language;
+      }
+      // Weekly digest email: Pro Creator+ only.
+      if ('weekly_digest_enabled' in patch && patch.weekly_digest_enabled) {
+        delete patch.weekly_digest_enabled;
+      }
+      // Brief tone presets: Agency only (pre-existing policy — Creator
+      // gets 'encouraging' default in intelligence.js). Strip for safety.
+      if ('brief_tone' in patch) {
+        delete patch.brief_tone;
+      }
+    }
+
     // Mirror trial_intent_tier onto tier while the workspace is still on
     // an active trial. Tier is the user's *intent* during trial; the
     // actual feature caps come from trial_active clamping. We refuse to
     // touch tier once the trial converts — that's a paid-conversion
     // event handled server-side only.
     if ('trial_intent_tier' in patch && workspace.trial_active && !workspace.trial_converted_at) {
-      const allowed = new Set(['creator', 'brand', 'agency']);
+      const allowed = new Set(['creator', 'pro_creator', 'brand', 'agency']);
       if (allowed.has(patch.trial_intent_tier)) {
         patch.tier = patch.trial_intent_tier;
       }

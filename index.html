@@ -7095,7 +7095,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               <div>
                 <h3 className="font-display text-[17px] font-semibold tracking-tight">Connected accounts</h3>
                 <p className="text-[13px] text-mute dark:text-muteDark mt-0.5">
-                  {connectedCount} of {tier === 'agency' ? '∞' : tier === 'brand' ? '21' : '7'} accounts connected
+                  {connectedCount} of {tier === 'agency'     ? '∞'
+                                       : tier === 'brand'       ? '7'
+                                       : tier === 'pro_creator' ? '7'
+                                       :                          '5'} accounts connected
                 </p>
               </div>
               {connectedCount > 0 && (
@@ -7144,21 +7147,32 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                     </div>
                   )}
                   <div className="space-y-2.5">
-                    {PLATFORMS.map(platform => (
-                      <PlatformCard
-                        key={platform.id}
-                        platform={platform}
-                        account={connectedMap[platform.id]}
-                        loading={connecting === platform.id}
-                        // Disable Connect when at cap UNLESS the platform is
-                        // already connected — disconnecting still has to work.
-                        disabledReason={atCap && !connectedMap[platform.id] ? `Cap reached (${activeCount}/${capLimit})` : null}
-                        onConnect={connectPlatform}
-                        onDisconnect={disconnectPlatform}
-                        onBackfill={backfillAccount}
-                        backfilling={backfillingId === connectedMap[platform.id]?.id}
-                      />
-                    ))}
+                    {PLATFORMS.map(platform => {
+                      // TIER GATE — Creator tier can connect IG/TT/YT/FB/LI
+                      // only. X and Snapchat unlock on Pro Creator+. Trial
+                      // workspaces preview the full set until conversion.
+                      const tierLocked = tier === 'creator'
+                        && !workspace?.trial_active
+                        && (platform.id === 'x' || platform.id === 'snapchat');
+                      const tileDisabledReason = tierLocked
+                        ? 'Pro Creator unlocks X & Snapchat'
+                        : (atCap && !connectedMap[platform.id] ? `Cap reached (${activeCount}/${capLimit})` : null);
+                      return (
+                        <PlatformCard
+                          key={platform.id}
+                          platform={platform}
+                          account={connectedMap[platform.id]}
+                          loading={connecting === platform.id}
+                          // Disable Connect when at cap UNLESS the platform is
+                          // already connected — disconnecting still has to work.
+                          disabledReason={tileDisabledReason}
+                          onConnect={connectPlatform}
+                          onDisconnect={disconnectPlatform}
+                          onBackfill={backfillAccount}
+                          backfilling={backfillingId === connectedMap[platform.id]?.id}
+                        />
+                      );
+                    })}
                   </div>
                 </>
               );
@@ -7194,18 +7208,25 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
             </>
           )}
 
-          {/* Brief language — available to all tiers. The shell stays in
-              English; only the AI-written brief (verdict, actions, signals)
-              switches language. Saved as part of the workspace form. */}
+          {/* Brief language — Pro Creator+ feature. Creator workspaces
+              see the picker as locked with an upgrade pointer. Trial
+              workspaces preview the picker until conversion (matches
+              the trial-state policy in api/workspaces.js PATCH). */}
           <div id="settings-brief-language" style={{ scrollMarginTop: '80px' }}>
-            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-0.5">Brief language</h3>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h3 className="font-display text-[17px] font-semibold tracking-tight">Brief language</h3>
+              {tier === 'creator' && !workspace?.trial_active && (
+                <span className="inline-flex items-center px-2 h-5 rounded-full bg-ultra/10 text-ultra text-[10px] font-mono uppercase tracking-[0.12em]">Pro Creator</span>
+              )}
+            </div>
             <p className="text-[13px] text-mute dark:text-muteDark mb-3">
               The language Mashal writes your daily brief in. The app interface stays in English — only the AI-generated verdict, actions, and signals change language.
             </p>
             <select
               value={form.brief_language || 'en'}
               onChange={e => setForm(f => ({ ...f, brief_language: e.target.value }))}
-              className="w-full max-w-xs h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+              disabled={tier === 'creator' && !workspace?.trial_active}
+              className="w-full max-w-xs h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <option value="en">English</option>
               <option value="ar">Arabic — عربي</option>
@@ -7217,7 +7238,12 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               <option value="hi">Hindi — हिन्दी</option>
               <option value="es">Spanish — Español</option>
             </select>
-            {(form.brief_language && form.brief_language !== 'en') && (
+            {tier === 'creator' && !workspace?.trial_active && (
+              <p className="text-[11.5px] text-mute dark:text-muteDark mt-2">
+                Multilingual brief unlocks on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo). Creator briefs are written in English.
+              </p>
+            )}
+            {tier !== 'creator' && form.brief_language && form.brief_language !== 'en' && (
               <p className="text-[11.5px] text-ultra dark:text-lime mt-2 font-mono">
                 Your next brief will be written in {
                   { ar: 'Arabic', fr: 'French', tr: 'Turkish', ur: 'Urdu', 'pt-BR': 'Brazilian Portuguese', id: 'Bahasa Indonesia', hi: 'Hindi', es: 'Spanish' }[form.brief_language]
@@ -7241,7 +7267,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-display text-[17px] font-semibold tracking-tight">Competitors & comparison accounts</h3>
               <span className="text-[11px] font-mono text-mute dark:text-muteDark">
-                {competitors.length} / {tier === 'agency' ? 50 : tier === 'brand' ? 15 : 5}
+                {competitors.length} / {tier === 'agency'     ? 30
+                                      : tier === 'brand'       ? 10
+                                      : tier === 'pro_creator' ? 10
+                                      :                          5}
               </span>
             </div>
             <p className="text-[13px] text-mute dark:text-muteDark mb-4">
