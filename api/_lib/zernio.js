@@ -224,6 +224,149 @@ export const zernio = {
     const params = new URLSearchParams({ mediaType });
     return call(`/accounts/${accountId}/tiktok/creator-info?${params.toString()}`);
   },
+
+  // Audience demographics. Zernio's per-platform endpoints aren't documented
+  // in a single place, so this is a thin best-effort wrapper that tries the
+  // platform's most-likely endpoint and lets the caller handle a 404 / empty
+  // response gracefully. IG is the only platform we trust today; TikTok and
+  // FB are wired but will return an empty result until Zernio exposes those.
+  async getAudienceDemographics(accountId, platform) {
+    if (platform === 'instagram') {
+      // IG Graph API ships demographics under account-insights with the
+      // audience_* metric set. Zernio's existing /analytics/instagram/
+      // account-insights endpoint already proxies these.
+      return this.getInstagramInsights(accountId);
+    }
+    const params = new URLSearchParams({ accountId });
+    return call(`/analytics/${platform}/audience-demographics?${params.toString()}`);
+  },
 };
+
+// ─── Demographics normalization ──────────────────────────────────────────
+// Walks a Zernio / IG-Graph-shaped payload and emits a flat list of
+// { dimension, bucket, share_pct } rows. We tolerate every shape we know
+// of so a Zernio response-shape change doesn't break the dashboard:
+//
+//   • Top-level keys:        { audience_gender_age: { "F.25-34": 0.32 } }
+//   • Graph-style data list: { data: [{ name: "audience_country",
+//                                       values: [{ value: { US: 0.42 } }] }] }
+//   • Already-flat array:    [{ dimension, bucket, share }] or
+//                            [{ dimension, bucket, value }]
+//
+// Buckets coming from IG's gender_age key ("F.25-34") get split into two
+// rows — one for the gender dimension, one for the age dimension — so
+// the UI can render them as independent breakdowns.
+
+const DIMENSION_ALIASES = {
+  audience_gender_age: 'gender_age',
+  audience_country: 'country',
+  audience_city: 'city',
+  audience_locale: 'language',
+  audience_age: 'age',
+  audience_gender: 'gender',
+  gender_age: 'gender_age',
+  country: 'country',
+  city: 'city',
+  language: 'language',
+  locale: 'language',
+  age: 'age',
+  gender: 'gender',
+};
+
+function normaliseDimension(name) {
+  if (!name) return null;
+  return DIMENSION_ALIASES[String(name).toLowerCase().trim()] || null;
+}
+
+function genderLabel(letter) {
+  const g = String(letter || '').toUpperCase();
+  if (g === 'F') return 'female';
+  if (g === 'M') return 'male';
+  if (g === 'U' || g === 'O') return 'other';
+  return null;
+}
+
+// Convert one (rawDimension, bucketKey, rawValue) triple into one-or-two
+// normalized rows. `rawValue` may be a count or a share fraction (0..1);
+// the caller decides how to interpret it (we pass the value through and
+// let the aggregator decide percentages once it's seen all the buckets).
+function splitBucket(dimension, bucket, value) {
+  if (dimension === 'gender_age' && typeof bucket === 'string' && bucket.includes('.')) {
+    const [g, age] = bucket.split('.', 2);
+    const gender = genderLabel(g);
+    const out = [];
+    if (gender) out.push({ dimension: 'gender', bucket: gender, value });
+    if (age) out.push({ dimension: 'age', bucket: age.trim(), value });
+    return out;
+  }
+  return [{ dimension, bucket: String(bucket), value: Number(value) || 0 }];
+}
+
+// Sum buckets per dimension and convert raw values (counts OR fractions)
+// into percentages. We sum each dimension's buckets, then divide each
+// bucket by that dimension's sum × 100. This makes us tolerant to either
+// counts or already-normalised shares without needing to know which.
+function toShareRows(rawRows) {
+  const sums = {};
+  for (const r of rawRows) {
+    sums[r.dimension] = (sums[r.dimension] || 0) + (Number(r.value) || 0);
+  }
+  const out = [];
+  for (const r of rawRows) {
+    const total = sums[r.dimension];
+    if (!total) continue;
+    const pct = Math.round((r.value / total) * 10000) / 100;
+    if (pct <= 0) continue;
+    out.push({ dimension: r.dimension, bucket: r.bucket, share_pct: pct });
+  }
+  // Stable sort: dimension then descending share. Makes test diffs readable.
+  out.sort((a, b) => a.dimension.localeCompare(b.dimension) || b.share_pct - a.share_pct);
+  return out;
+}
+
+export function parseAudienceDemographics(payload) {
+  if (!payload || typeof payload !== 'object') return [];
+  const raw = [];
+
+  // Shape A — already-flat array of rows
+  if (Array.isArray(payload)) {
+    for (const r of payload) {
+      const dim = normaliseDimension(r?.dimension || r?.metric || r?.name);
+      const value = Number(r?.share ?? r?.value ?? r?.count ?? 0);
+      const bucket = r?.bucket ?? r?.key ?? r?.label;
+      if (dim && bucket != null && Number.isFinite(value) && value > 0) {
+        raw.push(...splitBucket(dim, bucket, value));
+      }
+    }
+    return toShareRows(raw);
+  }
+
+  // Shape B — Graph-style { data: [{ name, values: [{ value: {...} }] }] }
+  if (Array.isArray(payload.data)) {
+    for (const metric of payload.data) {
+      const dim = normaliseDimension(metric?.name);
+      if (!dim) continue;
+      const lastValue = metric?.values?.[metric.values.length - 1]?.value;
+      if (lastValue && typeof lastValue === 'object') {
+        for (const [bucket, value] of Object.entries(lastValue)) {
+          raw.push(...splitBucket(dim, bucket, Number(value) || 0));
+        }
+      }
+    }
+    if (raw.length) return toShareRows(raw);
+  }
+
+  // Shape C — top-level keys like audience_gender_age: { "F.25-34": 0.32 }
+  for (const [key, val] of Object.entries(payload)) {
+    const dim = normaliseDimension(key);
+    if (!dim) continue;
+    if (val && typeof val === 'object' && !Array.isArray(val)) {
+      for (const [bucket, value] of Object.entries(val)) {
+        raw.push(...splitBucket(dim, bucket, Number(value) || 0));
+      }
+    }
+  }
+  return toShareRows(raw);
+}
 
 export default zernio;

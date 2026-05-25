@@ -268,6 +268,173 @@ export function estimateScrapeCost(platform) {
   return base[platform] || 5;
 }
 
+// ─── Meta Ad Library scrape ──────────────────────────────────────────────
+// Public Meta Ad Library is browsable without auth, so an Apify actor
+// can pull every currently-running paid ad for a Facebook Page name. The
+// Page name is the brand identity that runs the ad — typically the same
+// as the IG / FB handle the user tracks as a competitor, but it's the
+// Page itself that owns the ad, not the IG account.
+//
+// Actor ID is env-overridable. The Apify ecosystem has several actors
+// for the Ad Library and they go in and out of maintenance; swapping is
+// a config change rather than a code change. Default is the
+// curious_coder Ad Library scraper which has been the most reliable in
+// our testing window — change via APIFY_AD_LIBRARY_ACTOR_ID if needed.
+const AD_LIBRARY_ACTOR_ID =
+  process.env.APIFY_AD_LIBRARY_ACTOR_ID || 'curious_coder~facebook-ads-library-scraper';
+const AD_LIBRARY_TIMEOUT = 90; // seconds — bigger pages can return 50+ ads
+
+// Normalise a single dataset item from curious_coder/facebook-ads-library-scraper.
+// Field names come from the actor's documented output: ad_archive_id,
+// page_id, page_name, start_date, end_date, currency, impressions, spend,
+// publisher_platform, categories, archive_types. The snapshot/creative
+// payload isn't named in the actor's input-schema docs, so we walk the
+// usual Meta Ad Library shapes (snapshot.{title,body.text,link_description,
+// cta_text, cta_type, videos, images, cards}). Anything unrecognised is
+// preserved in raw_json for the UI to surface as-is.
+function normaliseAdLibraryItem(it, fallbackCountry = null) {
+  if (!it || typeof it !== 'object') return null;
+
+  const adId = String(
+    it.ad_archive_id || it.adArchiveID || it.ad_id || it.adid || it.id || ''
+  );
+  if (!adId) return null;
+
+  // Dates: actor's docs list start_date / end_date as named fields. They
+  // typically arrive as ISO strings or unix seconds. coerce defensively.
+  const coerceDate = (v) => {
+    if (!v) return null;
+    if (typeof v === 'number') {
+      return new Date(v * (v < 1e12 ? 1000 : 1)).toISOString().slice(0, 10);
+    }
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  };
+
+  // Snapshot is where the creative + copy live in Meta Ad Library's
+  // own response shape, which curious_coder typically passes through.
+  const snap = it.snapshot || it.creative_snapshot || it.adSnapshot || {};
+
+  // Creative type — preferred derivation is presence of media arrays
+  // inside the snapshot; fall back to explicit fields that some shapes
+  // carry at the top level.
+  let creative_type = 'unknown';
+  const videos = snap.videos || snap.video_assets || [];
+  const images = snap.images || snap.image_assets || [];
+  const cards  = snap.cards  || snap.carousel_cards || [];
+  if (Array.isArray(videos) && videos.length) creative_type = 'video';
+  else if (Array.isArray(cards) && cards.length > 1) creative_type = 'carousel';
+  else if (Array.isArray(images) && images.length) creative_type = 'image';
+  else if (it.display_format || it.creative_type) {
+    const raw = String(it.display_format || it.creative_type || '').toLowerCase();
+    if (/video/.test(raw)) creative_type = 'video';
+    else if (/carousel|dco/.test(raw)) creative_type = raw.includes('dco') ? 'dco' : 'carousel';
+    else if (/image|photo|static/.test(raw)) creative_type = 'image';
+  }
+
+  // Headline / primary copy. snapshot.title is the link title; body.text is
+  // the primary text above the creative; link_description is the smaller
+  // line under the headline. Pick the most informative one we have.
+  const bodyText =
+    (typeof snap.body === 'object' ? snap.body?.text : snap.body) ||
+    snap.bodyText || snap.text || null;
+  const headline = snap.title || bodyText || snap.link_description ||
+    it.title || it.body || null;
+
+  // CTA — cta_text is the visible button label, cta_type is Meta's enum
+  // (LEARN_MORE, SHOP_NOW, etc). Prefer the human-readable text.
+  const cta = snap.cta_text || snap.cta_type || it.cta_text || it.cta_type || null;
+
+  // Permalink to the ad in the Ad Library UI. The archive id forms the
+  // canonical URL; we also accept whatever the actor surfaces.
+  const permalink = it.url || it.ad_library_url || snap.ad_snapshot_url ||
+    `https://www.facebook.com/ads/library/?id=${adId}`;
+
+  // Publisher platform list (Facebook, Instagram, Messenger, Audience Network).
+  // Stored on the row so the UI can mention "running on IG + FB" rather than
+  // assuming Meta-broad.
+  const publisher_platform = Array.isArray(it.publisher_platform)
+    ? it.publisher_platform : (it.publisher_platforms || []);
+
+  // Impressions + spend — both are { lower_bound, upper_bound } objects on
+  // political / social-issue ads; null on commercial. Format as a readable
+  // range so the UI doesn't need to know Meta's bound shape.
+  const fmtRange = (obj, currency) => {
+    if (!obj || typeof obj !== 'object') return obj ? String(obj).slice(0, 100) : null;
+    const lo = obj.lower_bound ?? obj.lowerBound ?? obj.min;
+    const hi = obj.upper_bound ?? obj.upperBound ?? obj.max;
+    if (lo == null && hi == null) return null;
+    const cur = currency ? ` ${currency}` : '';
+    if (lo != null && hi != null) return `${lo}–${hi}${cur}`;
+    return `${lo ?? hi}${cur}`;
+  };
+
+  // Region: the actor's input filters by country, so when the per-item
+  // region is missing we attribute the row to the country we asked for.
+  const region = (Array.isArray(it.reached_countries) && it.reached_countries[0])
+    || it.country || it.region || fallbackCountry || null;
+
+  return {
+    ad_id: adId,
+    platform: 'meta',
+    page_id: it.page_id || it.pageId || null,
+    page_name: it.page_name || it.pageName || null,
+    creative_type,
+    headline: typeof headline === 'string' ? headline.slice(0, 1000) : null,
+    cta: typeof cta === 'string' ? cta.slice(0, 200) : (cta ? String(cta) : null),
+    start_date: coerceDate(it.start_date || it.start_date_string),
+    end_date:   coerceDate(it.end_date   || it.end_date_string),
+    impression_range: fmtRange(it.impressions, it.currency),
+    spend_range:      fmtRange(it.spend, it.currency),
+    region: region ? String(region).slice(0, 100) : null,
+    publisher_platform,
+    permalink,
+    raw_json: it,
+  };
+}
+
+// Public: scrape Meta Ad Library for one or more Page names. Returns
+// { ads, items, error }. Input shape matches the actor's documented
+// schema: a urls array plus the scrapePageAds.* dotted keys.
+//
+// The search-URL form (`/ads/library/?...&q=NAME`) is more forgiving than
+// the per-Page URL form because it doesn't require a numeric page_id —
+// fuzzy matching on the brand name picks up the right Page in practice.
+export async function scrapeAdLibrary(pageNames, opts = {}) {
+  if (!KEY) return { ads: [], items: [], error: 'APIFY_API_KEY missing' };
+  const names = (Array.isArray(pageNames) ? pageNames : [pageNames])
+    .filter(Boolean)
+    .map(n => String(n).replace(/^@/, '').trim())
+    .filter(Boolean);
+  if (!names.length) return { ads: [], items: [], error: 'no page names provided' };
+
+  const country = (opts.country || 'ALL').toUpperCase();
+  // Per-page cap. The actor charges $0.75 / 1000 ads, so 25 × 5 competitors
+  // is about $0.10 per sync — well inside the per-workspace Apify budget.
+  const limit = Math.min(50, Math.max(5, Number(opts.limit) || 25));
+
+  const input = {
+    urls: names.map(n =>
+      `https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=${country}&q=${encodeURIComponent(n)}`
+    ),
+    limitPerSource: limit,
+    scrapeAdDetails: false,
+    // Dotted keys are literal property names on this actor, not nested.
+    'scrapePageAds.period':       opts.period       || 'last30d',
+    'scrapePageAds.activeStatus': opts.activeStatus || 'all',
+    'scrapePageAds.sortBy':       opts.sortBy       || 'impressions_desc',
+    'scrapePageAds.countryCode':  country,
+  };
+
+  try {
+    const items = await callActor(AD_LIBRARY_ACTOR_ID, input, AD_LIBRARY_TIMEOUT, opts.signal);
+    const ads = items.map(it => normaliseAdLibraryItem(it, country === 'ALL' ? null : country)).filter(Boolean);
+    return { ads, items, error: null };
+  } catch (e) {
+    return { ads: [], items: [], error: e.message };
+  }
+}
+
 // Profile-only scrape — skips the posts actor when we just need follower
 // counts (e.g. own-account follower refresh while Zernio's analytics add-on
 // isn't active). About half the cost and latency of a full runActor call.

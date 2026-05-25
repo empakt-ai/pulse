@@ -173,6 +173,14 @@ const hydrateD = (brief) => {
   // tier doesn't allow ads, no ads exist, or settings aren't configured.
   D.ads_intel = brief.ads_intel || null;
   D.adSettings = brief.adSettings || null;
+  // Audience demographics — { allowed, locked, snapshotDate, byAccount }.
+  // Always present so the Stats AudienceSection can read .allowed and
+  // render the TrialLockedCard for Creator without a falsy guard. Empty
+  // shape when the response is missing the field (older API versions).
+  D.audience = brief.audience || { allowed: false, locked: false, snapshotDate: null, byAccount: {} };
+  // Meta Ad Library competitor scrape — { allowed, locked, byCompetitor, totalAds }.
+  // Same gating pattern as audience: Brand+ only, locked while trial active.
+  D.competitorAds = brief.competitor_ads || { allowed: false, locked: false, byCompetitor: [], totalAds: 0 };
   // Tier + trial state — drive the trial banner, locked-card teasers,
   // and the full-screen paywall when trial.locked is true.
   D.tier = brief.tier || { key: 'creator', label: 'Creator' };

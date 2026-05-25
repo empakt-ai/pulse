@@ -3666,6 +3666,183 @@ const OverviewScreen = ({ activePlatform }) => {
         <ChannelPriorityMatrix />
         <AllPlatformsScorecard />
       </div>
+
+      {/* Audience demographics — Brand+ only, locked teaser otherwise */}
+      <div className="mt-6">
+        <AudienceSection activePlatform={activePlatform} />
+      </div>
+    </div>
+  );
+};
+
+// Demographic-bucket pretty labels. Buckets come from the platform raw
+// (e.g. IG returns ISO country codes, "25-34" age ranges, single-letter
+// genders) so we relabel the handful where the platform shape is opaque
+// without forcing the UI to ship a full lookup. Anything we don't have
+// a mapping for is shown as-is — better honest than guessing.
+const COUNTRY_NAME = {
+  US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
+  IN: 'India', PK: 'Pakistan', BD: 'Bangladesh', LK: 'Sri Lanka',
+  SA: 'Saudi Arabia', AE: 'UAE', QA: 'Qatar', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
+  EG: 'Egypt', MA: 'Morocco', TR: 'Türkiye', NG: 'Nigeria', KE: 'Kenya', ZA: 'South Africa',
+  ID: 'Indonesia', MY: 'Malaysia', PH: 'Philippines', SG: 'Singapore', TH: 'Thailand', VN: 'Vietnam',
+  BR: 'Brazil', MX: 'Mexico', AR: 'Argentina', CO: 'Colombia', CL: 'Chile',
+  DE: 'Germany', FR: 'France', ES: 'Spain', IT: 'Italy', NL: 'Netherlands', PT: 'Portugal',
+  JP: 'Japan', KR: 'South Korea', CN: 'China',
+};
+const LANGUAGE_NAME = {
+  en: 'English', ar: 'Arabic', ur: 'Urdu', hi: 'Hindi', bn: 'Bengali', fa: 'Persian',
+  fr: 'French', es: 'Spanish', pt: 'Portuguese', de: 'German', it: 'Italian',
+  tr: 'Turkish', id: 'Indonesian', ms: 'Malay', ja: 'Japanese', ko: 'Korean', zh: 'Chinese',
+};
+function audienceBucketLabel(dimension, bucket) {
+  const b = String(bucket || '');
+  if (dimension === 'country') return COUNTRY_NAME[b.toUpperCase()] || b;
+  if (dimension === 'language') {
+    const code = b.toLowerCase().split(/[_-]/)[0];
+    return LANGUAGE_NAME[code] || b;
+  }
+  if (dimension === 'gender') {
+    const g = b.toLowerCase();
+    return g.charAt(0).toUpperCase() + g.slice(1);
+  }
+  return b;
+}
+
+// One dimension's worth of bars — top N buckets shown, the rest folded
+// into a single "Other" row so a long-tail country list doesn't sprawl.
+const AudienceDimensionCard = ({ title, rows, color, maxRows = 6 }) => {
+  if (!rows || !rows.length) return null;
+  const shown = rows.slice(0, maxRows);
+  const restPct = rows.slice(maxRows).reduce((s, r) => s + (r.share_pct || 0), 0);
+  return (
+    <Card className="!p-4">
+      <h4 className="font-display text-[14px] font-semibold tracking-tight mb-3">{title}</h4>
+      <div className="space-y-2.5">
+        {shown.map(r => (
+          <div key={r.bucket}>
+            <div className="flex justify-between text-[12px] mb-1">
+              <span className="truncate pr-2">{audienceBucketLabel(title.toLowerCase(), r.bucket)}</span>
+              <span className="font-mono text-mute dark:text-muteDark">{r.share_pct.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, r.share_pct)}%`, background: color }} />
+            </div>
+          </div>
+        ))}
+        {restPct > 0.5 && (
+          <div className="flex justify-between text-[11.5px] text-mute dark:text-muteDark font-mono pt-1">
+            <span>Other</span><span>{restPct.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+// Per-account stack of dimension cards. We render age + gender side-by-side
+// (small, two columns) and country / city / language full-width below, since
+// they have longer labels and more buckets.
+const AudienceAccountBlock = ({ pk, info }) => {
+  const dims = info.dimensions || {};
+  const hasAny = Object.keys(dims).some(d => (dims[d] || []).length > 0);
+  if (!hasAny) return null;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Plat p={pk} className="w-3.5 h-3.5" />
+        <span className="font-display text-[15px] font-semibold tracking-tight">{info.handle ? `@${info.handle.replace(/^@/, '')}` : info.platform}</span>
+        <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">audience</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <AudienceDimensionCard title="Age" rows={dims.age} color="#6B5BFF" />
+        <AudienceDimensionCard title="Gender" rows={dims.gender} color="#FF2D6A" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <AudienceDimensionCard title="Country" rows={dims.country} color="#D6FF3E" maxRows={8} />
+        <AudienceDimensionCard title="City" rows={dims.city} color="#FFB23E" maxRows={8} />
+        <AudienceDimensionCard title="Language" rows={dims.language} color="#0A66C2" maxRows={6} />
+      </div>
+    </div>
+  );
+};
+
+const AudienceSection = ({ activePlatform }) => {
+  const audience = D.audience || { allowed: false, locked: false, byAccount: {} };
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const trialActive = !!D.trial?.active;
+
+  // Tier-gate: Creator workspaces see the upgrade teaser.
+  if (!audience.allowed) {
+    return (
+      <div className="max-w-xl">
+        <TrialLockedCard
+          featureLabel="Audience demographics"
+          tier="brand"
+          sub="Age, gender, country, city, and language breakdowns for each connected account. Updates daily with the morning sync."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+        />
+      </div>
+    );
+  }
+
+  // Trial workspaces have Brand+ intent but haven't paid yet — show the
+  // same teaser that the Ads screen uses, with their declared intent tier.
+  if (trialActive) {
+    const intentTier = (D.trial?.intent_tier || tierKey || 'brand').toLowerCase();
+    const teaserTier = intentTier === 'creator' ? 'brand' : intentTier;
+    return (
+      <div className="max-w-xl">
+        <TrialLockedCard
+          featureLabel="Audience demographics"
+          tier={teaserTier}
+          sub="Demographics start populating once your trial converts. Saves a Zernio Analytics call against every connected account on your trial."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+        />
+      </div>
+    );
+  }
+
+  const allEntries = Object.entries(audience.byAccount || {});
+  const entries = isAll ? allEntries : allEntries.filter(([pk]) => pk === activePlatform);
+
+  // No data yet — explain why instead of showing an empty card.
+  if (!entries.length) {
+    return (
+      <Card className="!p-5">
+        <Eyebrow>Audience</Eyebrow>
+        <div className="font-display text-[17px] font-semibold tracking-tight mt-1.5">
+          {allEntries.length === 0 ? 'Demographics are still syncing' : 'No demographics for this platform'}
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark mt-2 leading-snug max-w-prose">
+          {allEntries.length === 0
+            ? 'Your next morning sync will pull age, gender, country, city, and language splits from Instagram, TikTok, and Facebook accounts that expose them. Smaller IG accounts (under 100 followers) won’t show data — that’s a platform limit.'
+            : 'This platform doesn’t expose follower demographics through our integration yet. The data for your other accounts is unaffected.'}
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <Eyebrow color="text-ultra">Audience</Eyebrow>
+          <h3 className="font-display text-[20px] font-semibold tracking-tight mt-1">Who follows you</h3>
+          <p className="text-[12.5px] text-mute dark:text-muteDark mt-1.5 max-w-prose">
+            Latest demographic snapshot per account. Updates daily with the morning sync.
+          </p>
+        </div>
+        {audience.snapshotDate && (
+          <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">
+            Snapshot · {audience.snapshotDate}
+          </span>
+        )}
+      </div>
+      {entries.map(([pk, info]) => (
+        <AudienceAccountBlock key={pk} pk={pk} info={info} />
+      ))}
     </div>
   );
 };
@@ -3690,7 +3867,7 @@ const PerfChart = () => {
   );
 };
 
-Object.assign(window, { OverviewScreen });
+Object.assign(window, { OverviewScreen, AudienceSection });
 
 </script>
 <script type="text/babel">
@@ -5125,6 +5302,9 @@ const IntelScreen = ({ activePlatform }) => {
           {/* Strategic Rewrite — competitor's hook + yours + suggested rewrite */}
           <StrategicRewriteCard />
 
+          {/* Competitor ads — Meta Ad Library scrape, currently-running creative */}
+          <CompetitorAdsCard />
+
           {/* Market context — country-level TAM + platform reference */}
           <MarketContextCard />
 
@@ -5605,7 +5785,128 @@ const MarketContextCard = () => {
   );
 };
 
-Object.assign(window, { IntelScreen, ContentFormulaCard, MarketContextCard });
+// CompetitorAdsCard — Meta Ad Library scrape grouped by competitor.
+// Hides itself when the user isn't on Brand+ or no ads have been scraped
+// yet. When the trial is active, Brand-intent users see a teaser. The
+// data shape is shaped server-side in api/brief.js — we just render it.
+const CompetitorAdsCard = () => {
+  const c = D.competitorAds;
+  if (!c) return null;
+
+  // Tier gate — Creator workspaces never see this card. We don't show a
+  // TrialLockedCard here because the Intel screen is already gated for
+  // Creator at a higher level and we'd be doubling the upgrade prompt.
+  if (!c.allowed) return null;
+
+  // Trial — show a locked teaser inline so the section's purpose is clear
+  // before the user converts.
+  if (c.locked) {
+    return (
+      <Card className="mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">
+          Every paid Meta ad your tracked competitors are currently running, refreshed daily. The scrape unlocks once your trial converts.
+        </p>
+      </Card>
+    );
+  }
+
+  if (!c.byCompetitor?.length) {
+    return (
+      <Card className="mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">
+          No Meta ads detected for your tracked Facebook and Instagram competitors yet. The next nightly scrape will populate this card if any of them are spending on Meta. Competitors on TikTok, YouTube, X, and LinkedIn aren't covered (Meta's Ad Library only catalogues Meta-owned ads).
+        </p>
+      </Card>
+    );
+  }
+
+  const creativePill = (kind) => {
+    const colour = kind === 'video' ? 'magenta' : kind === 'image' ? 'lime' : kind === 'carousel' ? 'ultraSoft' : 'ink';
+    return <Pill color={colour}>{kind}</Pill>;
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">
+          {c.totalAds} ad{c.totalAds === 1 ? '' : 's'} · {c.byCompetitor.length} competitor{c.byCompetitor.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4 leading-relaxed">
+        Every paid Meta ad currently running on each tracked Facebook and Instagram competitor. Pulled from Meta's public Ad Library, refreshed daily.
+      </p>
+
+      <div className="space-y-4">
+        {c.byCompetitor.slice(0, 5).map(b => (
+          <div key={b.competitor_handle} className="rounded-xl border border-line dark:border-lineDark p-3.5">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Plat p={b.platform} className="w-3.5 h-3.5" />
+                <span className="font-display text-[14.5px] font-semibold tracking-tight truncate">
+                  {b.display_name}
+                </span>
+                <span className="text-[11px] font-mono text-mute dark:text-muteDark">@{String(b.competitor_handle).replace(/^@/, '')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Pill color="magenta">{b.running} live</Pill>
+                {b.ended > 0 && <span className="text-[11px] font-mono text-mute dark:text-muteDark">{b.ended} ended</span>}
+                {Object.entries(b.creative_mix).slice(0, 3).map(([kind, count]) => (
+                  <span key={kind} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                    {kind} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {b.sample.length > 0 && (
+              <div className="space-y-2">
+                {b.sample.map(ad => (
+                  <div key={ad.ad_id} className="rounded-lg bg-chalk dark:bg-coalsoft p-3 text-[12.5px] leading-relaxed">
+                    <div className="flex items-center gap-2 mb-1.5 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                      {creativePill(ad.creative_type)}
+                      {ad.start_date && <span>started {ad.start_date}</span>}
+                      {ad.region && <span>· {ad.region}</span>}
+                      {ad.spend_range && <span>· {ad.spend_range}</span>}
+                    </div>
+                    {ad.headline && <p className="text-[13px] mb-1">{ad.headline}</p>}
+                    <div className="flex items-center gap-3 mt-1">
+                      {ad.cta && <span className="text-[11px] font-mono text-magenta">{ad.cta}</span>}
+                      {ad.permalink && (
+                        <a href={ad.permalink} target="_blank" rel="noopener" className="text-[11px] font-mono text-ultra hover:underline">
+                          View in Ad Library →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {c.byCompetitor.length > 5 && (
+        <div className="mt-3 text-[11.5px] font-mono text-mute dark:text-muteDark text-center">
+          {c.byCompetitor.length - 5} more competitor{c.byCompetitor.length - 5 === 1 ? '' : 's'} not shown
+        </div>
+      )}
+    </Card>
+  );
+};
+
+Object.assign(window, { IntelScreen, ContentFormulaCard, MarketContextCard, CompetitorAdsCard });
 
 </script>
 <script type="text/babel">

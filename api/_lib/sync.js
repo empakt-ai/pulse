@@ -19,7 +19,7 @@
 // ═════════════════════════════════════════════════════════════════════════
 
 import { supabase } from './supabase.js';
-import { zernio, extractFollowers } from './zernio.js';
+import { zernio, extractFollowers, parseAudienceDemographics } from './zernio.js';
 import { scrapeChannel as scrapeYouTubeChannel } from './youtube.js';
 import { pullAds } from './ads.js';
 import { scrapeProfile as apifyScrapeProfile, runActor as apifyRunActor, ACTORS as APIFY_ACTORS } from './apify.js';
@@ -82,6 +82,67 @@ function windowFor(account, workspace, mode) {
   }
   const overlap = new Date(boundary.getTime() - 86400000); // -1 day
   return { fromDate: isoDate(overlap), toDate: today, reason: 'incremental' };
+}
+
+// ─── Audience demographics refresh (Brand+ only, IG primary) ─────────────
+// Best-effort pull of audience composition from each connected account.
+// Writes one row per (account, dimension, bucket, snapshot_date) — the
+// unique index in migrations/026 collapses same-day re-runs to an upsert.
+//
+// Gated to Brand + Agency tiers and skipped during trial. Demographics on
+// Zernio's IG endpoint require the Analytics add-on, which is the same
+// cost line we keep off trial accounts for /analytics. Creator just isn't
+// in scope — keeps the network of calls small.
+//
+// Platforms supported today: instagram (live), tiktok + facebook (stubs
+// that will return rows once Zernio exposes those endpoints). YouTube,
+// LinkedIn, X, Snapchat are intentionally absent — their APIs don't
+// expose comparable follower-side demographics through Zernio.
+const DEMOGRAPHICS_PLATFORMS = new Set(['instagram', 'tiktok', 'facebook']);
+
+async function refreshAudienceDemographics(workspace, accounts) {
+  const tier = String(workspace?.tier || 'creator').toLowerCase();
+  if (tier !== 'brand' && tier !== 'agency') return { skipped: 'tier' };
+  if (workspace?.trial_active) return { skipped: 'trial' };
+
+  const targets = accounts.filter(a => a.zernio_account_id && DEMOGRAPHICS_PLATFORMS.has(a.platform));
+  if (!targets.length) return { skipped: 'no_accounts', accounts: 0 };
+
+  const today = daysAgo(0);
+  let written = 0;
+  const errors = [];
+
+  for (const acct of targets) {
+    try {
+      const payload = await zernio.getAudienceDemographics(acct.zernio_account_id, acct.platform);
+      const rows = parseAudienceDemographics(payload);
+      if (!rows.length) continue;
+
+      const records = rows.map(r => ({
+        workspace_id: workspace.id,
+        account_id: acct.id,
+        platform: acct.platform,
+        dimension: r.dimension,
+        bucket: r.bucket,
+        share_pct: r.share_pct,
+        followers: acct.followers || null,
+        snapshot_date: today,
+        raw_json: null,
+      }));
+
+      await supabase.upsert('audience_demographics', records, {
+        onConflict: 'account_id,dimension,bucket,snapshot_date',
+      });
+      written += records.length;
+    } catch (e) {
+      // Tolerate everything — addon-required, 404, schema mismatch.
+      // Account demographics being unavailable for one account doesn't
+      // block the rest of the sync.
+      errors.push({ account_id: acct.id, platform: acct.platform, error: e.message });
+    }
+  }
+
+  return { skipped: null, accounts: targets.length, rows: written, errors: errors.length ? errors : undefined };
 }
 
 // ─── Follower refresh (Zernio → metadata → Apify fallback) ───────────────
@@ -251,6 +312,17 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
 
   await refreshFollowers(scoped);
 
+  // Audience demographics — Brand+ only, tolerated failure. We don't await
+  // this in parallel with the per-account post pulls because Zernio's
+  // rate limiter is per-request; running serial against follower-refresh
+  // keeps us comfortably under their bucket.
+  let demographics = null;
+  try {
+    demographics = await refreshAudienceDemographics(workspace, scoped);
+  } catch (e) {
+    demographics = { error: e.message };
+  }
+
   const results = [];
   let totalPosts = 0;
   for (const acct of scoped) {
@@ -349,5 +421,6 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
     snapshots: snapshots.length,
     ads,
     detection,
+    demographics,
   };
 }

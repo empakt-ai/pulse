@@ -75,7 +75,10 @@ export default async function handler(req, res) {
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
-  const [accounts, posts, snapshots, competitors, signals] = await Promise.all([
+  const wsTier = String(ws.tier || 'creator').toLowerCase();
+  const audienceAllowed = wsTier === 'brand' || wsTier === 'agency';
+
+  const [accounts, posts, snapshots, competitors, signals, audienceRows, competitorAdRows] = await Promise.all([
     supabase.select('connected_accounts', {
       select: '*', eq: { workspace_id: ws.id, is_active: true }, order: 'connected_at.asc',
     }).catch(() => []),
@@ -91,7 +94,28 @@ export default async function handler(req, res) {
     supabase.select('signals', {
       select: '*', eq: { workspace_id: ws.id }, order: 'generated_at.desc', limit: 20,
     }).catch(() => []),
+    // Skip the query entirely for Creator — saves a round trip on every
+    // dashboard hydrate. Brand+ workspaces get the latest 300 rows which is
+    // plenty: 7 accounts × ~5 dimensions × ~8 buckets ≈ 280 rows on a single
+    // snapshot day, well under the cap.
+    audienceAllowed
+      ? supabase.select('audience_demographics', {
+          select: '*', eq: { workspace_id: ws.id },
+          order: 'snapshot_date.desc', limit: 300,
+        }).catch(() => [])
+      : Promise.resolve([]),
+    // Competitor ads from the Meta Ad Library scrape. Brand+ only; the
+    // scrape itself is gated upstream in competitor-sync, so Creator
+    // workspaces will never have rows even if we queried — skip the
+    // round-trip for them.
+    audienceAllowed
+      ? supabase.select('competitor_ads', {
+          select: '*', eq: { workspace_id: ws.id },
+          order: 'scraped_at.desc', limit: 200,
+        }).catch(() => [])
+      : Promise.resolve([]),
   ]);
+
 
   // Split organic posts from ads. Ads live in the same table with post_type='ad'.
   const ownPosts = (posts || []).filter(p => p.source === 'own' && p.post_type !== 'ad');
@@ -340,6 +364,144 @@ export default async function handler(req, res) {
       emoji: p.signal === 'viral' ? '⚡' : p.signal === 'rising' ? '🚀' : '📊',
     }));
 
+  // ── Audience demographics shaping ──────────────────────────────────────
+  // Latest-snapshot-per-account, regrouped into the shape the Stats screen
+  // wants: { allowed, locked, snapshotDate, byAccount: { [platformKey]:
+  // { age: [...], gender: [...], country: [...], city: [...], language: [...] } } }.
+  //
+  // The query already returned snapshot_date DESC — so for each
+  // (account_id, dimension) we keep only the first snapshot_date we see.
+  // Multiple accounts on the same platform are rare in practice (Brand
+  // is capped at 7 — one per platform per workspace), so we key the
+  // outer map by platform short-code to match accountSummary.
+  const audience = (() => {
+    const lockedByTrial = !!ws.trial_active;
+    if (!audienceAllowed) {
+      return { allowed: false, locked: lockedByTrial, snapshotDate: null, byAccount: {} };
+    }
+    const rows = audienceRows || [];
+    if (!rows.length) {
+      return { allowed: true, locked: lockedByTrial, snapshotDate: null, byAccount: {} };
+    }
+
+    // For each (account_id, dimension), pick the row set from the newest
+    // snapshot_date present in the result. We track the newest date seen
+    // and skip rows for older snapshots of the same (account, dimension).
+    const newestDate = {};
+    for (const r of rows) {
+      const key = `${r.account_id}|${r.dimension}`;
+      const cur = newestDate[key];
+      if (!cur || String(r.snapshot_date) > String(cur)) newestDate[key] = r.snapshot_date;
+    }
+
+    const byPlatform = {};
+    let latestSnapshot = null;
+    const accountById = new Map((accounts || []).map(a => [a.id, a]));
+
+    for (const r of rows) {
+      if (String(r.snapshot_date) !== String(newestDate[`${r.account_id}|${r.dimension}`])) continue;
+      const acct = accountById.get(r.account_id);
+      if (!acct) continue;
+      const pk = platformKey(acct.platform);
+      if (!latestSnapshot || String(r.snapshot_date) > String(latestSnapshot)) latestSnapshot = r.snapshot_date;
+      const bucket = byPlatform[pk] = byPlatform[pk] || {
+        platform: acct.platform,
+        handle: acct.platform_username || null,
+        snapshotDate: r.snapshot_date,
+        dimensions: {},
+      };
+      const dimList = bucket.dimensions[r.dimension] = bucket.dimensions[r.dimension] || [];
+      dimList.push({ bucket: r.bucket, share_pct: Number(r.share_pct) });
+    }
+
+    // Sort each dimension's buckets descending by share for stable rendering.
+    for (const pk of Object.keys(byPlatform)) {
+      const dims = byPlatform[pk].dimensions;
+      for (const d of Object.keys(dims)) {
+        dims[d].sort((a, b) => b.share_pct - a.share_pct);
+      }
+    }
+
+    return {
+      allowed: true,
+      locked: lockedByTrial,
+      snapshotDate: latestSnapshot,
+      byAccount: byPlatform,
+    };
+  })();
+
+  // ── Competitor ads shaping (Meta Ad Library) ───────────────────────────
+  // Group by competitor_handle, count currently-running ads, surface a small
+  // top sample. We dedupe by ad_id to defend against the scrape returning
+  // the same archive id twice within a window (rare but seen with one of
+  // the actor variants on big advertisers).
+  const competitorAds = (() => {
+    const lockedByTrial = !!ws.trial_active;
+    if (!audienceAllowed) {
+      return { allowed: false, locked: lockedByTrial, byCompetitor: [], totalAds: 0 };
+    }
+    const rows = competitorAdRows || [];
+    if (!rows.length) {
+      return { allowed: true, locked: lockedByTrial, byCompetitor: [], totalAds: 0 };
+    }
+
+    // Today's date (UTC) — anything with an end_date before this is treated
+    // as historical rather than currently-running. Ads with null end_date
+    // are assumed live.
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const seenAdIds = new Set();
+    const buckets = new Map();
+    const compMeta = new Map((competitors || []).map(c => [c.handle, c]));
+
+    for (const ad of rows) {
+      if (!ad.ad_id || seenAdIds.has(ad.ad_id)) continue;
+      seenAdIds.add(ad.ad_id);
+      const handle = ad.competitor_handle || 'unknown';
+      const bucket = buckets.get(handle) || {
+        competitor_handle: handle,
+        display_name: compMeta.get(handle)?.display_name || handle,
+        platform: platformKey(compMeta.get(handle)?.platform || 'facebook'),
+        running: 0,
+        ended: 0,
+        creative_mix: {},
+        latest_start: null,
+        sample: [],
+      };
+      const isRunning = !ad.end_date || String(ad.end_date) >= todayIso;
+      if (isRunning) bucket.running += 1; else bucket.ended += 1;
+      bucket.creative_mix[ad.creative_type || 'unknown'] = (bucket.creative_mix[ad.creative_type || 'unknown'] || 0) + 1;
+      if (ad.start_date && (!bucket.latest_start || String(ad.start_date) > String(bucket.latest_start))) {
+        bucket.latest_start = ad.start_date;
+      }
+      if (bucket.sample.length < 5 && isRunning) {
+        bucket.sample.push({
+          ad_id: ad.ad_id,
+          creative_type: ad.creative_type || 'unknown',
+          headline: ad.headline ? String(ad.headline).slice(0, 160) : null,
+          cta: ad.cta,
+          start_date: ad.start_date,
+          end_date: ad.end_date,
+          region: ad.region,
+          spend_range: ad.spend_range,
+          impression_range: ad.impression_range,
+          // The Ad Library URL works by archive id alone, so fall back to a
+          // synthetic URL when the raw payload doesn't expose one.
+          permalink: ad.raw_json?.url || ad.raw_json?.snapshot_url || ad.raw_json?.ad_snapshot_url
+            || `https://www.facebook.com/ads/library/?id=${ad.ad_id}`,
+        });
+      }
+      buckets.set(handle, bucket);
+    }
+
+    const byCompetitor = [...buckets.values()].sort((a, b) => b.running - a.running);
+    return {
+      allowed: true,
+      locked: lockedByTrial,
+      byCompetitor,
+      totalAds: seenAdIds.size,
+    };
+  })();
+
   // Latest sync time across all accounts
   const lastSync = (accounts || [])
     .map(a => a.last_synced_at)
@@ -413,6 +575,8 @@ export default async function handler(req, res) {
     ads: adsSummary,
     ads_intel:  adsIntelResult.intel,
     adSettings: adsIntelResult.adSettings,
+    audience,
+    competitor_ads: competitorAds,
     competitors: (competitors || []).map(c => {
       // 7-day delta from account_snapshots (account_type='competitor')
       const compSnaps = (snapshots || [])
