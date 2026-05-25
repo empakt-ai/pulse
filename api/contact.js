@@ -60,6 +60,10 @@ export default async function handler(req, res) {
   const name    = String(body?.name    || '').trim().slice(0, 200);
   const email   = String(body?.email   || '').trim().slice(0, 200);
   const message = String(body?.message || '').trim().slice(0, 5000);
+  // Topic is a closed enum mapped to a human-readable label below. Defaults
+  // to general if missing (older form payloads) so this stays
+  // backwards-compatible with the pre-topic form revision.
+  const topicRaw = String(body?.topic || 'general').trim().toLowerCase().slice(0, 40);
   // Honeypot — a real form leaves this empty; bots fill every field.
   const honeypot = String(body?.company || '').trim();
 
@@ -74,9 +78,26 @@ export default async function handler(req, res) {
     return send(res, 200, { ok: true, duplicate: true });
   }
 
+  // Topic enum → human label. Falls back to "General question" for any
+  // unrecognised value so a stale form revision can't break delivery.
+  const TOPIC_LABELS = {
+    general:        'General question',
+    sales:          'Sales · Agency plan',
+    'brand-pricing': 'Brand or Pro Creator plan question',
+    partnership:    'Partnership',
+    press:          'Press or media',
+    bug:            'Bug or technical issue',
+    feature:        'Feature request',
+    billing:        'Billing or account',
+    other:          'Other',
+  };
+  const topicLabel = TOPIC_LABELS[topicRaw] || 'General question';
+
   // Compose + send. Plain text so Resend doesn't escape weird characters
   // in the user's message. HTML version is the same content minimally
-  // formatted; both share the user-supplied content (escaped).
+  // formatted; both share the user-supplied content (escaped). The
+  // topic gets prepended to the subject so high-priority items (sales,
+  // press, partnership) sort to the top of the inbox at a glance.
   const esc = (s) => String(s).replace(/[&<>"']/g, m => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   }[m]));
@@ -84,11 +105,12 @@ export default async function handler(req, res) {
   try {
     await sendEmail({
       to: CONTACT_TO,
-      subject: `Mashal contact form: ${name}`,
-      text: `New contact form submission\n\nFrom: ${name} <${email}>\n\n${message}\n\n—\nIP: ${clientIp(req)}\nUA: ${req.headers?.['user-agent'] || 'unknown'}`,
+      subject: `[${topicLabel}] Mashal contact form: ${name}`,
+      text: `New contact form submission\n\nTopic: ${topicLabel}\nFrom:  ${name} <${email}>\n\n${message}\n\n—\nIP: ${clientIp(req)}\nUA: ${req.headers?.['user-agent'] || 'unknown'}`,
       html: `
         <div style="font-family: -apple-system, system-ui, sans-serif; max-width: 580px;">
           <p style="font-size: 13px; color: #888; margin: 0 0 4px;">New contact form submission</p>
+          <p style="font-size: 12px; color: #6B5BFF; font-family: monospace; text-transform: uppercase; letter-spacing: 0.12em; margin: 0 0 8px;">${esc(topicLabel)}</p>
           <p style="font-size: 16px; margin: 0 0 16px;"><strong>${esc(name)}</strong> &lt;<a href="mailto:${esc(email)}">${esc(email)}</a>&gt;</p>
           <div style="padding: 16px; background: #f5f1e8; border-radius: 10px; white-space: pre-wrap; font-size: 14px; line-height: 1.55;">${esc(message)}</div>
           <p style="font-size: 11px; color: #aaa; margin-top: 16px;">IP: ${esc(clientIp(req))}</p>

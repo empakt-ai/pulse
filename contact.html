@@ -48,6 +48,7 @@
       const data = {
         name:    form.elements['name'].value,
         email:   form.elements['email'].value,
+        topic:   form.elements['topic'].value,
         message: form.elements['message'].value,
         company: form.elements['company'].value, // honeypot — bots fill it; real users won't see it
       };
@@ -156,6 +157,21 @@
         <div class="form-field">
           <label for="contact-email">Email</label>
           <input id="contact-email" name="email" type="email" required maxlength="200" placeholder="you@brand.com">
+        </div>
+
+        <div class="form-field">
+          <label for="contact-topic">Topic</label>
+          <select id="contact-topic" name="topic" required>
+            <option value="general">General question</option>
+            <option value="sales">Talk to sales · Agency plan</option>
+            <option value="brand-pricing">Brand or Pro Creator plan question</option>
+            <option value="partnership">Partnership</option>
+            <option value="press">Press or media</option>
+            <option value="bug">Bug or technical issue</option>
+            <option value="feature">Feature request</option>
+            <option value="billing">Billing or account</option>
+            <option value="other">Something else</option>
+          </select>
         </div>
 
         <div class="form-field">

@@ -330,7 +330,8 @@ html.dark .nav-toggle:hover { background: rgba(245,241,232,0.06); }
   color: var(--mute); font-weight: 600; margin-bottom: 6px;
 }
 .form-field input,
-.form-field textarea {
+.form-field textarea,
+.form-field select {
   width: 100%; padding: 12px 14px;
   border: 1px solid var(--line); border-radius: 10px;
   background: white; color: var(--ink);
@@ -338,8 +339,15 @@ html.dark .nav-toggle:hover { background: rgba(245,241,232,0.06); }
   font-size: 14.5px; line-height: 1.4;
   outline: none; transition: border-color 0.15s;
 }
+.form-field select {
+  appearance: none; -webkit-appearance: none; -moz-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%239A958A' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat; background-position: right 14px center;
+  padding-right: 36px;
+}
 .form-field input:focus,
-.form-field textarea:focus { border-color: var(--ultra); }
+.form-field textarea:focus,
+.form-field select:focus { border-color: var(--ultra); }
 .form-status {
   margin-top: 12px; padding: 10px 14px;
   border-radius: 10px; font-size: 13px;
@@ -423,7 +431,8 @@ html.dark .card,
 html.dark .feature-cell,
 html.dark .price-card:not(.featured) { background: var(--chalk); }
 html.dark .form-field input,
-html.dark .form-field textarea { background: var(--chalk); color: var(--ink); }
+html.dark .form-field textarea,
+html.dark .form-field select { background: var(--chalk); color: var(--ink); }
 html.dark .btn-outline { border-color: rgba(245,241,232,0.18); color: var(--ink); }
 html.dark .btn-outline:hover { border-color: var(--ink); }
 html.dark .theme-toggle:hover,

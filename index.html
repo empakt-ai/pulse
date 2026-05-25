@@ -1791,38 +1791,40 @@ const Testimonials = () => (
 // component can share it without re-allocating on every render.
 const COMPARE_GROUPS = [
   { category: 'Workspaces & Accounts', rows: [
-    { label: 'Workspaces',         creator: '2',          brand: '3',               agency: '20 client workspaces' },
-    { label: 'Social accounts',    creator: '5 total',    brand: '7 (1 per platform)', agency: '~100 (5 per workspace)' },
-    { label: 'Competitors tracked',creator: '5',          brand: '10',              agency: '30' },
-    { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
+    { label: 'Workspaces',         creator: '2',                  pro_creator: '2',                       brand: '3',                  agency: '20 client workspaces' },
+    { label: 'Social accounts',    creator: '5 total',            pro_creator: '7 (1 per platform)',      brand: '7 (1 per platform)', agency: '~100 (5 per workspace)' },
+    { label: 'Competitors tracked',creator: '5',                  pro_creator: '10',                      brand: '10',                 agency: '30' },
+    { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', pro_creator: 'All 7 incl. X & Snapchat',brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
   ]},
   { category: 'Intelligence', rows: [
-    { label: 'Morning brief',      creator: true,         brand: true,              agency: true },
-    { label: 'Weekly recap',       creator: true,         brand: true,              agency: true },
-    { label: 'Live signal alerts', creator: false,        brand: false,             agency: true },
-    { label: 'Competitor analysis',creator: true,         brand: true,              agency: true },
-    { label: 'AI verdict + signals',creator: true,        brand: true,              agency: true },
-    { label: 'Market context',     creator: false,        brand: true,              agency: true },
+    { label: 'Morning brief',                creator: true,  pro_creator: true,  brand: true,  agency: true },
+    { label: 'Weekly recap',                 creator: true,  pro_creator: true,  brand: true,  agency: true },
+    { label: 'Multilingual brief (9 langs)', creator: false, pro_creator: true,  brand: true,  agency: true },
+    { label: 'Live signal alerts',           creator: false, pro_creator: false, brand: false, agency: true },
+    { label: 'Competitor analysis',          creator: true,  pro_creator: true,  brand: true,  agency: true },
+    { label: 'AI verdict + signals',         creator: true,  pro_creator: true,  brand: true,  agency: true },
+    { label: 'Market context & cultural calendar', creator: false, pro_creator: true, brand: true, agency: true },
   ]},
   { category: 'Ad Intelligence', rows: [
-    { label: 'Ad performance dashboard',   creator: false, brand: true,  agency: true },
-    { label: 'Organic vs paid comparison', creator: false, brand: true,  agency: true },
-    { label: 'Cross-platform ad reporting',creator: false, brand: true,  agency: true },
-    { label: 'Spot score benchmarking',    creator: false, brand: true,  agency: true },
-    { label: 'Recommended ad spots',       creator: false, brand: true,  agency: true },
-    { label: 'Per-client ad reporting',    creator: false, brand: false, agency: true },
+    { label: 'Ad performance dashboard',     creator: false, pro_creator: false, brand: true,  agency: true },
+    { label: 'Organic vs paid comparison',   creator: false, pro_creator: false, brand: true,  agency: true },
+    { label: 'Cross-platform ad reporting',  creator: false, pro_creator: false, brand: true,  agency: true },
+    { label: 'Spot score benchmarking',      creator: false, pro_creator: false, brand: true,  agency: true },
+    { label: 'Meta Ad Library competitor scrape', creator: false, pro_creator: false, brand: true, agency: true },
+    { label: 'Audience demographics',        creator: false, pro_creator: false, brand: true,  agency: true },
+    { label: 'Per-client ad reporting',      creator: false, pro_creator: false, brand: false, agency: true },
   ]},
   { category: 'Reports & Export', rows: [
-    { label: 'PDF reports',        creator: false,        brand: true,              agency: true },
-    { label: 'White-label reports',creator: false,        brand: false,             agency: true },
-    { label: 'CSV export',         creator: false,        brand: true,              agency: true },
-    { label: 'Daily email brief',  creator: false,        brand: true,              agency: true },
+    { label: 'PDF reports',        creator: false, pro_creator: true,  brand: true,  agency: true },
+    { label: 'White-label reports',creator: false, pro_creator: false, brand: false, agency: true },
+    { label: 'CSV export',         creator: false, pro_creator: true,  brand: true,  agency: true },
+    { label: 'Daily email brief',  creator: false, pro_creator: true,  brand: true,  agency: true },
   ]},
   { category: 'Billing', rows: [
-    { label: 'Monthly price',      creator: '$15',        brand: '$99',             agency: '$449' },
-    { label: 'Annual (2 mo free)', creator: '$150/yr',    brand: '$990/yr',         agency: '$4,490/yr' },
-    { label: 'Free trial',         creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
-    { label: 'Add-on accounts',    creator: false,        brand: '+$5/account',     agency: '+$5/account' },
+    { label: 'Monthly price',      creator: '$15',        pro_creator: '$29',      brand: '$99',           agency: '$449' },
+    { label: 'Annual (2 mo free)', creator: '$150/yr',    pro_creator: '$290/yr',  brand: '$990/yr',       agency: '$4,490/yr' },
+    { label: 'Free trial',         creator: '7 days, no CC', pro_creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
+    { label: 'Add-on accounts',    creator: false,        pro_creator: '+$5/account', brand: '+$5/account', agency: '+$5/account' },
   ]},
 ];
 
@@ -1848,29 +1850,33 @@ const ComparePlans = ({ onSignUp }) => {
     return <span className={cls('text-[13px] leading-snug', featured && 'font-medium')}>{v}</span>;
   };
 
-  // 5fr / 3fr / 3fr / 3fr → label column gets a touch more room.
-  const cols = 'grid-cols-[1.6fr_1fr_1fr_1fr]';
+  // Label column (1.4fr) + 4 plan columns (1fr each). With the new Pro
+  // Creator column the row gets wider — keep overflow-x-auto on the
+  // outer card so the table scrolls on narrow viewports instead of
+  // wrapping awkwardly.
+  const cols = 'grid-cols-[1.4fr_1fr_1fr_1fr_1fr]';
 
   return (
     <div className="mt-10 sm:mt-12">
       <div className="rounded-3xl bg-chalk/60 dark:bg-coalsoft/60 px-3 sm:px-6 py-6 sm:py-8 overflow-x-auto">
         {/* Plan header row */}
-        <div className={cls('grid items-end gap-x-3 sm:gap-x-6 px-3 pb-5 border-b border-line dark:border-lineDark', cols)}>
+        <div className={cls('grid items-end gap-x-3 sm:gap-x-6 px-3 pb-5 border-b border-line dark:border-lineDark min-w-[680px]', cols)}>
           <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
             Compare features
           </div>
           {[
-            { key: 'creator', name: 'Creator', price: '$15', cta: 'Start trial', variant: 'outline', featured: false },
-            { key: 'brand',   name: 'Brand',   price: '$99', cta: 'Start trial', variant: 'ink',     featured: true  },
-            { key: 'agency',  name: 'Agency',  price: '$449',cta: 'Talk to sales', variant: 'outline', featured: false },
+            { key: 'creator',     name: 'Creator',     price: '$15',  cta: 'Start trial',   variant: 'outline', featured: false },
+            { key: 'pro_creator', name: 'Pro Creator', price: '$29',  cta: 'Start trial',   variant: 'outline', featured: false },
+            { key: 'brand',       name: 'Brand',       price: '$99',  cta: 'Start trial',   variant: 'ink',     featured: true  },
+            { key: 'agency',      name: 'Agency',      price: '$449', cta: 'Talk to sales', variant: 'outline', featured: false },
           ].map(p => (
             <div key={p.key} className={cls('text-center px-1 sm:px-2', p.featured && 'relative')}>
               {p.featured && (
                 <span className="inline-flex items-center px-2 h-5 rounded-full bg-lime text-ink text-[9.5px] font-mono uppercase tracking-[0.12em] font-medium mb-1.5">Popular</span>
               )}
-              <div className="font-display text-[18px] sm:text-[20px] font-semibold tracking-tight">{p.name}</div>
+              <div className="font-display text-[16px] sm:text-[18px] font-semibold tracking-tight">{p.name}</div>
               <div className="font-mono text-[12px] text-mute dark:text-muteDark mt-0.5">{p.price}/mo</div>
-              <Btn variant={p.variant} size="sm" onClick={onSignUp} className="mt-3 w-full justify-center text-[12px]">
+              <Btn variant={p.variant} size="sm" onClick={onSignUp} className="mt-3 w-full justify-center text-[11.5px]">
                 {p.cta}
               </Btn>
             </div>
@@ -1880,12 +1886,12 @@ const ComparePlans = ({ onSignUp }) => {
         {/* Feature groups */}
         {COMPARE_GROUPS.map((group, gi) => (
           <div key={gi} className="pt-7 sm:pt-9">
-            <div className={cls('grid gap-x-3 sm:gap-x-6 px-3 mb-2', cols)}>
+            <div className={cls('grid gap-x-3 sm:gap-x-6 px-3 mb-2 min-w-[680px]', cols)}>
               <h4 className="font-display text-[17px] sm:text-[18px] font-semibold tracking-tight">
                 {group.category}
               </h4>
             </div>
-            <div className="rounded-xl overflow-hidden">
+            <div className="rounded-xl overflow-hidden min-w-[680px]">
               {group.rows.map((row, ri) => (
                 <div
                   key={ri}
@@ -1896,10 +1902,13 @@ const ComparePlans = ({ onSignUp }) => {
                   )}
                 >
                   <div className="text-[13px] sm:text-[13.5px] text-ink/85 dark:text-paper/85">{row.label}</div>
-                  <div className={cls('text-center px-1', 'rounded-md')}>
+                  <div className="text-center px-1 rounded-md">
                     <Val v={row.creator} />
                   </div>
-                  <div className={cls('text-center px-1 py-1 rounded-md bg-ultra/[0.06] dark:bg-ultra/[0.12]')}>
+                  <div className="text-center px-1 rounded-md">
+                    <Val v={row.pro_creator} />
+                  </div>
+                  <div className="text-center px-1 py-1 rounded-md bg-ultra/[0.06] dark:bg-ultra/[0.12]">
                     <Val v={row.brand} featured />
                   </div>
                   <div className="text-center px-1">
@@ -1925,6 +1934,17 @@ const Pricing = ({ activePlan, onSignUp }) => {
         '5 platforms (IG, TT, YT, FB, LI)',
         'Daily morning brief',
         '7-day free trial — no credit card'
+      ],
+      cta: 'Start free trial', featured: false },
+    { id: 'pro_creator', name: 'Pro Creator', price: 29, blurb: 'For serious creators on the full stack.',
+      bullets: [
+        '2 workspaces',
+        '7 accounts (1 per platform)',
+        '10 competitors tracked',
+        'All 7 platforms incl. X & Snapchat',
+        'Multilingual brief — 9 languages, dialect-aware',
+        'Market context & cultural calendar',
+        'PDF reports + daily email brief'
       ],
       cta: 'Start free trial', featured: false },
     { id: 'brand', name: 'Brand', price: 99, blurb: 'For businesses tracking real performance.',
@@ -1972,8 +1992,8 @@ const Pricing = ({ activePlan, onSignUp }) => {
 
   return (
     <section id="pricing" className="max-w-7xl mx-auto px-5 sm:px-8 py-16 sm:py-24">
-      <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="7-day free trial on Creator & Brand. No credit card required." />
-      <div className="grid md:grid-cols-3 gap-5">
+      <SectionHead eyebrow="Pricing" title="Pick a plan. Cancel anytime." sub="7-day free trial on Creator, Pro Creator & Brand. No credit card required." />
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
         {plans.map(p => {
           const featured = p.id === activePlan;
           return (

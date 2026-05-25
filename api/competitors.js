@@ -162,7 +162,11 @@ export default async function handler(req, res) {
     const id = req.query?.id;
     if (!id) return json(res, 400, { error: 'id required' });
     try {
-      await supabase.update('competitors', { is_active: false }, { eq: { id } });
+      // SECURITY: scope by workspace_id so a member of workspace A can't
+      // soft-delete a competitor row belonging to workspace B. Service-role
+      // bypasses RLS; the workspace filter is the only thing preventing
+      // cross-tenant IDOR.
+      await supabase.update('competitors', { is_active: false }, { eq: { id, workspace_id: ws.id } });
       return json(res, 200, { ok: true });
     } catch (e) {
       return json(res, 500, { error: e.message });
