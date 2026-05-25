@@ -42,7 +42,7 @@ export default async function handler(req, res) {
 
   // First-name powers the code prefix (NAWAZ7K-style). Falls back through
   // user_metadata.first_name → first word of full_name → null (helper
-  // then uses 'PULSE' as a placeholder prefix).
+  // then uses 'MASHAL' as a placeholder prefix).
   const firstName = auth.user?.user_metadata?.first_name
                  || (auth.user?.user_metadata?.full_name || '').split(' ')[0]
                  || null;

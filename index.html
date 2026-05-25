@@ -1657,7 +1657,7 @@ const DashboardPreview = () => (
         <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
         <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
         <span className="w-2.5 h-2.5 rounded-full bg-ink/15" />
-        <span className="ml-3 text-[11px] font-mono text-mute">pulse.app/brief</span>
+        <span className="ml-3 text-[11px] font-mono text-mute">mashal.app/brief</span>
       </div>
       <div className="pt-12 p-6 sm:p-10">
         <MockBrief />
@@ -1797,9 +1797,9 @@ const COMPARE_GROUPS = [
     { label: 'Platforms',          creator: 'IG, TT, YT, FB, LI', pro_creator: 'All 7 incl. X & Snapchat',brand: 'All 7 incl. X & Snapchat', agency: 'All 7 incl. X & Snapchat' },
   ]},
   { category: 'Intelligence', rows: [
-    { label: 'Morning brief',                creator: true,  pro_creator: true,  brand: true,  agency: true },
-    { label: 'Weekly recap',                 creator: true,  pro_creator: true,  brand: true,  agency: true },
-    { label: 'Multilingual brief (9 langs)', creator: false, pro_creator: true,  brand: true,  agency: true },
+    { label: 'Daily morning brief',                  creator: true,  pro_creator: true,  brand: true,  agency: true },
+    { label: 'Weekly recap + next-week plan email',  creator: false, pro_creator: true,  brand: true,  agency: true },
+    { label: 'Multilingual brief (9 langs)',         creator: false, pro_creator: true,  brand: true,  agency: true },
     { label: 'Live signal alerts',           creator: false, pro_creator: false, brand: false, agency: true },
     { label: 'Competitor analysis',          creator: true,  pro_creator: true,  brand: true,  agency: true },
     { label: 'AI verdict + signals',         creator: true,  pro_creator: true,  brand: true,  agency: true },
@@ -1818,13 +1818,10 @@ const COMPARE_GROUPS = [
     { label: 'PDF reports',        creator: false, pro_creator: true,  brand: true,  agency: true },
     { label: 'White-label reports',creator: false, pro_creator: false, brand: false, agency: true },
     { label: 'CSV export',         creator: false, pro_creator: true,  brand: true,  agency: true },
-    { label: 'Daily email brief',  creator: false, pro_creator: true,  brand: true,  agency: true },
   ]},
   { category: 'Billing', rows: [
     { label: 'Monthly price',      creator: '$15',        pro_creator: '$29',      brand: '$99',           agency: '$449' },
-    { label: 'Annual (2 mo free)', creator: '$150/yr',    pro_creator: '$290/yr',  brand: '$990/yr',       agency: '$4,490/yr' },
     { label: 'Free trial',         creator: '7 days, no CC', pro_creator: '7 days, no CC', brand: '7 days, no CC', agency: 'Contact us' },
-    { label: 'Add-on accounts',    creator: false,        pro_creator: '+$5/account', brand: '+$5/account', agency: '+$5/account' },
   ]},
 ];
 
@@ -1944,7 +1941,7 @@ const Pricing = ({ activePlan, onSignUp }) => {
         'All 7 platforms incl. X & Snapchat',
         'Multilingual brief — 9 languages, dialect-aware',
         'Market context & cultural calendar',
-        'PDF reports + daily email brief'
+        'PDF reports + weekly recap email'
       ],
       cta: 'Start free trial', featured: false },
     { id: 'brand', name: 'Brand', price: 99, blurb: 'For businesses tracking real performance.',
@@ -1953,9 +1950,8 @@ const Pricing = ({ activePlan, onSignUp }) => {
         '1 account per platform (7 total)',
         '10 competitors tracked',
         'All 7 platforms incl. X & Snapchat',
-        'Daily intelligence brief',
+        'Daily brief + weekly recap email',
         'Ad performance dashboard (Meta, TikTok, X)',
-        'Add-ons: +$5/extra account'
       ],
       cta: 'Start free trial', featured: true },
     { id: 'agency', name: 'Agency', price: 449, blurb: 'For agencies managing multiple clients.',
@@ -1964,9 +1960,9 @@ const Pricing = ({ activePlan, onSignUp }) => {
         '5 accounts per workspace (~100 total)',
         '30 competitors tracked',
         'All 7 platforms',
-        'Daily brief + alerts + white-label',
+        'Daily brief + weekly recap + alerts',
         'Ad performance across all clients',
-        'Add-ons: +$5/extra account'
+        'White-label PDF reports'
       ],
       cta: 'Talk to sales', featured: false }
   ];
@@ -6168,6 +6164,14 @@ const ReportsScreen = () => {
     } catch { return iso; }
   };
 
+  // TIER GATE — PDF report generation is a Pro Creator+ feature. Render
+  // the button as a locked upgrade pointer for Creator workspaces so the
+  // user doesn't click into a 402 error toast. Trial workspaces preview
+  // the button until conversion (server still allows generate during
+  // trial of any tier).
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const reportsLocked = tierKey === 'creator' && !D.trial?.active;
+
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
       <ScreenHeader
@@ -6176,27 +6180,39 @@ const ReportsScreen = () => {
         sub="Export the current intelligence brief as a one-page executive PDF. History stays here for 50 reports per workspace."
         right={
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-[12.5px] text-mute dark:text-muteDark cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={withEmail}
-                onChange={(e) => setWithEmail(e.target.checked)}
-                className="accent-ultra"
-              />
-              Email me
-            </label>
-            <button
-              onClick={generate}
-              disabled={generating}
-              className={cls(
-                'h-9 px-4 rounded-xl text-[13px] font-medium transition',
-                generating
-                  ? 'bg-ink/10 dark:bg-paper/10 text-mute dark:text-muteDark cursor-wait'
-                  : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90'
-              )}
-            >
-              {generating ? 'Generating…' : '+ Generate report'}
-            </button>
+            {!reportsLocked && (
+              <label className="flex items-center gap-1.5 text-[12.5px] text-mute dark:text-muteDark cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={withEmail}
+                  onChange={(e) => setWithEmail(e.target.checked)}
+                  className="accent-ultra"
+                />
+                Email me
+              </label>
+            )}
+            {reportsLocked ? (
+              <a
+                href="/pricing"
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-medium bg-ultra/10 text-ultra hover:bg-ultra/15 transition"
+              >
+                <Icon name="lock" className="w-3.5 h-3.5" />
+                Unlock with Pro Creator
+              </a>
+            ) : (
+              <button
+                onClick={generate}
+                disabled={generating}
+                className={cls(
+                  'h-9 px-4 rounded-xl text-[13px] font-medium transition',
+                  generating
+                    ? 'bg-ink/10 dark:bg-paper/10 text-mute dark:text-muteDark cursor-wait'
+                    : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90'
+                )}
+              >
+                {generating ? 'Generating…' : '+ Generate report'}
+              </button>
+            )}
           </div>
         }
       />
@@ -6224,12 +6240,20 @@ const ReportsScreen = () => {
               <Icon name="layers" className="w-6 h-6" />
             </div>
             <h3 className="font-display text-[18px] font-semibold tracking-tight mb-2">No reports yet</h3>
-            <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
-              Click <strong>Generate report</strong> above to render the current brief into a one-page PDF you can share, archive, or email.
-            </p>
-            <p className="text-[11.5px] font-mono text-mute dark:text-muteDark">
-              Weekly digest? Enable in Settings → Workspace.
-            </p>
+            {reportsLocked ? (
+              <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
+                PDF reports unlock on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo) and above. Your brief is still available on the dashboard every morning at 6 AM.
+              </p>
+            ) : (
+              <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
+                Click <strong>Generate report</strong> above to render the current brief into a one-page PDF you can share, archive, or email.
+              </p>
+            )}
+            {D.tier?.key !== 'creator' && (
+              <p className="text-[11.5px] font-mono text-mute dark:text-muteDark">
+                Weekly recap email? Enable in Settings → Workspace.
+              </p>
+            )}
           </div>
         </Card>
       ) : (
@@ -7561,20 +7585,36 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               </div>
             </div>
 
-            {/* Weekly digest — opt-in Sunday-morning email with the brief PDF attached */}
+            {/* Weekly digest — opt-in Sunday-morning email with the brief
+                PDF attached + next-week plan. Pro Creator+ feature; locked
+                on Creator with an inline upgrade pointer. Trial workspaces
+                preview the toggle until conversion. */}
             <div className="mt-5 pt-5 border-t border-line dark:border-lineDark">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <label className="block text-[13.5px] font-semibold">Weekly digest email</label>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-[13.5px] font-semibold">Weekly recap email</label>
+                    {tier === 'creator' && !workspace?.trial_active && (
+                      <span className="inline-flex items-center px-2 h-5 rounded-full bg-ultra/10 text-ultra text-[10px] font-mono uppercase tracking-[0.12em]">Pro Creator</span>
+                    )}
+                  </div>
                   <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
-                    Sunday morning, you'll get the freshly-generated brief as a PDF attached to a short email. Off by default.
+                    Sunday morning, you'll get a recap of the week plus next-week plans, with the latest brief attached as a PDF. Off by default.
                   </p>
+                  {tier === 'creator' && !workspace?.trial_active && (
+                    <p className="text-[11.5px] text-mute dark:text-muteDark mt-1.5">
+                      Unlocks on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo).
+                    </p>
+                  )}
                 </div>
-                <label className="inline-flex items-center cursor-pointer select-none flex-shrink-0">
+                <label className={cls('inline-flex items-center select-none flex-shrink-0',
+                  tier === 'creator' && !workspace?.trial_active ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+                )}>
                   <input
                     type="checkbox"
                     className="sr-only peer"
                     checked={!!form.weekly_digest_enabled}
+                    disabled={tier === 'creator' && !workspace?.trial_active}
                     onChange={e => setForm(f => ({ ...f, weekly_digest_enabled: e.target.checked }))}
                   />
                   <div className="w-10 h-6 rounded-full bg-ink/10 dark:bg-paper/15 peer-checked:bg-lime relative transition">

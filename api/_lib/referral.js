@@ -43,14 +43,14 @@ function randomChars(n) {
 
 // Builds a code like 'NAWAZ7K' — uppercase first name (sanitised, max 8
 // chars) + 3 random chars from the ambiguity-free alphabet. Falls back
-// to 'PULSE' as the prefix when no first_name is available so the code
+// to 'MASHAL' as the prefix when no first_name is available so the code
 // stays human-readable.
 export function generateReferralCode(firstName) {
   const cleaned = String(firstName || '')
     .toUpperCase()
     .replace(/[^A-Z]/g, '')
     .slice(0, 8);
-  const prefix = cleaned || 'PULSE';
+  const prefix = cleaned || 'MASHAL';
   return `${prefix}${randomChars(3)}`;
 }
 
