@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <link rel="icon" type="image/png" href="/images/mashal-favicon.png" />
 <link rel="apple-touch-icon" href="/images/mashal-logo.png" />
+<!-- PWA — installable web app on mobile + desktop. theme-color matches
+     the SPA's ink-default chrome; light/dark variants below give browsers
+     the right hint per system preference. -->
+<link rel="manifest" href="/manifest.webmanifest" />
+<meta name="theme-color" content="#F5F1E8" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#0A0A0B" media="(prefers-color-scheme: dark)" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Mashal" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="application-name" content="Mashal" />
 <title>Mashal. Social intelligence for serious creators</title>
 <link rel="canonical" href="https://mashal.app/" />
 <meta name="description" content="Mashal is daily social intelligence for serious creators, brands, and agencies. One landscape brief at 6 AM with verdict, three actions, and six signals across Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Built by Empakt Financial Inc." />
@@ -343,6 +354,17 @@ tailwind.config = {
       if (t === 'dark') document.documentElement.classList.add('dark');
     } catch (_) {}
   })();
+
+  // PWA service worker registration. Wait until 'load' so the SW install
+  // doesn't compete with first-paint resources. SW is best-effort —
+  // failures (no HTTPS, opted out, sandboxed iframe) are non-fatal and
+  // silently leave the app running in regular browser mode.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .catch(function () { /* non-fatal */ });
+    });
+  }
 
   // Unauthenticated visitors never need the splash — they land on the
   // marketing page, which renders instantly without any data fetches.

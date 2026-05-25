@@ -1,0 +1,69 @@
+{
+  "name": "Mashal — Daily Social Intelligence",
+  "short_name": "Mashal",
+  "description": "Daily social intelligence for serious creators, brands, and agencies. A 6 AM morning brief with verdict, actions, and signals across all seven of your platforms.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait-primary",
+  "theme_color": "#0A0A0B",
+  "background_color": "#F5F1E8",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["productivity", "business", "social"],
+  "id": "/?source=pwa",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/images/mashal-favicon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/mashal-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/mashal-logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Today's brief",
+      "short_name": "Brief",
+      "description": "Open today's morning brief",
+      "url": "/?route=brief&source=shortcut",
+      "icons": [{ "src": "/images/mashal-favicon.png", "sizes": "any", "type": "image/png" }]
+    },
+    {
+      "name": "Stats",
+      "short_name": "Stats",
+      "description": "Open the Stats screen",
+      "url": "/?route=stats&source=shortcut",
+      "icons": [{ "src": "/images/mashal-favicon.png", "sizes": "any", "type": "image/png" }]
+    },
+    {
+      "name": "Settings",
+      "short_name": "Settings",
+      "description": "Connect accounts and manage workspace",
+      "url": "/?route=settings&source=shortcut",
+      "icons": [{ "src": "/images/mashal-favicon.png", "sizes": "any", "type": "image/png" }]
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/images/og-card.png",
+      "sizes": "1200x630",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "Mashal — daily social intelligence brief"
+    }
+  ]
+}
