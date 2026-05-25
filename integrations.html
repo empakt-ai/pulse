@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/images/mashal-favicon.png">
+<link rel="apple-touch-icon" href="/images/mashal-logo.png">
+<title>Mashal Integrations. Seven platforms, read-only, official APIs.</title>
+<link rel="canonical" href="https://mashal.app/integrations">
+<meta name="description" content="Mashal reads from the official APIs of Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Read-only OAuth, no password sharing, no scrapers on your account. Disconnect anytime.">
+<meta property="og:title" content="Mashal Integrations. Seven platforms, one source of truth.">
+<meta property="og:description" content="The exact data Mashal fetches from each platform, how often, and what we deliberately don't touch. Read-only by design.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mashal.app/integrations">
+<meta property="og:site_name" content="Mashal by Empakt Financial Inc.">
+<meta property="og:image" content="https://mashal.app/images/og-card.png">
+<meta property="og:image:alt" content="Mashal. Daily social intelligence for serious creators, brands, and agencies.">
+<meta name="twitter:site" content="@getmashalapp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mashal.app/images/og-card.png">
+<meta name="twitter:title" content="Mashal Integrations. Seven platforms, one source of truth.">
+<meta name="twitter:description" content="The exact data Mashal fetches from each platform, how often, and what we deliberately don't touch.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<script>
+  (function(){try{if(localStorage.getItem('pulse_theme')==='dark')document.documentElement.classList.add('dark');}catch(_){} })();
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Empakt Financial Inc.",
+  "description": "Toronto-based corporation. Maker of Mashal, daily social intelligence for creators, brands, and agencies.",
+  "foundingDate": "2019",
+  "email": "hello@mashal.app",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Toronto",
+    "addressRegion": "ON",
+    "addressCountry": "CA"
+  }
+}
+</script>
+<style>
+  .platform-grid {
+    display: grid; grid-template-columns: 1fr; gap: 24px;
+    margin: 36px 0;
+  }
+  @media (min-width: 880px) { .platform-grid { grid-template-columns: 1fr 1fr; gap: 28px; } }
+  .platform-card {
+    padding: 28px;
+    border-radius: 20px;
+    border: 1px solid var(--line, rgba(10,10,11,0.08));
+    background: var(--paper, #fff);
+  }
+  html.dark .platform-card { background: rgba(245,241,232,0.04); border-color: rgba(245,241,232,0.08); }
+  .platform-card .platform-row {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
+  }
+  .platform-card .platform-row .badge {
+    margin-left: auto;
+    font-family: 'Geist Mono', monospace; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--mute);
+    padding: 3px 8px; border-radius: 999px;
+    background: rgba(107,91,255,0.08);
+  }
+  .platform-card h3 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 22px; font-weight: 600; letter-spacing: -0.015em;
+    margin: 0;
+  }
+  .platform-card .pillset {
+    display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px;
+  }
+  .platform-card .pillset span {
+    font-family: 'Geist Mono', monospace; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    padding: 3px 8px; border-radius: 999px;
+    background: var(--chalk, rgba(10,10,11,0.04)); color: var(--mute);
+  }
+  html.dark .platform-card .pillset span { background: rgba(245,241,232,0.06); }
+  .platform-card .fetch-list {
+    margin: 16px 0 0; padding-left: 18px;
+  }
+  .platform-card .fetch-list li {
+    font-size: 14px; line-height: 1.55; margin-bottom: 7px;
+  }
+  .platform-card .footnote {
+    margin-top: 18px; padding-top: 14px;
+    border-top: 1px solid var(--line, rgba(10,10,11,0.06));
+    font-size: 12.5px; line-height: 1.55;
+    color: var(--mute);
+  }
+  html.dark .platform-card .footnote { border-top-color: rgba(245,241,232,0.08); }
+  .platform-logo {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: #fff;
+  }
+  .pl-ig { background: linear-gradient(135deg, #FE8D2A 0%, #D62976 50%, #962FBF 100%); }
+  .pl-tt { background: #0A0A0B; }
+  .pl-yt { background: #FF0000; }
+  .pl-li { background: #0A66C2; }
+  .pl-fb { background: #1877F2; }
+  .pl-x  { background: #0A0A0B; }
+  .pl-sc { background: #FFFC00; color: #0A0A0B; }
+  .principle-grid {
+    display: grid; grid-template-columns: 1fr; gap: 16px;
+    margin: 28px 0 0;
+  }
+  @media (min-width: 760px) { .principle-grid { grid-template-columns: 1fr 1fr 1fr; } }
+  .principle {
+    padding: 22px;
+    border-radius: 16px;
+    background: var(--chalk, rgba(10,10,11,0.03));
+  }
+  html.dark .principle { background: rgba(245,241,232,0.04); }
+  .principle h4 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 16px; font-weight: 600; letter-spacing: -0.012em;
+    margin: 0 0 8px;
+  }
+  .principle p { font-size: 13.5px; line-height: 1.55; margin: 0; color: var(--mute); }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo" aria-label="Mashal home">
+      <img src="/images/mashal-logo.png" alt="" class="logo-img" />
+      <span>Mashal<span class="dot">.</span></span>
+    </a>
+    <nav class="nav-links" id="primary-nav">
+      <a href="/features">Features</a>
+      <a href="/integrations" aria-current="page">Integrations</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/updates">Updates</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/?route=signin" class="nav-signin">Sign in</a>
+      <a href="/?route=signup" class="nav-cta">Start free trial</a>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
+        <svg class="icon-menu"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6"  y2="18"/><line x1="6"  y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="hero-tag">Integrations</span>
+    <h1 class="h1">Seven platforms, one source of truth.</h1>
+    <p class="lead">Mashal connects directly to the official API of every platform you publish on. Read-only by design — Mashal can see your numbers, but never your password, your messages, or your drafts. Disconnect from Settings at any time.</p>
+  </section>
+
+  <section class="wrap">
+    <h2 class="h2">How the connection works.</h2>
+    <p class="prose">You click Connect on a platform tile in Settings. The platform opens its own login page, you approve a read-only scope, and you're back on Mashal a few seconds later. We never see your password. We never store an access token your browser hasn't been told to give us. Every sync runs nightly against the same API any approved third-party app would use.</p>
+
+    <div class="principle-grid">
+      <div class="principle">
+        <h4>Read-only OAuth.</h4>
+        <p>Every connection is scoped to "read insights." Mashal can fetch your posts and your numbers; it cannot publish, edit, comment, or delete anything. Posting tools live in your scheduler.</p>
+      </div>
+      <div class="principle">
+        <h4>No password sharing.</h4>
+        <p>The login happens on the platform's own page. Your password never touches Mashal's servers or any third party we work with. The token we receive is revocable from the platform's settings at any time.</p>
+      </div>
+      <div class="principle">
+        <h4>Disconnect in one click.</h4>
+        <p>Open Settings → Connected Accounts → Disconnect. The token is revoked, the historical data we've pulled stays in your workspace until you delete it, and no future sync runs against that account.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2 class="h2">What we fetch from each platform.</h2>
+    <p class="prose">Each platform exposes a different shape of data through its API. Below is exactly what arrives in your workspace from each one, what gets surfaced in your daily brief, and the tier where it unlocks. Anything not listed isn't pulled. Anything that requires a business account or a specific entitlement is called out on the platform's tile.</p>
+
+    <div class="platform-grid">
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-ig">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:18px;height:18px;"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+          </span>
+          <h3>Instagram</h3>
+          <span class="badge">All plans</span>
+        </div>
+        <div class="pillset">
+          <span>Posts</span><span>Reels</span><span>Stories</span><span>Insights</span><span>Audience</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per post:</strong> caption, post type, reach, impressions, likes, comments, saves, shares, profile visits, posted-at timestamp.</li>
+          <li><strong>Reels:</strong> plays, average watch time, accounts engaged, sticker taps when present.</li>
+          <li><strong>Stories:</strong> impressions, exits, replies, sticker interactions for the last 24 hours of active stories.</li>
+          <li><strong>Account level:</strong> follower count, follower growth, total reach last 30 days, top-performing post.</li>
+          <li><strong>Audience demographics</strong> (Brand+): age, gender, country, city, language breakdowns from your followers. Refreshed daily. Smaller accounts (under 100 followers) won't see data; that's a platform limit.</li>
+        </ul>
+        <div class="footnote">Requires a Business or Creator account. Personal Instagram accounts can't access Insights, so they can't be connected. The first sync includes up to 90 days of history depending on your account age.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-tt">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:18px;height:18px;"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.05a8.16 8.16 0 0 0 4.77 1.52V6.11a4.85 4.85 0 0 1-1.84-.42z"/></svg>
+          </span>
+          <h3>TikTok</h3>
+          <span class="badge">All plans</span>
+        </div>
+        <div class="pillset">
+          <span>Videos</span><span>Plays</span><span>Engagement</span><span>Followers</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per video:</strong> caption, video duration, plays, likes, comments, shares, saves, average watch time, average percentage watched.</li>
+          <li><strong>Account level:</strong> follower count, total likes, following count, video count, recent posting cadence.</li>
+          <li><strong>Captions read in any language</strong> — Mashal handles Arabic, Urdu, Hindi, Indonesian, Portuguese, Spanish, French, Turkish, English natively, plus the workspace-language preference for any reading the brief generates.</li>
+          <li><strong>Hashtag co-occurrence:</strong> which hashtags travel with your top posts. Surfaced in the brief when a pattern emerges.</li>
+        </ul>
+        <div class="footnote">Requires a Business or Creator account. TikTok's Personal account API doesn't expose the analytics endpoint, so personal accounts can't be connected.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-yt">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:18px;height:18px;"><path d="M19.6 7.2c-.2-.7-.7-1.2-1.4-1.4C16.8 5.4 12 5.4 12 5.4s-4.8 0-6.2.4c-.7.2-1.2.7-1.4 1.4C4 8.6 4 12 4 12s0 3.4.4 4.8c.2.7.7 1.2 1.4 1.4 1.4.4 6.2.4 6.2.4s4.8 0 6.2-.4c.7-.2 1.2-.7 1.4-1.4.4-1.4.4-4.8.4-4.8s0-3.4-.4-4.8zM10.4 14.8V9.2L15.2 12l-4.8 2.8z"/></svg>
+          </span>
+          <h3>YouTube</h3>
+          <span class="badge">All plans</span>
+        </div>
+        <div class="pillset">
+          <span>Long-form</span><span>Shorts</span><span>Subscribers</span><span>Watch-time</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per video:</strong> title, description, duration, views, watch-time minutes, average view duration, likes, comments, click-through rate where the platform exposes it.</li>
+          <li><strong>Shorts:</strong> same engagement set as long-form, plus the Shorts feed counter when available.</li>
+          <li><strong>Channel level:</strong> subscriber count, subscriber growth, video count, channel-wide watch-time, upload cadence.</li>
+          <li><strong>Direct integration</strong> via Google's official Data API. No third-party scraping layer between Mashal and your channel.</li>
+        </ul>
+        <div class="footnote">Connects via Google sign-in. The scope we request is the read-only YouTube Analytics scope; we can read your videos and their numbers, never edit or publish.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-li">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:18px;height:18px;"><path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14zM8.5 18.5v-9h-3v9h3zM7 8.2a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4zm11.5 10.3v-4.9c0-2.6-1.4-3.8-3.3-3.8-1.5 0-2.2.8-2.6 1.4v-1.2h-3v9h3v-5.1c0-1.3.4-2.2 1.7-2.2 1.3 0 1.4 1 1.4 2.3v5h3z"/></svg>
+          </span>
+          <h3>LinkedIn</h3>
+          <span class="badge">All plans</span>
+        </div>
+        <div class="pillset">
+          <span>Company pages</span><span>Creator posts</span><span>Comments</span><span>Followers</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per post:</strong> text content, post type (article, document, video, image), impressions, unique impressions, clicks, likes, comments, reposts, follows generated.</li>
+          <li><strong>Comment threading:</strong> top-level comments are pulled with their reaction counts so the brief can flag a thread that's gaining traction independent of the post itself.</li>
+          <li><strong>Page or profile level:</strong> follower count, follower growth, demographic breakdown of followers (industry, seniority, geography) where LinkedIn exposes it.</li>
+          <li><strong>Both surfaces:</strong> Mashal connects to LinkedIn Company Pages and to personal-brand Creator content; the same fetcher handles both with the appropriate scope.</li>
+        </ul>
+        <div class="footnote">For Company Pages you need to be a Page admin. For personal-brand content you connect with your own profile and Mashal reads your own posts only.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-fb">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:18px;height:18px;"><path d="M13 22v-8h3l1-4h-4V7.5a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5V10H5v4h4v8z"/></svg>
+          </span>
+          <h3>Facebook</h3>
+          <span class="badge">All plans</span>
+        </div>
+        <div class="pillset">
+          <span>Pages</span><span>Video</span><span>Reach</span><span>Cross-post merge</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per post:</strong> message, attachment type, organic reach, paid reach when present, impressions, reactions broken down by type, comments, shares, link clicks.</li>
+          <li><strong>Video posts:</strong> minutes viewed, average watch time, completion rate, audience retention curve when the page is eligible.</li>
+          <li><strong>Page level:</strong> follower count, page likes, page-level reach, follower demographics for Brand+ workspaces.</li>
+          <li><strong>Cross-platform merge:</strong> when a post is cross-published to Instagram from a Facebook Page, Mashal merges the two performance records so the brief reports one number rather than two halves.</li>
+        </ul>
+        <div class="footnote">Connects via the same Meta Business identity as Instagram. If both are linked to your Meta Business Suite, one OAuth pass authorizes both — Mashal won't ask twice.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-x">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:16px;height:16px;"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+          </span>
+          <h3>X (Twitter)</h3>
+          <span class="badge">Brand &amp; Agency</span>
+        </div>
+        <div class="pillset">
+          <span>Posts</span><span>Replies</span><span>Impressions</span><span>30-day window</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per post:</strong> content, post type (post, reply, quote), impressions, engagements, profile visits, link clicks, detail expands, video views when present.</li>
+          <li><strong>Engagement rate:</strong> calculated against the impressions number X exposes through the official Insights endpoint, so the rate matches what you'd see in your own X analytics dashboard.</li>
+          <li><strong>Account level:</strong> follower count, follower growth, listed count.</li>
+          <li><strong>Window:</strong> Mashal pulls the last 30 days every sync. X's API doesn't expose a longer history through the read scope we use, so the first sync is also a 30-day backfill.</li>
+        </ul>
+        <div class="footnote">X integration is gated to Brand and Agency tiers because the platform's API access tier costs more than the others. The Creator plan covers IG, TT, YT, LI, and FB.</div>
+      </div>
+
+      <div class="platform-card">
+        <div class="platform-row">
+          <span class="platform-logo pl-sc">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="width:18px;height:18px;"><path d="M12 2c2.6 0 5 1.4 6.4 3.6 1 1.5 1.1 3.5 1 5.1l-.1 1.6c.6.4 1.3.4 2 .2.3-.1.6 0 .7.3.2.3.1.6-.2.8-.5.3-1.2.5-1.9.5-.3 0-.6.2-.6.5 0 .3.4.7 1.1 1.1.7.3 1.7.6 2.3.7.4 0 .6.4.4.7-.5.9-1.7 1.6-3.4 1.9-.2.1-.4.4-.5.7-.1.4-.3.7-.7.7-.4 0-.8-.2-1.2-.2-1 0-1.9.3-2.8 1-1 .7-2 1.5-3.5 1.5-1.4 0-2.5-.8-3.5-1.5-.9-.7-1.8-1-2.8-1-.5 0-.9.1-1.2.2-.4.1-.6-.3-.7-.7-.1-.3-.3-.6-.5-.7-1.7-.3-2.9-1-3.4-1.9-.2-.3 0-.7.4-.7.6-.1 1.6-.4 2.3-.7.7-.4 1.1-.8 1.1-1.1 0-.3-.3-.5-.6-.5-.7 0-1.4-.2-1.9-.5-.3-.2-.4-.5-.2-.8.1-.3.4-.4.7-.3.7.2 1.4.2 2-.2l-.1-1.6c-.1-1.6 0-3.6 1-5.1C7 3.4 9.4 2 12 2z"/></svg>
+          </span>
+          <h3>Snapchat</h3>
+          <span class="badge">Brand &amp; Agency</span>
+        </div>
+        <div class="pillset">
+          <span>Stories</span><span>Snaps</span><span>Audience</span><span>GCC-strong</span>
+        </div>
+        <ul class="fetch-list">
+          <li><strong>Per story:</strong> snap views, completion rate, story exits, screenshots taken, swipe-ups when present, story length in seconds.</li>
+          <li><strong>Per snap:</strong> total views, unique viewers, average view time, taps forward and backward.</li>
+          <li><strong>Audience demographics:</strong> age, gender, country, region breakdowns. Snapchat exposes richer audience signal than most platforms here, which is why we surface it prominently for workspaces in the GCC and Egypt where Snap remains a primary discovery channel.</li>
+          <li><strong>Lens and filter performance</strong> when your account is set up for them. Brand workspaces with sponsored lens campaigns can see views, shares, and play time alongside organic story data in a single view.</li>
+        </ul>
+        <div class="footnote">Snapchat integration is gated to Brand and Agency tiers. The Snap Kit API requires a Business account in good standing.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2 class="h2">Competitor tracking.</h2>
+    <p class="prose">Mashal runs the same analysis on up to 50 competitor handles per workspace (the limit depends on your tier). Competitor data comes from each platform's <strong>public</strong> profile and post surfaces — no authorization needed from the competitor, no DM-style access, only what anyone could see by visiting the public profile. We refresh competitor data nightly so the brief always has a fresh comparison.</p>
+    <p class="prose">On Brand and Agency plans we additionally pull Meta's <strong>Ad Library</strong> for any Facebook or Instagram competitor you track. The Ad Library is a public catalogue of every paid Meta ad currently running. Mashal surfaces each competitor's live creative — headlines, calls to action, creative type, start date, regions served — in your Intel screen so you can see what they're spending money to push without a separate ad-intelligence tool.</p>
+  </section>
+
+  <section class="wrap">
+    <h2 class="h2">What we deliberately don't fetch.</h2>
+    <p class="prose">A short, honest list. If a category isn't here and isn't in the per-platform sections above, assume Mashal doesn't touch it.</p>
+    <ul class="prose" style="max-width: 64ch;">
+      <li><strong>Your direct messages.</strong> Mashal can't read your DMs on any platform, ever. The OAuth scopes we request don't include them.</li>
+      <li><strong>Your inbox, replies queue, or comment moderation.</strong> The same scope rule applies; mod tools live in your scheduler or in each platform's own studio.</li>
+      <li><strong>Your drafts and scheduled posts.</strong> We see published posts only. Anything sitting in a draft state on the platform is invisible to us.</li>
+      <li><strong>Other people's accounts you don't own.</strong> Competitor tracking reads what's already public. We don't request OAuth on accounts that aren't yours.</li>
+      <li><strong>Anything we'd need to write back.</strong> Mashal cannot post, reply, comment, like, follow, unfollow, edit, or delete on your behalf. Publishing belongs to your publishing tool.</li>
+    </ul>
+  </section>
+
+  <section class="wrap">
+    <div class="card-dark" style="margin: 32px 0 64px;">
+      <span class="eyebrow" style="color: var(--limeDeep);">Ready to connect?</span>
+      <h2 class="h2" style="color: var(--paper); margin-top: 8px;">Authorise an account, get your first brief by 6 AM tomorrow.</h2>
+      <p class="lead" style="color: rgba(245,241,232,0.7); max-width: 580px;">The first connection takes under 90 seconds. The first brief arrives the morning after you connect, in your workspace's local timezone.</p>
+      <a href="/" class="btn btn-lime" style="margin-top: 20px;">Start free trial</a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <a href="/" class="logo" aria-label="Mashal home"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+      <nav class="social-row" aria-label="Follow Mashal">
+        <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a>
+        <a href="https://tiktok.com/@getmashal" target="_blank" rel="noopener" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.05a8.16 8.16 0 0 0 4.77 1.52V6.11a4.85 4.85 0 0 1-1.84-.42z"/></svg></a>
+        <a href="https://facebook.com/getmashal" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 22v-8h3l1-4h-4V7.5a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5V10H5v4h4v8z"/></svg></a>
+        <a href="https://x.com/getmashalapp" target="_blank" rel="noopener" aria-label="X (Twitter)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+      </nav>
+    </div>
+    <div><h4>Product</h4><ul><li><a href="/features">Features</a></li><li><a href="/integrations">Integrations</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/updates">Updates</a></li><li><a href="/stack">In your stack</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul></div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 Empakt Financial Inc. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+<script src="/js/marketing.js" defer></script>
+</body>
+</html>

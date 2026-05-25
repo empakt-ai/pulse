@@ -1385,11 +1385,12 @@ const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => {
       <div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
         <a href="/" className="cursor-pointer hover:opacity-80 transition" aria-label="Mashal home"><MashalLogo /></a>
         <nav className="hidden md:flex items-center gap-7 text-[13.5px] text-mute dark:text-muteDark">
-          <a href="/features" className="hover:text-ink dark:hover:text-paper transition">Features</a>
-          <a href="/pricing"  className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
-          <a href="/updates"  className="hover:text-ink dark:hover:text-paper transition">Updates</a>
-          <a href="/about"    className="hover:text-ink dark:hover:text-paper transition">About</a>
-          <a href="/contact"  className="hover:text-ink dark:hover:text-paper transition">Contact</a>
+          <a href="/features"     className="hover:text-ink dark:hover:text-paper transition">Features</a>
+          <a href="/integrations" className="hover:text-ink dark:hover:text-paper transition">Integrations</a>
+          <a href="/pricing"      className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
+          <a href="/updates"      className="hover:text-ink dark:hover:text-paper transition">Updates</a>
+          <a href="/about"        className="hover:text-ink dark:hover:text-paper transition">About</a>
+          <a href="/contact"      className="hover:text-ink dark:hover:text-paper transition">Contact</a>
         </nav>
         <div className="flex items-center gap-2">
           {toggleTheme && (
@@ -1423,11 +1424,12 @@ const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => {
           className="md:hidden absolute left-0 right-0 top-16 bg-paper/95 dark:bg-ink/95 backdrop-blur-md border-b border-line dark:border-lineDark px-5 pb-3"
         >
           {[
-            { t: 'Features', u: '/features' },
-            { t: 'Pricing',  u: '/pricing'  },
-            { t: 'Updates',  u: '/updates'  },
-            { t: 'About',    u: '/about'    },
-            { t: 'Contact',  u: '/contact'  },
+            { t: 'Features',     u: '/features'     },
+            { t: 'Integrations', u: '/integrations' },
+            { t: 'Pricing',      u: '/pricing'      },
+            { t: 'Updates',      u: '/updates'      },
+            { t: 'About',        u: '/about'        },
+            { t: 'Contact',      u: '/contact'      },
           ].map(l => (
             <a
               key={l.u}
@@ -1485,7 +1487,7 @@ const HeroGradient = ({ onSignUp }) => (
         </h1>
 
         <p className="text-[17px] sm:text-[20px] leading-snug text-mute dark:text-muteDark max-w-2xl mb-9">
-          Mashal aggregates Instagram, TikTok, YouTube, LinkedIn, and Facebook into one daily intelligence brief. Know what's working, what's not, and exactly what to do next — every morning at 6 AM.
+          Mashal aggregates Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat into one daily intelligence brief. Know what's working, what's not, and exactly what to do next — every morning at 6 AM.
         </p>
 
         <div className="flex flex-wrap items-center gap-3 mb-12">
@@ -1532,7 +1534,7 @@ const HeroEditorial = ({ onSignUp }) => (
       </div>
       <div className="lg:col-span-4">
         <p className="text-[17px] leading-relaxed text-mute dark:text-muteDark">
-          Mashal is a morning briefing for serious creators. Five platforms. One signal. Every day at 6 AM — in language you'd actually say out loud.
+          Mashal is a morning briefing for serious creators. Seven platforms. One signal. Every day at 6 AM — in language you'd actually say out loud.
         </p>
       </div>
     </div>
@@ -1544,10 +1546,10 @@ const HeroSplit = ({ onSignUp }) => (
     <div className="p-8 sm:p-12 lg:p-16 flex flex-col justify-center">
       <Eyebrow color="text-ultra">Mashal for creators</Eyebrow>
       <h1 className="font-display text-[40px] sm:text-[64px] leading-[0.94] font-semibold tracking-tightest mt-5 mb-6">
-        One brief. Five platforms. Every morning.
+        One brief. Seven platforms. Every morning.
       </h1>
       <p className="text-[17px] text-mute dark:text-muteDark mb-8 max-w-md">
-        Stop checking five apps. Mashal reads your numbers, finds the signal, and tells you exactly what to do — before you've finished your coffee.
+        Stop checking seven apps. Mashal reads your numbers, finds the signal, and tells you exactly what to do — before you've finished your coffee.
       </p>
       <div className="flex flex-wrap gap-3">
         <Btn variant="ink" size="lg" onClick={onSignUp}>Start free trial</Btn>
@@ -1661,7 +1663,7 @@ const HowItWorks = () => (
     <SectionHead eyebrow="How it works" title="From scrolling to strategic in three mornings." sub="Mashal runs on autopilot. Here's what happens behind the scenes." />
     <div className="grid md:grid-cols-3 gap-5">
       {[
-        { n: '01', t: 'Connect your accounts', d: 'Authorize Instagram, TikTok, YouTube, LinkedIn, and Facebook in under 90 seconds. No password sharing, no scrapers to install.' },
+        { n: '01', t: 'Connect your accounts', d: 'Authorize Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat in under 90 seconds. No password sharing, no scrapers to install.' },
         { n: '02', t: 'Mashal syncs every morning', d: 'At 6 AM your local time, Mashal pulls fresh data, runs cross-platform analysis, and writes a personalized brief in plain English.' },
         { n: '03', t: 'Read. Act. Repeat.', d: 'Open Mashal with your coffee. You\'ll know the one thing to do today, the two trends to watch this week, and where you stand against your goals.' }
       ].map((s,i) => (
@@ -1692,7 +1694,7 @@ const Features = () => (
           { i: 'flame', t: 'Live Viral Alerts', d: 'Get notified the moment a post crosses algorithmic threshold — before the spike ends.' },
           { i: 'users', t: 'Competitor Tracking', d: 'Track up to 50 competitor accounts. See their wins, gaps, and posting cadence.' },
           { i: 'rocket', t: 'Content Deep-Dive', d: 'Anatomize any post: format, hook, niche, timing — and a "replicate this" playbook.' },
-          { i: 'globe', t: 'Five Platforms, One View', d: 'Instagram, TikTok, YouTube, LinkedIn, Facebook. Switch context with one click.' },
+          { i: 'globe', t: 'Seven Platforms, One View', d: 'Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Switch context with one click.' },
           { i: 'download', t: 'Daily Email + Export', d: 'Brief in your inbox by 6 AM. Export anything to CSV, PDF, or your team\'s Slack.' },
           { i: 'layers', t: 'White-Label Workspaces', d: 'Agencies: 20 client workspaces, branded reports, bulk export. Built for scale.' }
         ].map((f,i) => (
@@ -1712,12 +1714,14 @@ const Integrations = () => (
     <div className="grid lg:grid-cols-12 gap-12 items-center">
       <div className="lg:col-span-5">
         <Eyebrow>Integrations</Eyebrow>
-        <h2 className="font-display text-[32px] sm:text-[44px] leading-[0.98] font-semibold tracking-tightest mt-3 mb-4">Five platforms.<br/>One source of truth.</h2>
-        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Mashal reads from official APIs only. No scraping. No risk to your accounts. Disconnect anytime.</p>
-        <Btn variant="outline" size="md">See all integrations <Icon name="arrowRight" className="w-4 h-4" /></Btn>
+        <h2 className="font-display text-[32px] sm:text-[44px] leading-[0.98] font-semibold tracking-tightest mt-3 mb-4">Seven platforms.<br/>One source of truth.</h2>
+        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Mashal reads from official APIs only. Read-only OAuth, no password sharing, no scrapers on your account. Disconnect anytime.</p>
+        <a href="/integrations" className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-line dark:border-lineDark text-[13px] font-medium hover:bg-ink/5 dark:hover:bg-paper/5 transition">
+          See all integrations <Icon name="arrowRight" className="w-4 h-4" />
+        </a>
       </div>
-      <div className="lg:col-span-7 grid grid-cols-5 gap-3">
-        {['ig','tt','yt','li','fb'].map((p,i) => (
+      <div className="lg:col-span-7 grid grid-cols-4 sm:grid-cols-4 lg:grid-cols-4 gap-3">
+        {['ig','tt','yt','li','fb','x','sc'].map((p,i) => (
           <div key={p} className="aspect-square rounded-2xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft flex flex-col items-center justify-center gap-3 hover:scale-105 transition" style={{ animationDelay: `${i * 60}ms` }}>
             <Plat p={p} className="w-10 h-10 sm:w-12 sm:h-12" />
             <span className="text-[11px] font-mono uppercase tracking-[0.1em] text-mute dark:text-muteDark">{platformLabel[p]}</span>
@@ -2062,7 +2066,7 @@ const Footer = () => (
           </nav>
         </div>
         {[
-          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Pricing', u: '/pricing' }, { t: 'Updates', u: '/updates' }] },
+          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Integrations', u: '/integrations' }, { t: 'Pricing', u: '/pricing' }, { t: 'Updates', u: '/updates' }, { t: 'In your stack', u: '/stack' }] },
           { h: 'Company', l: [{ t: 'About',    u: '/about'    }, { t: 'Contact', u: '/contact' }] },
           { h: 'Legal',   l: [{ t: 'Privacy',  u: '/privacy'  }, { t: 'Terms',   u: '/terms'   }] },
         ].map((g, i) => (
