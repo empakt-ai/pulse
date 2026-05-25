@@ -200,6 +200,178 @@ function detectSeries(posts) {
   return result;
 }
 
+// ─── Hashtag extraction + correlation ──────────────────────────────────
+// Pulls #hashtags out of caption text + raw_data (platforms variously
+// store hashtags as inline tokens in caption, as a separate `hashtags`
+// array in raw_data, or both). Unicode-aware so Arabic / Hindi / Urdu
+// hashtags (#الرياض, #दिवाली, #اردو) survive extraction. Returns
+// lowercase keys with display-case preserved for the prompt.
+const HASHTAG_REGEX = /(?:^|\s|[(\[「『《])#([\p{L}\p{N}_]+)/gu;
+
+function extractHashtagsFromText(text) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  let m;
+  HASHTAG_REGEX.lastIndex = 0;
+  while ((m = HASHTAG_REGEX.exec(text)) !== null) {
+    const tag = m[1];
+    if (tag && tag.length >= 2) out.push(tag);
+  }
+  return out;
+}
+
+function extractHashtagsFromPost(post) {
+  const tags = new Map(); // lowercase → display case
+  // 1. Inline #tokens in caption.
+  for (const tag of extractHashtagsFromText(post.caption || '')) {
+    tags.set(tag.toLowerCase(), tag);
+  }
+  // 2. Some platforms expose a structured array on raw_data — IG's
+  //    hashtags via Graph API, TikTok's hashtag list on items, etc.
+  const raw = post.raw_data;
+  if (raw && typeof raw === 'object') {
+    const candidates = [raw.hashtags, raw.tags, raw.hashtag_names, raw.entities?.hashtags];
+    for (const arr of candidates) {
+      if (Array.isArray(arr)) {
+        for (const h of arr) {
+          // Strings, or { name } / { text } / { tag } objects.
+          const name = typeof h === 'string' ? h : (h?.name || h?.text || h?.tag || h?.hashtagName);
+          if (name && typeof name === 'string') {
+            const cleaned = String(name).replace(/^#/, '').trim();
+            if (cleaned.length >= 2) tags.set(cleaned.toLowerCase(), cleaned);
+          }
+        }
+      }
+    }
+  }
+  return [...tags.values()];
+}
+
+// Build the hashtag intelligence payload — top tags by frequency, by
+// engagement weight, competitor overlap, and which tags travel with the
+// workspace's viral signal posts. Designed to give the LLM enough signal
+// to recommend specific hashtags by name in the brief actions.
+function buildHashtagIntel(ownPosts, competitors, posts) {
+  // Per-tag stats for own posts: frequency, total views, avg engagement
+  // rate, viral count. We weight by views (more visible posts move the
+  // needle more than a low-reach test that happened to use the tag).
+  const ownStats = new Map(); // key (lowercase) → { tag, freq, views, engRateSum, viralCount, samples[] }
+  for (const p of ownPosts) {
+    const tags = extractHashtagsFromPost(p);
+    for (const tag of tags) {
+      const k = tag.toLowerCase();
+      const cur = ownStats.get(k) || {
+        tag, freq: 0, views: 0, engRateSum: 0, viralCount: 0,
+        platforms: new Set(), samples: [],
+      };
+      cur.freq += 1;
+      cur.views += Number(p.views || 0);
+      cur.engRateSum += Number(p.engagement_rate || 0);
+      if (p.signal === 'viral') cur.viralCount += 1;
+      if (p.platform) cur.platforms.add(p.platform);
+      if (cur.samples.length < 2 && p.views > 0) {
+        cur.samples.push({
+          caption: (p.caption || '').slice(0, 60),
+          views: p.views, engagement_rate: p.engagement_rate,
+        });
+      }
+      ownStats.set(k, cur);
+    }
+  }
+
+  // Competitor stats — same shape, but tags are also flagged by which
+  // competitors used them so the prompt can name the source.
+  const compStats = new Map(); // key → { tag, freq, views, competitors: Set }
+  const competitorPosts = (posts || []).filter(p => p.source === 'competitor');
+  const compById = new Map((competitors || []).map(c => [c.id, c]));
+  for (const p of competitorPosts) {
+    const tags = extractHashtagsFromPost(p);
+    const comp = compById.get(p.competitor_id);
+    if (!tags.length || !comp) continue;
+    for (const tag of tags) {
+      const k = tag.toLowerCase();
+      const cur = compStats.get(k) || {
+        tag, freq: 0, views: 0,
+        competitors: new Set(),
+      };
+      cur.freq += 1;
+      cur.views += Number(p.views || 0);
+      cur.competitors.add(comp.handle);
+      compStats.set(k, cur);
+    }
+  }
+
+  // Materialise to arrays and rank. We surface three lenses:
+  //  1. Top hashtags on the workspace's OWN content (frequency-ranked)
+  //  2. Hashtags carrying the highest engagement rate (own; min 2 uses)
+  //  3. Competitor hashtags the workspace DOESN'T use (gap candidates)
+  const ownArr = [...ownStats.values()].map(s => ({
+    tag: s.tag,
+    freq: s.freq,
+    total_views: s.views,
+    avg_engagement_rate: s.freq ? Math.round((s.engRateSum / s.freq) * 100) / 100 : 0,
+    viral_count: s.viralCount,
+    platforms: [...s.platforms],
+    samples: s.samples,
+  }));
+
+  const ownTopByFreq = [...ownArr]
+    .sort((a, b) => b.freq - a.freq || b.total_views - a.total_views)
+    .slice(0, 10);
+
+  const ownTopByEngagement = ownArr
+    .filter(t => t.freq >= 2)
+    .sort((a, b) => b.avg_engagement_rate - a.avg_engagement_rate)
+    .slice(0, 10);
+
+  // Gap = competitor hashtag used 2+ times across competitors that the
+  // workspace itself hasn't used at all. Sorted by total views so the
+  // prompt sees the biggest misses first.
+  const ownTagSet = new Set([...ownStats.keys()]);
+  const compGapArr = [...compStats.values()]
+    .filter(s => !ownTagSet.has(s.tag.toLowerCase()) && s.freq >= 2)
+    .map(s => ({
+      tag: s.tag,
+      competitor_uses: s.freq,
+      total_competitor_views: s.views,
+      competitor_count: s.competitors.size,
+      competitors: [...s.competitors].slice(0, 5),
+    }))
+    .sort((a, b) => b.total_competitor_views - a.total_competitor_views)
+    .slice(0, 10);
+
+  // Overlap = tags both the workspace and competitors use. Useful for
+  // "you're in the right conversation, but underperforming" framing.
+  const overlapArr = ownArr
+    .filter(t => compStats.has(t.tag.toLowerCase()))
+    .map(t => {
+      const c = compStats.get(t.tag.toLowerCase());
+      return {
+        tag: t.tag,
+        own_freq: t.freq,
+        own_avg_engagement_rate: t.avg_engagement_rate,
+        competitor_freq: c.freq,
+        competitor_total_views: c.views,
+        competitor_count: c.competitors.size,
+      };
+    })
+    .sort((a, b) => b.competitor_total_views - a.competitor_total_views)
+    .slice(0, 8);
+
+  // Skip the section entirely if there's effectively no hashtag data
+  // (some workspaces don't use them at all — Snapchat / X workspaces in
+  // particular). The LLM shouldn't see an empty hashtag block and feel
+  // compelled to fabricate one.
+  if (ownTopByFreq.length === 0 && compGapArr.length === 0) return null;
+
+  return {
+    own_top_by_frequency: ownTopByFreq,
+    own_top_by_engagement: ownTopByEngagement,
+    competitor_gap: compGapArr,
+    overlap: overlapArr,
+  };
+}
+
 function buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces = [], seriesRows = [], adsIntel = null }) {
   const ownPosts = posts.filter(p => p.source === 'own');
   const byPlatform = {};
@@ -381,6 +553,13 @@ function buildPayload({ workspace, accounts, posts, snapshots, competitors, cont
     // language version is appended separately in buildUserMessage so the
     // model gets both the structured payload and a direct nudge.
     ads_intel: adsIntel || null,
+    // Hashtag intelligence — own + competitor patterns. Null for workspaces
+    // that don't use hashtags (X-only, Snapchat-heavy). When present, the
+    // prompt is instructed to name specific hashtags in actions, including
+    // the gap-candidate list (tags competitors use but the workspace
+    // doesn't) so the brief can recommend specific adds, not generic
+    // "use more hashtags" copy.
+    hashtag_intel: buildHashtagIntel(ownPosts, competitors, posts),
     // Cultural calendar — null when nothing relevant is upcoming in the
     // 45-day window. The instruction string tells the model how hard to
     // lean on the moments (immediate vs upcoming).
@@ -584,6 +763,16 @@ The payload's \`competitors\` field includes each competitor's top 5 recent post
 • If the user's content is in one language and a top-performing competitor publishes in another (e.g. user posts in English, competitor wins in Arabic in the same market), emit a \`caption_language_split\` signal — naming both languages, the engagement delta, and a recommended caption-language test for the user.
 • When picking the \`rewrite.competitor_quote\`, it MUST be VERBATIM from one of the competitor.top_posts captions, in the original language (do not translate it). The matching \`your_quote\` must also be verbatim from one of the user's recent posts. Pair them on topic similarity, not language similarity.
 • If a competitor has zero top_posts (e.g. scrape pending), skip them for the rewrite — never invent a competitor quote.
+
+═══ HASHTAG INTELLIGENCE ═══
+
+When \`hashtag_intel\` is present in the DATA, use it to recommend SPECIFIC hashtags by name rather than generic "use more hashtags" copy:
+
+• \`hashtag_intel.own_top_by_engagement\` lists tags the workspace already uses that produce above-average engagement rates. When recommending a content move, name 1-3 of these as the natural hashtag set to keep using.
+• \`hashtag_intel.competitor_gap\` lists tags 2+ tracked competitors use that the workspace does NOT use. These are the highest-leverage adds — competitors are demonstrably reaching audience via these tags. Pick the top 2-3 with the most competitor views behind them and recommend testing them on the workspace's next post of that content type. Name the competitors using them (e.g. "@nike, @adidas both ride #JustDoIt").
+• \`hashtag_intel.overlap\` shows tags both the workspace and competitors use. If the workspace's avg_engagement_rate on an overlapping tag is materially below competitor performance on the same tag, that's a "same conversation, weaker hook" signal — frame as a hook/format issue, not a hashtag issue.
+• Never recommend a hashtag the workspace already uses heavily (own_top_by_frequency frequency >= 4) as if it were new advice. Recommend NEW tags or REINFORCE existing winners — not both at once.
+• Workspaces with empty hashtag_intel typically operate on X or Snapchat where hashtags don't drive distribution. In that case, skip hashtag mentions entirely; don't invent them.
 
 ═══ CULTURAL TIMING ═══
 
