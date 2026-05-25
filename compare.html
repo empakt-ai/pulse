@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/images/mashal-favicon.png">
+<link rel="apple-touch-icon" href="/images/mashal-logo.png">
+<title>Mashal vs Buffer, Later, Metricool, Sprout, Hootsuite, Rival IQ. Honest comparison.</title>
+<link rel="canonical" href="https://mashal.app/compare">
+<meta name="description" content="Side-by-side honest comparison of Mashal against Buffer, Later, Metricool, Sprout Social, Hootsuite, and Rival IQ. Pricing, features, what each tool wins on, and which to pick for your team.">
+<meta property="og:title" content="Mashal vs Buffer, Later, Sprout, Hootsuite, Metricool, Rival IQ">
+<meta property="og:description" content="Honest, no-spin comparison. Where Mashal wins, where each competitor wins, and which you should pick for your team size and budget.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mashal.app/compare">
+<meta property="og:site_name" content="Mashal by Empakt Financial Inc.">
+<meta property="og:image" content="https://mashal.app/images/og-card.png">
+<meta property="og:image:alt" content="Mashal. Daily social intelligence for serious creators, brands, and agencies.">
+<meta name="twitter:site" content="@getmashalapp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://mashal.app/images/og-card.png">
+<meta name="twitter:title" content="Mashal vs Buffer, Later, Sprout, Hootsuite, Metricool, Rival IQ">
+<meta name="twitter:description" content="Honest comparison. Where each tool wins. Which to pick.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<script>
+  (function(){try{if(localStorage.getItem('pulse_theme')==='dark')document.documentElement.classList.add('dark');}catch(_){} })();
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Empakt Financial Inc.",
+  "description": "Toronto-based corporation. Maker of Mashal, daily social intelligence for creators, brands, and agencies.",
+  "foundingDate": "2019",
+  "email": "hello@mashal.app",
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Toronto",
+    "addressRegion": "ON",
+    "addressCountry": "CA"
+  }
+}
+</script>
+<style>
+  .compare-tldr {
+    margin: 28px 0 48px;
+    padding: 24px 28px;
+    border-radius: 18px;
+    background: var(--chalk, rgba(10,10,11,0.03));
+    font-size: 15.5px; line-height: 1.65;
+  }
+  html.dark .compare-tldr { background: rgba(245,241,232,0.04); }
+  .compare-tldr strong { color: var(--ultra, #6B5BFF); }
+  .competitor-grid {
+    display: grid; grid-template-columns: 1fr; gap: 18px;
+    margin: 28px 0 48px;
+  }
+  @media (min-width: 760px) { .competitor-grid { grid-template-columns: 1fr 1fr; } }
+  @media (min-width: 1080px) { .competitor-grid { grid-template-columns: 1fr 1fr 1fr; } }
+  .competitor-card {
+    display: block;
+    padding: 22px;
+    border-radius: 16px;
+    border: 1px solid var(--line, rgba(10,10,11,0.08));
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .competitor-card:hover { transform: translateY(-2px); border-color: var(--ultra, #6B5BFF); }
+  html.dark .competitor-card { border-color: rgba(245,241,232,0.08); }
+  .competitor-card .meta {
+    font-family: 'Geist Mono', monospace; font-size: 10.5px;
+    text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--mute); margin-bottom: 8px;
+  }
+  .competitor-card h3 {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 19px; font-weight: 600; letter-spacing: -0.012em;
+    margin: 0 0 10px;
+  }
+  .competitor-card p { font-size: 13.5px; line-height: 1.55; margin: 0; color: var(--mute); }
+  .competitor-card .arrow {
+    display: inline-block; margin-top: 12px;
+    font-family: 'Geist Mono', monospace; font-size: 11.5px;
+    color: var(--ultra, #6B5BFF);
+  }
+  .compare-table-wrap {
+    margin: 36px 0;
+    overflow-x: auto;
+    border-radius: 16px;
+    border: 1px solid var(--line, rgba(10,10,11,0.08));
+  }
+  html.dark .compare-table-wrap { border-color: rgba(245,241,232,0.08); }
+  .compare-table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13px;
+    min-width: 760px;
+  }
+  .compare-table th, .compare-table td {
+    padding: 12px 14px; text-align: left;
+    border-bottom: 1px solid var(--line, rgba(10,10,11,0.06));
+    vertical-align: top;
+  }
+  html.dark .compare-table th, html.dark .compare-table td { border-bottom-color: rgba(245,241,232,0.08); }
+  .compare-table thead th {
+    font-family: 'Geist Mono', monospace; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.1em;
+    color: var(--mute); font-weight: 500;
+    background: var(--chalk, rgba(10,10,11,0.03));
+  }
+  html.dark .compare-table thead th { background: rgba(245,241,232,0.04); }
+  .compare-table tbody tr:hover { background: rgba(107,91,255,0.04); }
+  .compare-table .row-label { font-weight: 500; color: var(--ink, #0A0A0B); }
+  html.dark .compare-table .row-label { color: var(--paper, #F5F1E8); }
+  .compare-table .mashal-col { background: rgba(107,91,255,0.05); font-weight: 500; }
+  html.dark .compare-table .mashal-col { background: rgba(107,91,255,0.12); }
+  .compare-table .check { color: #22A06B; font-weight: 600; }
+  .compare-table .cross { color: var(--mute); }
+  .compare-table .partial { color: #B8860B; }
+  html.dark .compare-table .partial { color: #FFB23E; }
+  .compare-table .price { font-family: 'Geist Mono', monospace; font-size: 12.5px; }
+  .compare-anchor {
+    display: block;
+    height: 0; overflow: hidden;
+    margin-top: -80px; padding-top: 80px;
+  }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo" aria-label="Mashal home">
+      <img src="/images/mashal-logo.png" alt="" class="logo-img" />
+      <span>Mashal<span class="dot">.</span></span>
+    </a>
+    <nav class="nav-links" id="primary-nav">
+      <a href="/features">Features</a>
+      <a href="/integrations">Integrations</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/updates">Updates</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/?route=signin" class="nav-signin">Sign in</a>
+      <a href="/?route=signup" class="nav-cta">Start free trial</a>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav">
+        <svg class="icon-menu"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        <svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6"  y2="18"/><line x1="6"  y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="hero-tag">Compare</span>
+    <h1 class="h1">Mashal next to the other tools.</h1>
+    <p class="lead">An honest, no-spin comparison of Mashal against the six tools we're most often weighed against. Where each one wins, where Mashal wins, and how to pick. We're not trying to win every row — we're trying to make sure you don't pay for the wrong thing.</p>
+  </section>
+
+  <section class="wrap">
+    <div class="compare-tldr">
+      The short answer: Mashal isn't a scheduler, an inbox, or an enterprise listening platform. It's the layer that <strong>reads your numbers overnight and writes you a 2-minute brief by 6 AM</strong>. If you already use Buffer or Later to schedule, Mashal goes next to them. If you're paying Sprout or Hootsuite mostly for analytics you barely open, Mashal does that part more directly. If you're at Brandwatch-tier budget, you probably need both.
+    </div>
+
+    <h2 class="h2">Pick the comparison you need.</h2>
+    <p class="prose">Each page below is a full read on Mashal next to one specific tool, with the pricing as of May 2026 and a side-by-side feature matrix. Linked deeply enough that you can land on them from a Google search and get an honest answer without scrolling through marketing.</p>
+
+    <div class="competitor-grid">
+      <a href="/compare/buffer" class="competitor-card">
+        <div class="meta">Scheduling-first · $6–$12 / channel</div>
+        <h3>Mashal vs Buffer</h3>
+        <p>Buffer's queue is the cleanest small-team scheduler on the market. Mashal isn't trying to replace it. The honest comparison.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+      <a href="/compare/later" class="competitor-card">
+        <div class="meta">Visual planning · $25–$110</div>
+        <h3>Mashal vs Later</h3>
+        <p>Later's grid preview and IG-first features hold up. What Mashal adds is competitor reads and the morning verdict.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+      <a href="/compare/metricool" class="competitor-card">
+        <div class="meta">Multi-channel reporting · $25–$67</div>
+        <h3>Mashal vs Metricool</h3>
+        <p>Metricool has the deepest reporting coverage in the category. Mashal is the decision layer that sits above the report.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+      <a href="/compare/sprout-social" class="competitor-card">
+        <div class="meta">Enterprise all-in-one · $199–$399 / seat</div>
+        <h3>Mashal vs Sprout Social</h3>
+        <p>Sprout has every feature Mashal doesn't. It also costs five to twenty times more. When each one is the right answer.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+      <a href="/compare/hootsuite" class="competitor-card">
+        <div class="meta">Mid-market all-in-one · $99–$249 / seat</div>
+        <h3>Mashal vs Hootsuite</h3>
+        <p>Hootsuite has been the default for a decade. Pricing has climbed 50-250% in 18 months. Where it still fits, and where Mashal fits better.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+      <a href="/compare/rival-iq" class="competitor-card">
+        <div class="meta">Competitor benchmarking · $239–$519</div>
+        <h3>Mashal vs Rival IQ</h3>
+        <p>Rival IQ is the closest direct competitor on the intelligence-only positioning. The differences are sharper than they look.</p>
+        <span class="arrow">Read the comparison →</span>
+      </a>
+    </div>
+
+    <h2 class="h2">The full feature matrix.</h2>
+    <p class="prose">Every row is checked against each tool's published documentation as of May 2026. A green check means the feature is included on at least one plan; partial means it exists in a more limited form than Mashal's equivalent; a dash means it's not in the product today. Pricing is as published; enterprise tools (Brandwatch, Sprinklr) are excluded here because their pricing isn't comparable.</p>
+
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th style="min-width: 240px;">Feature</th>
+            <th class="mashal-col">Mashal</th>
+            <th>Buffer</th>
+            <th>Later</th>
+            <th>Metricool</th>
+            <th>Sprout</th>
+            <th>Hootsuite</th>
+            <th>Rival IQ</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="row-label">Daily AI narrative brief (verdict + post citation + action plan)</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="partial">Partial</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">AI-generated time-bucketed action plan</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="partial">Partial</td><td class="partial">Partial</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Cross-platform content grouping</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="partial">Partial</td><td class="partial">Partial</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Competitor tracking &amp; benchmarking</td>
+              <td class="mashal-col check">✓ (5-30)</td><td class="cross">—</td><td class="partial">Scale tier</td><td class="check">✓</td><td class="check">✓ ($299+)</td><td class="check">✓ (Advanced)</td><td class="check">✓ (10-50)</td></tr>
+          <tr><td class="row-label">Competitor ad-creative library (Meta)</td>
+              <td class="mashal-col check">✓ (Brand+)</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="partial">Premium add-on</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Ad performance benchmarking (Spot Score)</td>
+              <td class="mashal-col check">✓ (Brand+)</td><td class="cross">—</td><td class="cross">—</td><td class="check">✓</td><td class="partial">Add-on</td><td class="check">✓ (Advanced)</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Audience demographics</td>
+              <td class="mashal-col check">✓ (Brand+)</td><td class="cross">—</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+          <tr><td class="row-label">Cultural intelligence (Ramadan, Eid, dialect)</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Multilingual brief in 9 languages incl. dialects</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">AI provider choice (Claude or Gemini)</td>
+              <td class="mashal-col check">✓</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">White-label reports</td>
+              <td class="mashal-col check">✓ (Agency)</td><td class="check">✓ (Team)</td><td class="cross">—</td><td class="check">✓ (Custom)</td><td class="check">✓ (Advanced)</td><td class="check">✓ (Enterprise)</td><td class="check">✓</td></tr>
+          <tr><td class="row-label">PDF / CSV reports</td>
+              <td class="mashal-col check">✓ (Brand+)</td><td class="check">✓ (Team)</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+          <tr><td class="row-label">Content scheduling</td>
+              <td class="mashal-col cross">— (by design)</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Social inbox / comment management</td>
+              <td class="mashal-col cross">— (by design)</td><td class="check">✓ (basic)</td><td class="check">✓ (Growth+)</td><td class="partial">Partial</td><td class="check">✓ (Smart Inbox)</td><td class="check">✓</td><td class="cross">—</td></tr>
+          <tr><td class="row-label">Platform coverage</td>
+              <td class="mashal-col">7 (IG/TT/YT/FB/LI/X/SC)</td>
+              <td>7 (incl. Threads)</td><td>9 (incl. Pinterest)</td><td>9 (incl. Twitch/GBP)</td><td>8+ (incl. Threads/Reddit)</td><td>8+</td><td>5+</td></tr>
+          <tr><td class="row-label">Free trial (no credit card)</td>
+              <td class="mashal-col check">✓ 7 days (→ 30 via referral)</td><td class="check">✓ Free + 14d Team</td><td class="check">✓ 14 days + Free</td><td class="check">✓ Free plan</td><td class="check">✓ 30 days</td><td class="check">✓ 30 days</td><td class="check">✓ 14 days</td></tr>
+          <tr><td class="row-label">Entry plan price (USD / month)</td>
+              <td class="mashal-col price">$15</td><td class="price">$6 / channel</td><td class="price">$25</td><td class="price">$25</td><td class="price">$199 / seat</td><td class="price">$99 / seat</td><td class="price">$239</td></tr>
+          <tr><td class="row-label">Mid plan price</td>
+              <td class="mashal-col price">$99</td><td class="price">$12 / channel</td><td class="price">$50</td><td class="price">$67</td><td class="price">$299 / seat</td><td class="price">—</td><td class="price">$349</td></tr>
+          <tr><td class="row-label">Top published plan</td>
+              <td class="mashal-col price">$449 (Agency, 20 workspaces)</td><td class="price">volume tiered</td><td class="price">$110</td><td class="price">Custom</td><td class="price">$399 / seat</td><td class="price">$249 / seat</td><td class="price">$519</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="prose">A few honest notes about this table: <strong>partial</strong> means a tool offers something in the same neighborhood — Hootsuite's anomaly-triggered "action briefs" are partial action-plans, not a daily prescriptive memo. <strong>By design</strong> means Mashal deliberately doesn't ship that capability because it would dilute the intelligence positioning. The pricing rows reflect published rates as of May 2026 and don't include common discounts (annual billing, NGO rates, founder discounts).</p>
+  </section>
+
+  <section class="wrap">
+    <h2 class="h2">The framing that makes this comparison cleaner.</h2>
+    <p class="prose">The social-media-tool market is bifurcated. On one side, scheduling-first tools (Buffer, Later, Metricool) live where "publishing" is the job. On the other side, intelligence-first tools (Sprout, Hootsuite, Rival IQ) live where "analytics" is the job. Mashal sits firmly on the intelligence side, but with a different format: a prescriptive AI-written brief instead of a dashboard.</p>
+    <p class="prose">The honest version of "should I use Mashal?" is: <strong>if you spend more than ten minutes a week trying to figure out what your numbers mean, Mashal saves you that ten minutes and tells you what to do about it.</strong> If you spend most of your tool-time scheduling posts, you need a scheduler — and Mashal goes next to it. We wrote the <a href="/stack">complementary-stack page</a> exactly for that case.</p>
+
+    <div class="card-dark" style="margin: 48px 0;">
+      <span class="eyebrow" style="color: var(--limeDeep);">Try it next to your stack</span>
+      <h2 class="h2" style="color: var(--paper); margin-top: 8px;">7 days. No credit card. Your first brief tomorrow.</h2>
+      <p class="lead" style="color: rgba(245,241,232,0.7); max-width: 580px;">Connect an account, get tomorrow's brief at 6 AM in your local timezone. Cancel from Settings if it isn't for you.</p>
+      <a href="/" class="btn btn-lime" style="margin-top: 20px;">Start free trial</a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <a href="/" class="logo" aria-label="Mashal home"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+      <nav class="social-row" aria-label="Follow Mashal">
+        <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a>
+        <a href="https://tiktok.com/@getmashal" target="_blank" rel="noopener" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.05a8.16 8.16 0 0 0 4.77 1.52V6.11a4.85 4.85 0 0 1-1.84-.42z"/></svg></a>
+        <a href="https://facebook.com/getmashal" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 22v-8h3l1-4h-4V7.5a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5V10H5v4h4v8z"/></svg></a>
+        <a href="https://x.com/getmashalapp" target="_blank" rel="noopener" aria-label="X (Twitter)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+      </nav>
+    </div>
+    <div><h4>Product</h4><ul><li><a href="/features">Features</a></li><li><a href="/integrations">Integrations</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/updates">Updates</a></li><li><a href="/stack">In your stack</a></li><li><a href="/compare">Compare</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul></div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 Empakt Financial Inc. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+<script src="/js/marketing.js" defer></script>
+</body>
+</html>
