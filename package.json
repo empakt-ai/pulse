@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "dev:vercel": "vercel dev",
-    "build": "vite build",
+    "build": "vite build && node scripts/copy-static-to-dist.mjs",
     "preview": "vite preview",
     "start": "vercel dev"
   },

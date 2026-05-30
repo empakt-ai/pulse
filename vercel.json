@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "buildCommand": null,
-  "outputDirectory": ".",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "framework": null,
   "functions": {
     "api/**/*.js": { "maxDuration": 60 }
