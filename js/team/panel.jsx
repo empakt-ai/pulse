@@ -1,3 +1,44 @@
+import React from 'react';
+
+// Snapshot the shared symbols this file references off window.
+// They are published there by src/spa/utilities.jsx and the js/core/*
+// modules; src/spa/main.jsx guarantees the load order.
+const {
+  cls,
+  safeHref,
+  Card,
+  Btn,
+  Eyebrow,
+  Plat,
+  Sparkline,
+  BarSpark,
+  Pill,
+  MashalDot,
+  Progress,
+  StatCard,
+  SectionHead,
+  MashalLogo,
+  PlatformIcons,
+  Icon,
+  D,
+  formatNum,
+  platformLabel,
+  platformBrand,
+  initialsOf,
+  formatSync,
+  hydrateD,
+  api,
+  API_BASE,
+  sbAuth,
+  SUPABASE_URL,
+  SUPABASE_ANON,
+  restoreSession,
+  checkMagicLinkHash,
+  SubscriptionBanner,
+  UpgradeDialog,
+} = window;
+
+
 // ═════════════════════════════════════════════════════════════════════════
 // Mashal Team Panel — Brand/Agency, admin+.
 //

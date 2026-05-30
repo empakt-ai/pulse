@@ -1,3 +1,5 @@
+import React from 'react';
+
 // ═════════════════════════════════════════════════════════════════════════
 // Mashal API client — single fetch wrapper used by every screen.
 //

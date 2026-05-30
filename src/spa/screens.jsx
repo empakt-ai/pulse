@@ -1,0 +1,6815 @@
+
+// Snapshot the shared symbols this file references off window.
+// They are published there by src/spa/utilities.jsx and the js/core/*
+// modules; src/spa/main.jsx guarantees the load order.
+const {
+  cls,
+  safeHref,
+  Card,
+  Btn,
+  Eyebrow,
+  Plat,
+  Sparkline,
+  BarSpark,
+  Pill,
+  MashalDot,
+  Progress,
+  StatCard,
+  SectionHead,
+  MashalLogo,
+  PlatformIcons,
+  Icon,
+  D,
+  formatNum,
+  platformLabel,
+  platformBrand,
+  initialsOf,
+  formatSync,
+  hydrateD,
+  api,
+  API_BASE,
+  sbAuth,
+  SUPABASE_URL,
+  SUPABASE_ANON,
+  restoreSession,
+  checkMagicLinkHash,
+  SubscriptionBanner,
+  UpgradeDialog,
+} = window;
+
+// ═════════════════════════════════════════════════════════════════════════
+// src/spa/screens.jsx — extracted from index.html's trailing inline
+// <script type="text/babel"> blocks (everything AFTER the external js/
+// src= tags). Defines: Auth, Onboarding, TopBar, AccountBar, every
+// dashboard screen, and the App() root + ReactDOM mount call.
+//
+// Loaded AFTER utilities.jsx and the js/ feature files — references their
+// exports as bare names (cls, Card, Btn, api, sbAuth, hydrateD, etc.) so
+// they must already be in module scope by the time this file evaluates.
+//
+// Provenance: scripts/extract-spa-blocks.mjs.
+// ═════════════════════════════════════════════════════════════════════════
+
+import React from 'react';
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 2171-2795
+// ═════════════════════════════════════════════════════════════════════════
+// ── Auth Screen ───────────────────────────────────────────────────────────────
+const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
+  const [step, setStep]       = React.useState(mode);
+  const [email, setEmail]     = React.useState('');
+  const [password, setPassword] = React.useState('');
+  const [sent, setSent]       = React.useState(false);
+  const [error, setError]     = React.useState('');
+  const [loading, setLoading] = React.useState(false);
+  const [usePassword, setUsePassword] = React.useState(false);
+
+  const handleMagicLink = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+    setError('');
+    setLoading(true);
+    try {
+      await sbAuth.signInWithOtp(email);
+      setSent(true);
+    } catch (err) {
+      // Supabase magic-link is rate-limited (default: ~3-4 requests / hour
+      // per email). Translate the unfriendly error into something actionable.
+      const msg = err.message || '';
+      if (/rate limit|too many|429/i.test(msg)) {
+        setError('Too many magic-link requests for this email. Wait a few minutes or use email + password instead.');
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePassword = async (e) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setError('');
+    setLoading(true);
+    try {
+      let data;
+      if (step === 'signup') {
+        data = await sbAuth.signUp(email, password);
+        // After signup Supabase may require email confirmation
+        // If user object is returned directly we can log them in
+        if (data.access_token) {
+          sbAuth.saveSession(data);
+          onAuthed(data);
+          return;
+        }
+        // Otherwise show confirmation message
+        setSent(true);
+        return;
+      } else {
+        data = await sbAuth.signIn(email, password);
+        sbAuth.saveSession(data);
+        // Log the sign-in event. Same dedup key shape as the magic-link
+        // path so the user_sign_in_log doesn't double-count if the user
+        // happens to re-sign-in within the same token window.
+        fetch('/api/auth-log', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${data.access_token}`,
+          },
+          body: JSON.stringify({ method: 'password', session_id: (data.access_token || '').slice(0, 32) }),
+        }).catch(() => {});
+        onAuthed(data);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+      <header className="max-w-7xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <button onClick={onBack}><MashalLogo /></button>
+        <span className="text-[13px] text-mute dark:text-muteDark">
+          {step === 'signin' ? 'New here? ' : 'Have an account? '}
+          <button
+            onClick={() => { setStep(step === 'signin' ? 'signup' : 'signin'); setSent(false); setError(''); }}
+            className="text-ink dark:text-paper underline underline-offset-4"
+          >
+            {step === 'signin' ? 'Create account' : 'Sign in'}
+          </button>
+        </span>
+      </header>
+
+      <div className="flex-1 grid lg:grid-cols-2">
+        {/* Left — form */}
+        <div className="flex items-center justify-center p-5 sm:p-12">
+          <div className="w-full max-w-sm fade-up">
+            <Eyebrow color="text-ultra">{step === 'signin' ? 'Welcome back' : 'Start your trial'}</Eyebrow>
+            <h1 className="font-display text-[36px] sm:text-[44px] leading-[1] font-semibold tracking-tightest mt-3 mb-2">
+              {step === 'signin' ? 'Sign in to Mashal.' : 'Create your account.'}
+            </h1>
+            <p className="text-[14px] text-mute dark:text-muteDark mb-8">
+              {step === 'signin' ? 'Pick up where you left off.' : '7-day free trial. No credit card required.'}
+            </p>
+
+            {sent ? (
+              /* ── Sent state ── */
+              <div className="text-center py-8">
+                <div className="w-14 h-14 mx-auto rounded-2xl bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-5">
+                  <Icon name="mail" className="w-6 h-6" />
+                </div>
+                <h3 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Check your inbox.</h3>
+                <p className="text-[14px] text-mute dark:text-muteDark mb-6">
+                  We sent a {usePassword ? 'confirmation' : 'magic'} link to{' '}
+                  <strong className="text-ink dark:text-paper">{email}</strong>.
+                  {usePassword ? ' Confirm your email then sign in.' : ' Click it to sign in — no password needed.'}
+                </p>
+                <div className="text-[12px] text-mute dark:text-muteDark">
+                  Didn't get it?{' '}
+                  <button onClick={() => setSent(false)} className="underline">Try again</button>
+                </div>
+              </div>
+            ) : (
+              /* ── Form state ── */
+              <>
+                {/* Error */}
+                {error && (
+                  <div className="mb-4 px-4 py-3 rounded-xl bg-magenta/10 border border-magenta/20 text-[13px] text-magenta flex items-center gap-2">
+                    <Icon name="x" className="w-3.5 h-3.5 flex-shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                {usePassword ? (
+                  /* ── Password form ── */
+                  <form onSubmit={handlePassword} className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Email</label>
+                      <input
+                        type="email" required value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@studio.com"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Password</label>
+                      <input
+                        type="password" required value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="8+ characters"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                      {loading
+                        ? <><Icon name="clock" className="w-4 h-4" /> {step === 'signup' ? 'Creating...' : 'Signing in...'}</>
+                        : step === 'signup' ? 'Create account' : 'Sign in'
+                      }
+                    </Btn>
+                    <button
+                      type="button"
+                      onClick={() => { setUsePassword(false); setError(''); }}
+                      className="w-full text-[12.5px] text-mute dark:text-muteDark hover:text-ultra transition text-center"
+                    >
+                      Use magic link instead →
+                    </button>
+                  </form>
+                ) : (
+                  /* ── Magic link form ── */
+                  <form onSubmit={handleMagicLink} className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Email address</label>
+                      <input
+                        type="email" required value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@studio.com"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                      {loading
+                        ? <><Icon name="clock" className="w-4 h-4" /> Sending link...</>
+                        : step === 'signin' ? 'Send sign-in link' : 'Send sign-up link'
+                      }
+                    </Btn>
+                    <div className="flex items-center gap-3 my-1">
+                      <div className="flex-1 h-px bg-line dark:bg-lineDark" />
+                      <span className="text-[11px] font-mono text-mute dark:text-muteDark">or</span>
+                      <div className="flex-1 h-px bg-line dark:bg-lineDark" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setUsePassword(true); setError(''); }}
+                      className="w-full h-11 rounded-xl border border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30 bg-chalk dark:bg-coalsoft flex items-center justify-center text-[14px] font-medium transition"
+                    >
+                      Use email + password
+                    </button>
+                  </form>
+                )}
+
+                <p className="text-[11px] text-mute dark:text-muteDark mt-5 leading-relaxed text-center">
+                  By continuing you agree to our{' '}
+                  <a href="#" className="underline">Terms</a> and{' '}
+                  <a href="#" className="underline">Privacy Policy</a>.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right — visual panel */}
+        <div className="hidden lg:flex bg-ink text-paper relative overflow-hidden items-center justify-center p-12">
+          <div className="blob bg-ultra" style={{ width: 400, height: 400, top: -100, left: -100, opacity: 0.4 }} />
+          <div className="blob bg-magenta" style={{ width: 300, height: 300, bottom: -100, right: -50, opacity: 0.3 }} />
+          <div className="relative z-10 max-w-md">
+            <MiniBriefPreview />
+            <p className="mt-8 text-[14px] text-paper/70 leading-relaxed">
+              "Mashal replaced our Monday morning dashboard meeting. The brief is more useful than anything I'd build myself."
+              <br />
+              <span className="text-paper/50 mt-2 inline-block">— Maya Chen, 240K IG</span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Onboarding ────────────────────────────────────────────────────────────────
+const Onboarding = ({ onDone }) => {
+  const [step, setStep]           = React.useState(0);
+  const [firstName, setFirstName] = React.useState('');
+  const [userType, setUserType]   = React.useState('creator');
+  const [category, setCategory]   = React.useState('');
+  const [country, setCountry]     = React.useState('CA');
+  const [focusRegions, setFocusRegions] = React.useState([]);
+  const [accountAge, setAccountAge] = React.useState('6-12mo');
+  const [workspaceName, setWorkspaceName] = React.useState('');
+  // Tier intent + promo capture for the trial. Defaults to whatever
+  // userType was selected in step 0 so the picker arrives pre-filled.
+  // If the user landed via a referral link (mashal.app/?ref=NAWAZ7K),
+  // App() stashed the code in localStorage; pre-fill the promo input
+  // so they don't have to retype.
+  const [intentTier, setIntentTier] = React.useState('creator');
+  const [promoCode, setPromoCode]   = React.useState(() => readStoredRefCode() || '');
+  const [saving, setSaving]       = React.useState(false);
+  const toggleFocus = (id) =>
+    setFocusRegions(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  // Keep tier intent in sync with userType when the user hasn't manually
+  // diverged from it yet (i.e. they're still on the default mapping).
+  // Once they pick a different tier on step 2, that becomes sticky.
+  const [tierTouched, setTierTouched] = React.useState(false);
+  React.useEffect(() => {
+    if (!tierTouched) setIntentTier(userType === 'agency' ? 'agency' : userType === 'brand' ? 'brand' : 'creator');
+  }, [userType, tierTouched]);
+
+  const steps = ['About you', 'Your market', 'Pick a plan', 'You\'re in'];
+
+  const saveWorkspace = async () => {
+    if (!window.__pulseToken) return;
+    // Save first name to user_metadata so it's available everywhere we read
+    // the user (greetings, future per-user email digests, etc.) — separate
+    // from workspace settings which are per-workspace.
+    if (firstName.trim()) {
+      try {
+        await sbAuth.updateUser(window.__pulseToken, {
+          data: { first_name: firstName.trim() },
+        });
+      } catch (e) {
+        console.error('Failed to save first name:', e);
+      }
+    }
+    try {
+      // Browser IANA timezone — drives the per-workspace cron schedule
+      // (6am-local brief, 8/13/18-local live signals, Sunday deep sync).
+      // Falls back to UTC if Intl is unavailable for any reason.
+      const timezone = (() => {
+        try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; }
+        catch { return 'UTC'; }
+      })();
+      await fetch('/api/workspaces', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${window.__pulseToken}`
+        },
+        body: JSON.stringify({
+          name:               workspaceName || 'My Workspace',
+          user_type:          userType,
+          category:           category || 'other',
+          country:            country,
+          focus_regions:      focusRegions,
+          account_age:        accountAge,
+          timezone,
+          trial_intent_tier:  intentTier,
+          trial_promo_code:   promoCode || null,
+        })
+      });
+    } catch (e) {
+      console.error('Failed to save workspace:', e);
+    }
+  };
+
+  const handleContinue = async () => {
+    // Save on the last input step (plan picker) so the workspace lands
+    // with tier intent + promo code in one PATCH. Earlier steps just
+    // advance — no network calls between question and question.
+    if (step === 2) {
+      setSaving(true);
+      await saveWorkspace();
+      setSaving(false);
+    }
+    setStep(s => s + 1);
+  };
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+      <header className="max-w-3xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <MashalLogo />
+        <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
+          Step {step + 1} of {steps.length}
+        </span>
+      </header>
+
+      {/* Progress bar */}
+      <div className="max-w-3xl w-full mx-auto px-5 sm:px-8 mt-2 mb-8">
+        <div className="flex gap-1.5">
+          {steps.map((_, i) => (
+            <div key={i} className={cls(
+              'flex-1 h-1 rounded-full transition-colors',
+              i <= step ? 'bg-ink dark:bg-lime' : 'bg-ink/10 dark:bg-paper/10'
+            )} />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex-1 max-w-2xl w-full mx-auto px-5 sm:px-8 pb-16">
+
+        {/* Step 0 — About you */}
+        {step === 0 && (
+          <div className="fade-up">
+            <Eyebrow color="text-ultra">Workspace</Eyebrow>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
+              Tell us about yourself.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-8">
+              We'll tune your intelligence brief to your situation.
+            </p>
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Your first name</label>
+                <input
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  placeholder="What should we call you?"
+                  value={firstName}
+                  onChange={e => setFirstName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Workspace name</label>
+                <input
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  placeholder="Your name or brand name"
+                  value={workspaceName}
+                  onChange={e => setWorkspaceName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">I am a...</label>
+                <div className="flex gap-2">
+                  {[
+                    { id: 'creator', label: 'Creator', sub: 'Personal brand' },
+                    { id: 'brand',   label: 'Brand',   sub: 'Business account' },
+                    { id: 'agency',  label: 'Agency',  sub: 'Multiple clients' },
+                  ].map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setUserType(t.id)}
+                      className={cls(
+                        'flex-1 p-4 rounded-2xl border text-left transition',
+                        userType === t.id
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
+                      )}
+                    >
+                      <div className="text-[14px] font-semibold">{t.label}</div>
+                      <div className={cls('text-[12px] mt-0.5', userType === t.id ? 'text-paper/60 dark:text-ink/60' : 'text-mute dark:text-muteDark')}>{t.sub}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">Content category</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CATEGORIES.filter(([id]) => id !== 'other').map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setCategory(id)}
+                      className={cls(
+                        'h-9 px-3.5 rounded-full text-[13px] font-medium border transition',
+                        category === id
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">How long have you been active on social?</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { id: 'under-6mo', label: 'Under 6 mo' },
+                    { id: '6-12mo',    label: '6 – 12 mo' },
+                    { id: '1-3yr',     label: '1 – 3 yrs' },
+                    { id: '3yr+',      label: '3+ years' },
+                  ].map(a => (
+                    <button
+                      key={a.id}
+                      onClick={() => setAccountAge(a.id)}
+                      className={cls(
+                        'h-10 rounded-xl border text-[13px] font-medium transition',
+                        accountAge === a.id
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {a.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1 — Country + focus regions */}
+        {step === 1 && (
+          <div className="fade-up">
+            <Eyebrow color="text-ultra">Where</Eyebrow>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
+              Your country & focus.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-8">
+              Where you operate, and the regions you want to compare against. We use this to prioritise platforms (e.g. Snapchat for the Gulf, YouTube in Pakistan) and surface competitor signals.
+            </p>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Your country</label>
+                <select
+                  value={country}
+                  onChange={e => setCountry(e.target.value)}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition appearance-none"
+                >
+                  {COUNTRIES.map(([id, label]) => (
+                    <option key={id} value={id}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-medium mb-2 text-mute dark:text-muteDark">
+                  Focus regions <span className="text-[11px] text-mute dark:text-muteDark">— who you want to compare against</span>
+                </label>
+
+                <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Regions</div>
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  {REGION_PRESETS.map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => toggleFocus(id)}
+                      className={cls(
+                        'h-8 px-3 rounded-full text-[12.5px] font-medium border transition',
+                        focusRegions.includes(id)
+                          ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                          : 'border-line dark:border-lineDark hover:border-ink/30'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Specific countries</div>
+                <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto pr-1">
+                  {COUNTRIES.filter(([id]) => id !== 'GLOBAL').map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => toggleFocus(id)}
+                      className={cls(
+                        'h-8 px-3 rounded-full text-[12px] font-medium border transition',
+                        focusRegions.includes(id)
+                          ? 'bg-ultra text-white border-ultra'
+                          : 'border-line dark:border-lineDark hover:border-ink/30 text-mute dark:text-muteDark'
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-mute dark:text-muteDark mt-2">
+                  {focusRegions.length === 0 ? 'No focus regions selected — that\'s fine, you can add them later in Settings.' : `${focusRegions.length} selected`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2 — Tier intent + promo code (trial pre-pick) */}
+        {step === 2 && (
+          <div className="fade-up">
+            <Eyebrow color="text-ultra">Your plan</Eyebrow>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mt-3 mb-3">
+              Pick where you're headed.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-8">
+              Your 7-day trial gives you everything Mashal collects. Tell us what you're planning to upgrade to — we'll tune your brief and the locked-feature copy to match.
+            </p>
+
+            <div className="grid sm:grid-cols-3 gap-2.5 mb-7">
+              {[
+                { id: 'creator', label: 'Creator', price: '$15/mo', sub: '5 accounts · 5 competitors · daily brief · solo' },
+                { id: 'brand',   label: 'Brand',   price: '$99/mo', sub: '7 accounts · 10 competitors · 3 team seats, unlimited Viewer · daily brief, ads' },
+                { id: 'agency',  label: 'Agency',  price: '$449/mo', sub: '~100 accounts · 30 competitors · 10 team seats, unlimited Viewer · white-label, ads' },
+              ].map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => { setIntentTier(t.id); setTierTouched(true); }}
+                  className={cls(
+                    'p-4 rounded-2xl border text-left transition relative',
+                    intentTier === t.id
+                      ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                      : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
+                  )}
+                >
+                  {t.id === 'brand' && (
+                    <span className={cls(
+                      'absolute -top-2 right-3 inline-flex items-center px-2 h-5 rounded-full text-[9.5px] font-mono uppercase tracking-[0.12em] font-medium',
+                      intentTier === t.id ? 'bg-lime text-ink' : 'bg-lime text-ink'
+                    )}>Popular</span>
+                  )}
+                  <div className="text-[14px] font-semibold">{t.label}</div>
+                  <div className={cls('text-[15px] font-mono mt-0.5', intentTier === t.id ? '' : 'text-mute dark:text-muteDark')}>{t.price}</div>
+                  <div className={cls('text-[11.5px] mt-2 leading-snug', intentTier === t.id ? 'text-paper/70 dark:text-ink/70' : 'text-mute dark:text-muteDark')}>{t.sub}</div>
+                </button>
+              ))}
+            </div>
+
+            <div>
+              <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">
+                Promo code <span className="text-[11px] text-mute dark:text-muteDark">— optional</span>
+              </label>
+              <input
+                type="text"
+                value={promoCode}
+                onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] font-mono tracking-[0.05em] focus:outline-none focus:border-ultra transition"
+                placeholder="BETA50"
+                maxLength={32}
+              />
+              <p className="text-[11.5px] text-mute dark:text-muteDark mt-1.5">
+                We'll apply this at checkout when you upgrade. Trial features stay the same regardless.
+              </p>
+            </div>
+
+            <div className="mt-7 rounded-2xl bg-chalk/60 dark:bg-coalsoft/60 p-4 text-[12.5px] text-mute dark:text-muteDark leading-relaxed">
+              <div className="flex items-start gap-2.5">
+                <Icon name="clock" className="w-4 h-4 mt-0.5 text-ultra dark:text-lime flex-shrink-0" />
+                <div>
+                  <div className="font-semibold text-ink dark:text-paper mb-0.5">During the 7-day trial</div>
+                  1 workspace · 2 social accounts · 2 competitors · scrape-only data · last 10 posts per account on first fetch. Upgrade any time to unlock the full {intentTier.charAt(0).toUpperCase() + intentTier.slice(1)} tier.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Step 3 — Done */}
+        {step === 3 && (
+          <div className="fade-up text-center py-8">
+            <div className="w-20 h-20 mx-auto rounded-full bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-7">
+              <Icon name="check" className="w-10 h-10" stroke={2.5} />
+            </div>
+            <h1 className="font-display text-[40px] sm:text-[52px] leading-[1] font-semibold tracking-tightest mb-3">
+              You're in.
+            </h1>
+            <p className="text-[15px] text-mute dark:text-muteDark mb-2 max-w-md mx-auto">
+              Your workspace is set up. Head to Settings to connect your social accounts — that's where the intelligence starts.
+            </p>
+            <p className="text-[14px] text-ultra dark:text-lime mb-8">
+              Your first brief will generate once accounts are connected.
+            </p>
+            <Btn variant="ink" size="lg" onClick={onDone}>
+              Open dashboard <Icon name="arrowRight" className="w-4 h-4" />
+            </Btn>
+          </div>
+        )}
+      </div>
+
+      {/* Footer nav */}
+      {step < 3 && (
+        <div className="border-t border-line dark:border-lineDark bg-chalk/50 dark:bg-coal/50 backdrop-blur">
+          <div className="max-w-2xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+            <button
+              onClick={() => step > 0 && setStep(s => s - 1)}
+              className={cls('text-[14px] font-medium', step === 0 ? 'opacity-30 pointer-events-none' : 'hover:underline')}
+            >
+              ← Back
+            </button>
+            <Btn variant="ink" size="md" onClick={handleContinue} disabled={saving}>
+              {saving ? 'Saving...' : 'Continue'} <Icon name="arrowRight" className="w-4 h-4" />
+            </Btn>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { Auth, Onboarding, sbAuth, checkMagicLinkHash, restoreSession });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 2796-3057
+// ═════════════════════════════════════════════════════════════════════════
+// Mashal Shell — TopBar, AccountBar, MobileNav
+
+const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, userEmail, theme, toggleTheme }) => {
+  // Convenience: jump to Settings + a named anchor section. Falls back to
+  // setActive when the prop isn't wired (older shells).
+  const goSettings = (anchor) => {
+    if (typeof navigateToSettings === 'function') return navigateToSettings(anchor);
+    setActive('Settings');
+  };
+  // Ads is a Brand/Agency feature — Creator never sees the tab. During
+  // trial, ws.tier mirrors trial_intent_tier, so a Creator-intent trial
+  // also hides Ads, while Brand/Agency-intent trials still see it.
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const showAds = tierKey === 'brand' || tierKey === 'agency';
+  const tabs = ['Brief','Stats', ...(showAds ? ['Ads'] : []),'Content','Intel','Actions','Growth','Targets','Reports','Settings'];
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [wsOpen, setWsOpen]     = React.useState(false);
+  const menuRef = React.useRef(null);
+  const wsRef   = React.useRef(null);
+
+  // Workspaces hydrated by /api/brief into D.workspaces; fall back to a
+  // single-entry list using the current name so the chip always renders.
+  const workspaces = (D.workspaces && D.workspaces.length)
+    ? D.workspaces
+    : [{ id: null, name: D.workspace }];
+  const activeWs = workspaces.find(w => w.id === D.activeWorkspaceId) || workspaces[0];
+
+  // Click outside closes either dropdown
+  React.useEffect(() => {
+    if (!menuOpen && !wsOpen) return;
+    const onDoc = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+      if (wsRef.current && !wsRef.current.contains(e.target)) setWsOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [menuOpen, wsOpen]);
+
+  return (
+    <header className="sticky top-0 z-30 backdrop-blur-md bg-paper/85 dark:bg-ink/85 border-b border-line dark:border-lineDark">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <MashalLogo className="h-6" />
+          <div className="relative hidden md:block" ref={wsRef}>
+            <button
+              onClick={() => setWsOpen(o => !o)}
+              className="inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark text-[11px] font-mono hover:border-ink/30 dark:hover:border-paper/30 transition"
+              title="Switch workspace"
+            >
+              <MashalDot color="bg-lime" size="w-1.5 h-1.5" />
+              <span className="max-w-[160px] truncate">{activeWs?.name || D.workspace}</span>
+              <Icon name="chevDown" className="w-3 h-3 opacity-60" />
+            </button>
+            {wsOpen && (
+              <div className="absolute left-0 top-full mt-1.5 min-w-[240px] rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft shadow-pop overflow-hidden z-50">
+                <div className="px-3 pt-2.5 pb-1 text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Workspaces</div>
+                {workspaces.map(w => {
+                  const isActive = activeWs && w.id === activeWs.id;
+                  return (
+                    <button
+                      key={w.id || 'default'}
+                      onClick={() => { setWsOpen(false); if (!isActive) window.switchWorkspace(w.id); }}
+                      className={cls(
+                        'w-full text-left px-3 py-2 text-[13px] flex items-center justify-between gap-2',
+                        isActive ? 'bg-ink/5 dark:bg-paper/5' : 'hover:bg-ink/5 dark:hover:bg-paper/5'
+                      )}
+                    >
+                      <span className="truncate">{w.name || 'Untitled'}</span>
+                      {isActive && <Icon name="check" className="w-3.5 h-3.5 text-limeDeep dark:text-lime flex-shrink-0" />}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => { setWsOpen(false); goSettings('workspaces'); }}
+                  className="w-full text-left px-3 py-2.5 text-[12.5px] text-ultra dark:text-lime hover:bg-ink/5 dark:hover:bg-paper/5 border-t border-line dark:border-lineDark flex items-center gap-1.5"
+                >
+                  <Icon name="plus" className="w-3.5 h-3.5" /> Manage workspaces
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        <nav className="hidden md:flex items-center gap-0.5">
+          {tabs.map(t => (
+            <button key={t} onClick={() => setActive(t)} className={cls('h-9 px-3 rounded-lg text-[13px] font-medium transition', active === t ? 'bg-ink text-paper dark:bg-paper dark:text-ink' : 'hover:bg-ink/5 dark:hover:bg-paper/5')}>{t}</button>
+          ))}
+        </nav>
+        <div className="flex items-center gap-1.5">
+          <button onClick={toggleTheme} className="w-9 h-9 rounded-full hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center justify-center" title="Toggle theme">
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} className="w-4 h-4" />
+          </button>
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="w-9 h-9 rounded-full bg-ink text-paper dark:bg-paper dark:text-ink font-mono text-[11px] font-medium flex items-center justify-center hover:opacity-90 transition"
+              title="Account"
+            >
+              {D.user.initials}
+            </button>
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 min-w-[220px] rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft shadow-pop overflow-hidden z-50">
+                <div className="px-4 py-3 border-b border-line dark:border-lineDark">
+                  <div className="text-[12px] text-mute dark:text-muteDark">Signed in as</div>
+                  <div className="text-[13px] font-medium truncate">{userEmail || D.user.name}</div>
+                </div>
+                <button
+                  onClick={() => { setMenuOpen(false); goSettings('profile'); }}
+                  className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-ink/5 dark:hover:bg-paper/5 flex items-center gap-2"
+                >
+                  <Icon name="settings" className="w-3.5 h-3.5" /> Settings
+                </button>
+                <button
+                  onClick={() => { setMenuOpen(false); onSignOut(); }}
+                  className="w-full text-left px-4 py-2.5 text-[13px] hover:bg-ink/5 dark:hover:bg-paper/5 text-magenta flex items-center gap-2 border-t border-line dark:border-lineDark"
+                >
+                  <Icon name="arrowRight" className="w-3.5 h-3.5" /> Sign out
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+});
+
+// Filter to only show actually-connected platforms. If nothing is connected,
+// hide the bar entirely so the dashboard doesn't show ghost tabs.
+const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand, setActiveBrand, connectedPlatforms, onGoConnect }) => {
+  const PLATFORM_LABEL = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X', sc: 'Snapchat' };
+  // Map connected platform keys (ig/tt/yt/li/fb/x/sc) to display rows, pulling
+  // handle from the hydrated D.accounts shape so it stays in sync with /api/brief.
+  const connectedAccs = (connectedPlatforms || []).map(id => {
+    const a = D.accounts?.[id] || {};
+    const label = a.handle || a.name || PLATFORM_LABEL[id] || id;
+    return { id, label, sub: PLATFORM_LABEL[id] || id };
+  });
+
+  if (!connectedAccs.length) return null; // nothing to show
+
+  const accs = [
+    { id: 'all', label: 'All accounts', sub: `${connectedAccs.length} connected` },
+    ...connectedAccs,
+  ];
+
+  // Brand-axis chips: the user's own brand + every tracked competitor.
+  // Clicking a chip filters competitor-aware screens (Top Competitor Content)
+  // to just that brand. Hidden when no competitors are tracked.
+  const competitors = D.competitors || [];
+  const brandChips = competitors.length > 0 ? [
+    { id: null, label: 'All brands', sub: `${competitors.length + 1} tracked` },
+    ...competitors.map(c => ({
+      id: c.id,
+      label: c.display_name || c.handle,
+      handle: c.handle,
+      platform: c.platform,
+      followers: c.followers,
+    })),
+  ] : [];
+
+  // Compact follower-count formatter for the chip badge.
+  const fmtFollowers = (n) => {
+    if (n == null) return null;
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(n);
+  };
+
+  return (
+    <div className="hidden md:block border-b border-line dark:border-lineDark bg-paper dark:bg-ink">
+      {/* Platform-axis row */}
+      <div className="max-w-[1440px] mx-auto px-6 flex items-center gap-1 overflow-x-auto no-scrollbar h-12">
+        {accs.map(a => (
+          <button key={a.id} onClick={() => setActivePlatform(a.id)} className={cls('flex items-center gap-2 h-9 px-3 rounded-lg text-[12.5px] font-medium whitespace-nowrap transition border', activePlatform === a.id ? 'bg-chalk dark:bg-coalsoft border-ink/15 dark:border-paper/15' : 'border-transparent hover:bg-ink/5 dark:hover:bg-paper/5')}>
+            {a.id !== 'all' && <Plat p={a.id} className="w-4 h-4" />}
+            {a.id === 'all' && <div className="w-4 h-4 rounded-sm bg-gradient-to-br from-ultra via-magenta to-lime" />}
+            <span>{a.label}</span>
+            <span className="text-mute dark:text-muteDark text-[11px]">{a.sub}</span>
+          </button>
+        ))}
+        <button
+          onClick={onGoConnect}
+          className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-[12.5px] font-medium text-ultra dark:text-lime ml-auto whitespace-nowrap hover:bg-ultra/5"
+        >
+          <Icon name="plus" className="w-3.5 h-3.5" /> Connect account
+        </button>
+      </div>
+
+      {/* Brand-axis row — only renders when competitors are tracked */}
+      {brandChips.length > 0 && (
+        <div className="max-w-[1440px] mx-auto px-6 flex items-center gap-1 overflow-x-auto no-scrollbar h-10 border-t border-line/60 dark:border-lineDark/60">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mr-2 flex-shrink-0">Brands</span>
+          {brandChips.map(c => {
+            const active = activeBrand === c.id;
+            return (
+              <button
+                key={c.id ?? 'all-brands'}
+                onClick={() => setActiveBrand(c.id)}
+                className={cls(
+                  'flex items-center gap-1.5 h-7 px-2.5 rounded-full text-[11.5px] font-medium whitespace-nowrap transition border',
+                  active
+                    ? 'bg-ultra text-white border-ultra'
+                    : 'bg-paper dark:bg-ink border-line dark:border-lineDark hover:border-ultra/40'
+                )}
+              >
+                {c.platform && <Plat p={c.platform} className="w-3 h-3" />}
+                <span>{c.label}</span>
+                {c.followers != null && (
+                  <span className={cls('font-mono text-[10px]', active ? 'text-white/70' : 'text-mute dark:text-muteDark')}>
+                    {fmtFollowers(c.followers)}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+});
+
+const MobileNav = React.memo(({ active, setActive }) => {
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const showAds = tierKey === 'brand' || tierKey === 'agency';
+  const tabs = [
+    { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
+    ...(showAds ? [{ id: 'Ads', icon: 'bolt' }] : []),
+    { id: 'Content', icon: 'play' },
+    { id: 'Intel', icon: 'sparkle' }, { id: 'Growth', icon: 'trending' },
+    { id: 'Reports', icon: 'layers' }
+  ];
+  return (
+    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
+      <div className={cls('grid px-1 py-1.5', showAds ? 'grid-cols-7' : 'grid-cols-6')}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setActive(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
+            <Icon name={t.icon} className="w-4 h-4" />
+            <span className="text-[10px] font-medium">{t.id}</span>
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+});
+
+const ScreenHeader = ({ eyebrow, title, sub, right }) => (
+  <div className="mb-6 sm:mb-8 fade-up">
+    <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+      <div>
+        {eyebrow && <div className="mb-2"><Eyebrow color="text-magenta">{eyebrow}</Eyebrow></div>}
+        <h1 className="font-display text-[32px] sm:text-[44px] leading-[1] font-semibold tracking-tightest">{title}</h1>
+        {sub && <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-2 max-w-xl">{sub}</p>}
+      </div>
+      {right}
+    </div>
+  </div>
+);
+
+Object.assign(window, { TopBar, AccountBar, MobileNav, ScreenHeader });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 3058-3569
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 1 — Morning Brief
+// Returns "Good morning", "Good afternoon", "Good evening", "Good night" based
+// on the browser's local hour. Cheaper than a per-render Date object — runs
+// once per BriefScreen mount + every refreshBrief tick.
+const greetingFor = (hour) => {
+  if (hour < 5)  return 'Good night';
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  if (hour < 22) return 'Good evening';
+  return 'Good night';
+};
+
+const BriefScreen = ({ activePlatform, setTab }) => {
+  // Use the actual first name when we have one; otherwise just "there".
+  // We never want to greet someone by their email prefix.
+  const rawName = (D.user.firstName || D.user.name || '').split(' ')[0];
+  const looksLikeEmail = rawName.includes('@') || rawName.includes('.');
+  const firstName = (!rawName || looksLikeEmail) ? 'there' : rawName;
+  const greeting = `${greetingFor(new Date().getHours())}, ${firstName}.`;
+  const connected = D.connectedPlatforms || [];
+  const isAll = activePlatform === 'all' || !activePlatform;
+
+  // Platform-scoped slices. When a specific tab is active, everything narrows
+  // to just that platform's data: posts, signals, ads, follower stat card.
+  const scopedPosts   = isAll ? (D.posts   || []) : (D.posts   || []).filter(p => p.platform === activePlatform);
+  const scopedSignals = isAll ? (D.signals || []) : (D.signals || []).filter(s => s.platform === activePlatform || s.platform === 'all');
+  const signalCount   = scopedSignals.length;
+  const sub = signalCount
+    ? `${signalCount} signal${signalCount === 1 ? '' : 's'} from your last 30 days${isAll ? '' : ` on ${platformLabel[activePlatform] || activePlatform}`}.`
+    : 'Your command center.';
+
+  // Map platforms to display stat cards using real numbers from the hydrated D.
+  const PLATFORM_STAT = {
+    ig: { label: 'IG followers',    value: D.accounts?.ig?.followers, icon: 'users', color: '#D62976' },
+    tt: { label: 'TikTok followers', value: D.accounts?.tt?.followers, icon: 'users', color: '#FF2D6A' },
+    yt: { label: 'YT subscribers',  value: D.accounts?.yt?.subs,      icon: 'play',  color: '#FF0000' },
+    li: { label: 'LinkedIn',        value: D.accounts?.li?.connections, icon: 'message', color: '#0A66C2' },
+    fb: { label: 'Facebook',        value: D.accounts?.fb?.followers, icon: 'users', color: '#1877F2' },
+    x:  { label: 'X / Twitter',     value: 0,                          icon: 'users', color: '#0A0A0B' },
+  };
+  const statCards = isAll
+    ? connected.map(p => PLATFORM_STAT[p]).filter(Boolean).slice(0, 4)
+    : (PLATFORM_STAT[activePlatform] ? [PLATFORM_STAT[activePlatform]] : []);
+
+  // Pick a "critical signal" to promote into a red-tinted hero alert above
+  // the verdict — only when something genuinely warning-level exists in the
+  // current scope. We treat impact='Strategic Warning' or kind='warning' as
+  // critical. Falling back to null hides the alert entirely.
+  const criticalSignal = scopedSignals.find(s =>
+    s.kind === 'warning'
+    || /warning|critical|risk/i.test(String(s.impact || ''))
+  ) || null;
+
+  // Score-factor chips: short bullets the AI returns alongside the verdict.
+  // Classify "↑ X up Y%" / "✓ healthy" as positive; "↓ X down Y%" / "⚠"
+  // as negative; everything else as neutral. Drives chip color.
+  const verdictChips = (D.verdict?.score_factors || []).slice(0, 5).map((t, i) => {
+    const s = String(t || '').trim();
+    const tone =
+      /^(↓|⚠|↘|❌|✗|🔴)/.test(s)         ? 'neg' :
+      /\bdown\b|\bbelow\b|\bweak\b|\blag/i.test(s) ? 'neg' :
+      /^(↑|✓|✅|🟢|⬆)/.test(s)            ? 'pos' :
+      /\bup\b|\babove\b|\bstrong\b|\bhealthy\b|\bgrow/i.test(s) ? 'pos' :
+      'neu';
+    return { id: i, text: s, tone };
+  });
+
+  // Real aggregates for the right-side panel (no fake numbers). Scoped to
+  // the active tab so individual platform views show that platform's numbers.
+  const totalReach = scopedPosts.reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalEngActions = scopedPosts.reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const avgEng = totalReach
+    ? Math.round((totalEngActions / totalReach) * 10000) / 100
+    : 0;
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={(() => {
+          const v = D.verdict;
+          if (!v?.generated_at) return `Today · ${D.lastSync || '—'}`;
+          // Display in the workspace timezone when one is explicitly set;
+          // otherwise (or if it's still the default UTC) fall back to the
+          // viewer's browser timezone so the "generated 5:29 PM" line
+          // matches their actual wall clock.
+          try {
+            let tz = v.timezone;
+            if (!tz || tz === 'UTC') {
+              tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+            }
+            const dt = new Date(v.generated_at);
+            const day = dt.toLocaleDateString('en-US', { timeZone: tz, weekday: 'long', month: 'long', day: 'numeric' });
+            const time = dt.toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+            return `Morning Brief · ${day} · generated ${time}`;
+          } catch {
+            return `Morning Brief · ${new Date(v.generated_at).toLocaleString()}`;
+          }
+        })()}
+        title={greeting}
+        sub={sub}
+        right={<Pill color="ultra"><MashalDot color="bg-white" size="w-1.5 h-1.5" /> Live</Pill>}
+      />
+
+      {/* Critical alert — promotes a warning-level signal to a red-tinted
+          hero above the verdict. Hidden when nothing in scope qualifies. */}
+      {criticalSignal && (
+        <div className="mb-4 sm:mb-5 rounded-2xl border border-magenta/30 bg-magenta/8 dark:bg-magenta/12 p-4 sm:p-5 flex items-start gap-4 fade-up">
+          <div className="w-10 h-10 rounded-xl bg-magenta text-white flex items-center justify-center flex-shrink-0">
+            <Icon name="bolt" className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-magenta font-semibold mb-1">
+              Critical · {criticalSignal.impact || 'Strategic Warning'}
+            </div>
+            <h3 className="font-display text-[16px] sm:text-[18px] font-semibold tracking-tight leading-snug mb-1">
+              {criticalSignal.title}
+            </h3>
+            <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed line-clamp-2">
+              {criticalSignal.body}
+            </p>
+          </div>
+          <div className="hidden sm:flex flex-col items-end gap-1 flex-shrink-0">
+            <Pill color="magentaSoft">Act now</Pill>
+            {criticalSignal.platform && criticalSignal.platform !== 'all' && (
+              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                {platformLabel[criticalSignal.platform] || criticalSignal.platform}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5 sm:mb-6">
+        <div className="lg:col-span-8 rounded-2xl bg-ink text-paper p-6 sm:p-8 relative overflow-hidden fade-up">
+          <div className="absolute -right-16 -top-16 w-56 h-56 rounded-full bg-ultra/25 blur-2xl" />
+          <div className="absolute -right-10 bottom-0 w-40 h-40 rounded-full bg-magenta/20 blur-2xl" />
+          <div className="relative">
+            {/* AI Verdict pill — switches to "Generating" while the app is
+                running the first brief for a fresh workspace. The label
+                lets the user know the empty state is temporary, not stuck. */}
+            {D.verdict ? (
+              <Pill color="lime" className="!h-5"><Icon name="sparkle" className="w-3 h-3" /> AI Verdict · Live</Pill>
+            ) : (
+              <Pill color="ultraSoft" className="!h-5">
+                <span className="w-2 h-2 rounded-full bg-ultra animate-pulse" />
+                {window.__pulseBriefGenerating ? 'Generating · usually under 30s' : 'AI Verdict · pending first sync'}
+              </Pill>
+            )}
+            <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">
+              {D.verdict?.title
+                || (window.__pulseBriefGenerating
+                      ? (window.__pulseBriefPartial?.title || 'Drafting your first brief…')
+                      : 'Your first brief is generating.')}
+            </h2>
+            {verdictChips.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-4">
+                {verdictChips.map(c => (
+                  <span
+                    key={c.id}
+                    className={cls(
+                      'inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-mono border',
+                      c.tone === 'pos' ? 'bg-lime/15 text-lime border-lime/30' :
+                      c.tone === 'neg' ? 'bg-magenta/15 text-magenta border-magenta/30' :
+                                          'bg-paper/8 text-paper/70 border-paper/15'
+                    )}
+                  >{c.text}</span>
+                ))}
+              </div>
+            )}
+            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body
+              || (window.__pulseBriefGenerating && window.__pulseBriefPartial?.body)
+              || 'Mashal will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
+            {(D.todayActions || []).length > 0 && (
+              <div className="grid sm:grid-cols-3 gap-2.5">
+                {D.todayActions.map(a => (
+                  <div key={a.id} className="rounded-xl bg-paper/10 backdrop-blur p-4 border border-paper/10">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="w-7 h-7 rounded-lg bg-lime/15 text-lime flex items-center justify-center"><Icon name={a.icon} className="w-3.5 h-3.5" /></div>
+                      <span className="text-[10px] font-mono uppercase tracking-[0.1em] text-paper/50">{a.when}</span>
+                    </div>
+                    <div className="text-[13px] font-medium mb-1">{a.title}</div>
+                    <div className="text-[11.5px] text-paper/60 leading-snug">{a.body}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Right column — rich stat cards backed by D.briefMetrics */}
+        <div className="lg:col-span-4 grid grid-cols-2 lg:grid-cols-1 gap-3">
+          <ReachCard />
+          <EngagementCard />
+          <AdsPreviewCard setTab={setTab} />
+          <SignalsCard setTab={setTab} />
+        </div>
+      </div>
+
+      {/* Connected-platform follower cards — rich per-account version
+          backed by D.accounts (followers, WoW delta, 7-day history, eng rate). */}
+      {connected.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+          {connected.slice(0, 4).map(key => (
+            <RichFollowerCard key={key} accountKey={key} label={`${platformLabel[key] || key} ${key === 'yt' ? 'subs' : 'followers'}`} />
+          ))}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-8">
+          <SectionHead eyebrow="Emerging signals" title={isAll ? "What's moving today" : `What's moving on ${platformLabel[activePlatform] || activePlatform}`} />
+          <div className="space-y-2.5">
+            {scopedSignals.slice(0, 6).map(s => <SignalRow key={s.id} signal={s} />)}
+            {scopedSignals.length === 0 && (
+              <div className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-6 text-center">
+                <p className="text-[13px] text-mute dark:text-muteDark">No signals yet — they'll appear after your first AI brief generates.</p>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="lg:col-span-4 space-y-4">
+          {/* Pipeline status — only platforms actually connected */}
+          <Card>
+            <h3 className="font-display text-[16px] font-semibold tracking-tight mb-3">Pipeline status</h3>
+            <div className="space-y-2.5">
+              {connected.length === 0 && (
+                <div className="text-[12.5px] text-mute dark:text-muteDark">No accounts connected yet.</div>
+              )}
+              {connected.map(p => {
+                const labelMap = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X', sc: 'Snapchat' };
+                return (
+                  <div key={p} className="flex justify-between items-center text-[12.5px]">
+                    <span>{labelMap[p] || p} sync</span>
+                    <span className="font-mono text-emerald-600 dark:text-lime">Active</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-between items-center text-[12.5px] pt-2 border-t border-line dark:border-lineDark">
+                <span>Next auto-brief</span>
+                <span className="font-mono text-mute dark:text-muteDark">{D.nextSync || '06:00 UTC'}</span>
+              </div>
+            </div>
+          </Card>
+          {typeof D.intelScore === 'number' && D.intelScore > 0 && (
+            <Card className="bg-ink text-paper border-transparent">
+              <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+              <div className="font-display text-[48px] font-semibold leading-none tracking-tightest mt-2">{D.intelScore}<span className="text-[20px] text-paper/40">/100</span></div>
+              <div className="text-[12px] text-paper/60 mt-2">Updated with each brief</div>
+            </Card>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SignalRow = ({ signal: s }) => {
+  const kindColor = { viral: 'magenta', gap: 'ultra', collab: 'amber', engagement: 'lime', warning: 'magenta', audience: 'ultra', timing: 'lime', trend: 'magenta' };
+  const iconMap = { viral: 'flame', gap: 'layers', collab: 'users', engagement: 'heart', warning: 'bolt', audience: 'user', timing: 'clock', trend: 'trending' };
+  const c = kindColor[s.kind];
+  return (
+    <div className="row-pad rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 hover:border-ink/20 dark:hover:border-paper/20 transition-all flex items-start gap-4 group">
+      <div className={cls('w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center', c === 'magenta' ? 'bg-magenta/15 text-[#A8174A] dark:text-magenta' : c === 'ultra' ? 'bg-ultra/15 text-[#3B2EBF] dark:text-ultra' : c === 'lime' ? 'bg-lime/25 text-[#5E7A00] dark:text-limeDeep' : 'bg-amber/15 text-[#8A5600] dark:text-amber')}>
+        <Icon name={iconMap[s.kind]} className="w-4 h-4" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">{s.label}</span>
+          <span className="text-mute/40">·</span>
+          {s.platform !== 'all' && <Plat p={s.platform} className="w-3 h-3" />}
+          <span className="text-[11px] text-mute dark:text-muteDark">{platformLabel[s.platform]}</span>
+        </div>
+        <h4 className="font-display text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug mb-1">{s.title}</h4>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{s.body}</p>
+        {s.action && (
+          <p className="text-[11.5px] text-ultra dark:text-lime mt-2 font-medium">→ {s.action}</p>
+        )}
+      </div>
+      <div className="hidden sm:flex flex-col items-end gap-2">
+        <Pill color={s.impact.includes('High') ? 'magentaSoft' : s.impact.includes('Warning') ? 'amber' : 'ultraSoft'}>{s.impact}</Pill>
+        <button className="text-mute hover:text-ink dark:hover:text-paper"><Icon name="bookmark" className="w-3.5 h-3.5" /></button>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Brief stat cards — backed by D.briefMetrics so each card stays packed
+// with real, derived context instead of a number-plus-padding. Fields are
+// shown only when the underlying data exists; placeholders are NEVER faked.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Compact follower-count formatter for badges and inline values.
+const formatCount = (n) => {
+  if (n == null) return '—';
+  if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+  if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+  return String(Math.round(n));
+};
+
+// Tiny inline sparkline that takes an array of numbers and renders a smooth
+// path. Returns null on empty input so callers can render-or-skip cleanly.
+const InlineSpark = ({ data, color = '#6B5BFF', height = 28 }) => {
+  if (!data || data.length < 2) return null;
+  const min = Math.min(...data), max = Math.max(...data);
+  const range = Math.max(1, max - min);
+  const w = 100, h = height;
+  const points = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - ((v - min) / range) * (h - 4) - 2;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const path = `M${points[0]} L${points.slice(1).join(' L')}`;
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="w-full" style={{ height }}>
+      <path d={path} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={`${path} L${w},${h} L0,${h} Z`} fill={color} fillOpacity="0.08" />
+    </svg>
+  );
+};
+
+const PLATFORM_BRAND = { ig: '#D62976', tt: '#FF2D6A', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2', x: '#0A0A0B', sc: '#FFFC00' };
+
+// Card 1 — Total reach 30d, with per-platform breakdown and WoW delta.
+const ReachCard = () => {
+  const m = D.briefMetrics?.reach;
+  if (!m) return (
+    <Card className="!p-4">
+      <Eyebrow>Total reach 30d</Eyebrow>
+      <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">—</div>
+      <div className="text-[11px] text-mute dark:text-muteDark mt-1">Awaiting first sync</div>
+    </Card>
+  );
+
+  const byPlat = Object.entries(m.by_platform || {})
+    .filter(([_, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const max = byPlat[0]?.[1] || 1;
+  const delta = m.delta_pct;
+
+  return (
+    <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+      <div>
+        <Eyebrow>Total reach 30d</Eyebrow>
+        <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{formatCount(m.total_30d)}</div>
+        <div className="text-[11px] text-mute dark:text-muteDark mt-1">Across all platforms</div>
+      </div>
+      {byPlat.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {byPlat.map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2 text-[11px]">
+              <Plat p={k} className="w-3 h-3 flex-shrink-0" />
+              <div className="flex-1 h-1.5 rounded-full bg-ink/5 dark:bg-paper/5 overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${(v / max) * 100}%`, background: PLATFORM_BRAND[k] || '#6B5BFF' }} />
+              </div>
+              <span className="font-mono text-[10.5px] w-10 text-right text-mute dark:text-muteDark">{formatCount(v)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      {delta != null && (
+        <div className={cls('text-[11px] font-mono mt-3', delta >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+          {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}% vs prev 30d
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// Card 2 — Avg engagement rate with platform split, benchmark, and trend.
+const EngagementCard = () => {
+  const m = D.briefMetrics?.engagement;
+  if (!m) return (
+    <Card className="!p-4">
+      <Eyebrow>Avg eng. rate</Eyebrow>
+      <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">—</div>
+      <div className="text-[11px] text-mute dark:text-muteDark mt-1">Awaiting first sync</div>
+    </Card>
+  );
+
+  const splits = Object.entries(m.by_platform || {})
+    .filter(([_, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const delta = m.delta_pct;
+  const benchmark = m.benchmark_pct;
+
+  return (
+    <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+      <div>
+        <Eyebrow>Avg eng. rate</Eyebrow>
+        <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{m.avg_rate_30d}%</div>
+        <div className="text-[11px] text-mute dark:text-muteDark mt-1">Last 30 days</div>
+      </div>
+      {splits.length > 0 && (
+        <div className="mt-3 space-y-1 text-[11px]">
+          {splits.map(([k, v]) => (
+            <div key={k} className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: PLATFORM_BRAND[k] || '#6B5BFF' }} />
+              <span className="text-mute dark:text-muteDark">{platformLabel[k] || k}</span>
+              <span className="ml-auto font-mono">{v}%</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="mt-3 flex items-center justify-between text-[11px] font-mono">
+        {benchmark != null && (
+          <span className="text-mute dark:text-muteDark">Category avg: {benchmark}%</span>
+        )}
+        {delta != null && (
+          <span className={cls(delta >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+            {delta >= 0 ? '↑' : '↓'} {Math.abs(delta)}%
+          </span>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+// Card 3 — Active signals with severity breakdown + top unread title.
+const SignalsCard = ({ setTab }) => {
+  const m = D.briefMetrics?.signals;
+  if (!m) return (
+    <Card className="!p-4 col-span-2 lg:col-span-1 bg-magenta text-white border-transparent">
+      <Eyebrow color="text-white/70">Active signals</Eyebrow>
+      <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">—</div>
+      <div className="text-[11px] text-white/70 mt-1">None yet</div>
+    </Card>
+  );
+
+  const bd = m.breakdown || {};
+  const dots = [
+    { key: 'critical',  label: 'Critical',  count: bd.critical  || 0, color: '#FFFFFF' },
+    { key: 'high',      label: 'High',      count: bd.high      || 0, color: 'rgba(255,255,255,.8)' },
+    { key: 'strategic', label: 'Strategic', count: bd.strategic || 0, color: 'rgba(255,255,255,.55)' },
+  ].filter(d => d.count > 0);
+
+  return (
+    <Card className="!p-4 col-span-2 lg:col-span-1 bg-magenta text-white border-transparent flex flex-col justify-between min-h-[160px]">
+      <div>
+        <Eyebrow color="text-white/70">Active signals</Eyebrow>
+        <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{m.total}</div>
+        <div className="text-[11px] text-white/70 mt-1">{m.total > 0 ? 'Unread this cycle' : 'None yet'}</div>
+      </div>
+      {dots.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+          {dots.map(d => (
+            <span key={d.key} className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full" style={{ background: d.color }} />
+              <span className="text-white/85">{d.count} {d.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {m.top_unread?.title && (
+        <div className="mt-3">
+          <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-white/55 mb-1">Top priority</div>
+          <p className="text-[12px] leading-snug line-clamp-2 text-white/90">{m.top_unread.title}</p>
+        </div>
+      )}
+      {setTab && m.total > 0 && (
+        <button
+          onClick={() => setTab('Intel')}
+          className="mt-3 text-[11px] font-mono text-white/80 hover:text-white text-left"
+        >View all →</button>
+      )}
+    </Card>
+  );
+};
+
+// Rich follower card — replaces the bare-bones StatCard on Brief for each
+// connected platform. Shows count + WoW delta + 7-day sparkline +
+// per-account engagement rate.
+const RichFollowerCard = ({ platformKey, label, accountKey }) => {
+  const a = D.accounts?.[accountKey] || {};
+  const value = a.followers || a.subs || a.connections || 0;
+  const wow = a.wowFollowers || 0;
+  const history = (a.followerHistory7d || []).map(p => p.followers);
+  const eng = a.engRate30d;
+  const color = PLATFORM_BRAND[accountKey] || '#6B5BFF';
+
+  return (
+    <div className="rounded-2xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 min-h-[140px] flex flex-col">
+      <div className="flex items-center gap-2 mb-1">
+        <Plat p={accountKey} className="w-4 h-4" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute dark:text-muteDark">{label}</span>
+      </div>
+      <div className="font-display text-[28px] leading-none font-semibold tracking-tighter mt-1">{formatCount(value)}</div>
+      {(wow !== 0 || eng > 0) && (
+        <div className="flex items-center gap-2 text-[11px] font-mono mt-1.5">
+          {wow !== 0 && (
+            <span className={cls(wow > 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+              {wow > 0 ? '↑' : '↓'} {Math.abs(wow)} this week
+            </span>
+          )}
+          {eng > 0 && (
+            <span className="text-mute dark:text-muteDark">· {eng}% eng</span>
+          )}
+        </div>
+      )}
+      {history.length >= 2 && (
+        <div className="mt-auto pt-3">
+          <InlineSpark data={history} color={color} height={32} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { BriefScreen, SignalRow, ReachCard, EngagementCard, SignalsCard, RichFollowerCard, InlineSpark, formatCount });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 3570-3939
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 2 — Overview / Stats
+const OverviewScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const filtered = isAll ? (D.posts || []) : (D.posts || []).filter(p => p.platform === activePlatform);
+
+  // Pick the right accounts entry for the stat cards. When 'all' is selected
+  // we sum across what's connected; otherwise we use the per-platform record.
+  const ACCT_FIELDS = {
+    ig: { reach: 'totalViews4W', eng: 'engRate4W', label: 'Instagram' },
+    tt: { reach: 'totalPlays',   eng: 'engRate4W', label: 'TikTok' },
+    yt: { reach: 'totalViews',   eng: 'engRate4W', label: 'YouTube' },
+    fb: { reach: 'totalViews4W', eng: 'engRate4W', label: 'Facebook' },
+    li: { reach: 'totalViews4W', eng: 'engRate4W', label: 'LinkedIn' },
+  };
+  const totalReach = filtered.reduce((s, p) => s + Number(p.views || 0), 0);
+  const totalEngActs = filtered.reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const avgEngRate = totalReach ? Math.round((totalEngActs / totalReach) * 10000) / 100 : 0;
+
+  // Engagement mix — likes / comments / saves / shares as a % of the total
+  // engagement actions for the active scope.
+  const totalActs = totalEngActs || 1;
+  const engMix = [
+    { l: 'Likes',    pct: Math.round((filtered.reduce((s, p) => s + Number(p.likes || 0),    0) / totalActs) * 100), c: '#FF2D6A' },
+    { l: 'Comments', pct: Math.round((filtered.reduce((s, p) => s + Number(p.comments || 0), 0) / totalActs) * 100), c: '#6B5BFF' },
+    { l: 'Saves',    pct: Math.round((filtered.reduce((s, p) => s + Number(p.saves || 0),    0) / totalActs) * 100), c: '#D6FF3E' },
+    { l: 'Shares',   pct: Math.round((filtered.reduce((s, p) => s + Number(p.shares || 0),   0) / totalActs) * 100), c: '#FFB23E' },
+  ];
+
+  // Platform mix card (left column) — shares of total reach across the
+  // user's connected platforms. Only relevant on the 'all' tab.
+  const platformReachMix = (() => {
+    if (!isAll) return null;
+    const byP = {};
+    for (const p of (D.posts || [])) {
+      byP[p.platform] = (byP[p.platform] || 0) + Number(p.views || 0);
+    }
+    const sum = Object.values(byP).reduce((a, b) => a + b, 0) || 1;
+    const COLORS = { ig: '#D62976', tt: '#FF2D6A', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2', x: '#0A0A0B' };
+    const LABELS = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', x: 'X' };
+    return Object.entries(byP)
+      .map(([p, v]) => ({ p, label: LABELS[p] || p, color: COLORS[p] || '#9A958A', pct: Math.round((v / sum) * 100) }))
+      .sort((a, b) => b.pct - a.pct);
+  })();
+
+  const scopeLabel = isAll ? 'all platforms' : (ACCT_FIELDS[activePlatform]?.label || activePlatform);
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader eyebrow="Omni-channel" title="Overview" sub="Real-time intelligence aggregated across your ecosystem." right={<Btn variant="outline" size="sm"><Icon name="download" className="w-3.5 h-3.5" /> Export</Btn>} />
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-4 space-y-4">
+          {typeof D.intelScore === 'number' && D.intelScore > 0 && (
+            <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+              <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-ultra/30 blur-2xl" />
+              <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+              <div className="font-display text-[64px] font-semibold leading-none tracking-tightest mt-3">{D.intelScore}<span className="text-[24px] text-paper/40">/100</span></div>
+              <div className="text-[12px] text-paper/60 mt-2">{D.user?.plan || 'Creator'} plan · refreshed with each brief</div>
+            </Card>
+          )}
+          {isAll && platformReachMix && platformReachMix.length > 0 && (
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Platform mix</h3>
+              <p className="text-[11px] text-mute dark:text-muteDark mb-3">Share of total reach last 30d</p>
+              <div className="space-y-3">
+                {platformReachMix.map(r => (
+                  <div key={r.p}>
+                    <div className="flex justify-between items-center text-[12px] mb-1.5"><span className="flex items-center gap-1.5"><Plat p={r.p} className="w-3 h-3" /> {r.label}</span><span className="font-mono">{r.pct}%</span></div>
+                    <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.color }} /></div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+          {totalActs > 1 && (
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Engagement mix · {scopeLabel}</h3>
+              {engMix.map(r => (
+                <div key={r.l} className="mb-2.5">
+                  <div className="flex justify-between text-[12px] mb-1"><span>{r.l}</span><span className="font-mono">{r.pct}%</span></div>
+                  <div className="h-1 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: r.c }} /></div>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+
+        <div className="lg:col-span-8 space-y-4 sm:space-y-5">
+          {/* When viewing All accounts, use the rich Brief cards (per-platform
+              breakdown + period-over-period delta + benchmark line) so the
+              top of Stats has the same weight as the rest of the screen.
+              When scoped to a single platform, fall back to scope-aware
+              local stats since briefMetrics is workspace-wide. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+            {isAll ? (
+              <>
+                <ReachCard />
+                <EngagementCard />
+              </>
+            ) : (
+              <>
+                <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+                  <div>
+                    <Eyebrow>{scopeLabel} · reach 30d</Eyebrow>
+                    <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{formatNum(totalReach)}</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark mt-1">{filtered.length} post{filtered.length === 1 ? '' : 's'} in window</div>
+                  </div>
+                  <div className="text-[11px] text-mute dark:text-muteDark font-mono mt-3">
+                    {filtered.length > 0 ? `Avg ${formatNum(Math.round(totalReach / filtered.length))} per post` : 'Awaiting posts'}
+                  </div>
+                </Card>
+                <Card className="!p-4 flex flex-col justify-between min-h-[160px]">
+                  <div>
+                    <Eyebrow color="text-magenta">{scopeLabel} · eng rate</Eyebrow>
+                    <div className="font-display text-[28px] font-semibold tracking-tighter mt-2">{avgEngRate}%</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark mt-1">Last 30 days</div>
+                  </div>
+                  {totalEngActs > 0 && (
+                    <div className="text-[11px] text-mute dark:text-muteDark font-mono mt-3">
+                      {formatNum(totalEngActs)} total engagement actions
+                    </div>
+                  )}
+                </Card>
+              </>
+            )}
+          </div>
+
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Top performing content</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">{scopeLabel} · {filtered.length} post{filtered.length === 1 ? '' : 's'} in window</p>
+              </div>
+              <Pill color="ultraSoft">30D</Pill>
+            </div>
+            <div className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
+              <span>Asset</span><span className="text-right">Views</span><span className="text-right">Likes</span><span className="text-right">ER%</span><span className="text-right">Signal</span>
+            </div>
+            {filtered.length === 0 ? (
+              <div className="py-8 text-center text-[12.5px] text-mute dark:text-muteDark">No posts yet on this platform.</div>
+            ) : filtered.slice(0,7).map(p => (
+              <div key={p.id} className="grid grid-cols-[1fr_60px_60px_50px_60px] sm:grid-cols-[1fr_80px_80px_70px_80px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-md bg-gradient-to-br from-ink/80 to-coal flex items-center justify-center text-[14px] flex-shrink-0">{p.emoji}</div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-medium truncate">{p.title}</div>
+                    <div className="text-[11px] text-mute dark:text-muteDark flex items-center gap-1"><Plat p={p.platform} className="w-2.5 h-2.5" /> {p.daysAgo}d ago</div>
+                  </div>
+                </div>
+                <span className="text-right font-mono text-[12.5px]">{formatNum(p.views)}</span>
+                <span className="text-right font-mono text-[12.5px]">{formatNum(p.likes)}</span>
+                <span className="text-right font-mono text-[12.5px] text-ultra dark:text-lime">{p.engRate}%</span>
+                <span className="flex justify-end"><Pill color={p.signal === 'viral' ? 'magenta' : p.signal === 'rising' ? 'ultraSoft' : 'ink'}>{p.signal}</Pill></span>
+              </div>
+            ))}
+          </Card>
+        </div>
+      </div>
+
+      {/* Channel priority + all-platforms scorecard — multi-channel views */}
+      <div className="mt-6">
+        <ChannelPriorityMatrix />
+        <AllPlatformsScorecard />
+      </div>
+
+      {/* Audience demographics — Brand+ only, locked teaser otherwise */}
+      <div className="mt-6">
+        <AudienceSection activePlatform={activePlatform} />
+      </div>
+    </div>
+  );
+};
+
+// Demographic-bucket pretty labels. Buckets come from the platform raw
+// (e.g. IG returns ISO country codes, "25-34" age ranges, single-letter
+// genders) so we relabel the handful where the platform shape is opaque
+// without forcing the UI to ship a full lookup. Anything we don't have
+// a mapping for is shown as-is — better honest than guessing.
+const COUNTRY_NAME = {
+  US: 'United States', GB: 'United Kingdom', CA: 'Canada', AU: 'Australia',
+  IN: 'India', PK: 'Pakistan', BD: 'Bangladesh', LK: 'Sri Lanka',
+  SA: 'Saudi Arabia', AE: 'UAE', QA: 'Qatar', KW: 'Kuwait', BH: 'Bahrain', OM: 'Oman',
+  EG: 'Egypt', MA: 'Morocco', TR: 'Türkiye', NG: 'Nigeria', KE: 'Kenya', ZA: 'South Africa',
+  ID: 'Indonesia', MY: 'Malaysia', PH: 'Philippines', SG: 'Singapore', TH: 'Thailand', VN: 'Vietnam',
+  BR: 'Brazil', MX: 'Mexico', AR: 'Argentina', CO: 'Colombia', CL: 'Chile',
+  DE: 'Germany', FR: 'France', ES: 'Spain', IT: 'Italy', NL: 'Netherlands', PT: 'Portugal',
+  JP: 'Japan', KR: 'South Korea', CN: 'China',
+};
+const LANGUAGE_NAME = {
+  en: 'English', ar: 'Arabic', ur: 'Urdu', hi: 'Hindi', bn: 'Bengali', fa: 'Persian',
+  fr: 'French', es: 'Spanish', pt: 'Portuguese', de: 'German', it: 'Italian',
+  tr: 'Turkish', id: 'Indonesian', ms: 'Malay', ja: 'Japanese', ko: 'Korean', zh: 'Chinese',
+};
+function audienceBucketLabel(dimension, bucket) {
+  const b = String(bucket || '');
+  if (dimension === 'country') return COUNTRY_NAME[b.toUpperCase()] || b;
+  if (dimension === 'language') {
+    const code = b.toLowerCase().split(/[_-]/)[0];
+    return LANGUAGE_NAME[code] || b;
+  }
+  if (dimension === 'gender') {
+    const g = b.toLowerCase();
+    return g.charAt(0).toUpperCase() + g.slice(1);
+  }
+  return b;
+}
+
+// One dimension's worth of bars — top N buckets shown, the rest folded
+// into a single "Other" row so a long-tail country list doesn't sprawl.
+const AudienceDimensionCard = ({ title, rows, color, maxRows = 6 }) => {
+  if (!rows || !rows.length) return null;
+  const shown = rows.slice(0, maxRows);
+  const restPct = rows.slice(maxRows).reduce((s, r) => s + (r.share_pct || 0), 0);
+  return (
+    <Card className="!p-4">
+      <h4 className="font-display text-[14px] font-semibold tracking-tight mb-3">{title}</h4>
+      <div className="space-y-2.5">
+        {shown.map(r => (
+          <div key={r.bucket}>
+            <div className="flex justify-between text-[12px] mb-1">
+              <span className="truncate pr-2">{audienceBucketLabel(title.toLowerCase(), r.bucket)}</span>
+              <span className="font-mono text-mute dark:text-muteDark">{r.share_pct.toFixed(1)}%</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, r.share_pct)}%`, background: color }} />
+            </div>
+          </div>
+        ))}
+        {restPct > 0.5 && (
+          <div className="flex justify-between text-[11.5px] text-mute dark:text-muteDark font-mono pt-1">
+            <span>Other</span><span>{restPct.toFixed(1)}%</span>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+// Per-account stack of dimension cards. We render age + gender side-by-side
+// (small, two columns) and country / city / language full-width below, since
+// they have longer labels and more buckets.
+const AudienceAccountBlock = ({ pk, info }) => {
+  const dims = info.dimensions || {};
+  const hasAny = Object.keys(dims).some(d => (dims[d] || []).length > 0);
+  if (!hasAny) return null;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Plat p={pk} className="w-3.5 h-3.5" />
+        <span className="font-display text-[15px] font-semibold tracking-tight">{info.handle ? `@${info.handle.replace(/^@/, '')}` : info.platform}</span>
+        <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">audience</span>
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <AudienceDimensionCard title="Age" rows={dims.age} color="#6B5BFF" />
+        <AudienceDimensionCard title="Gender" rows={dims.gender} color="#FF2D6A" />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <AudienceDimensionCard title="Country" rows={dims.country} color="#D6FF3E" maxRows={8} />
+        <AudienceDimensionCard title="City" rows={dims.city} color="#FFB23E" maxRows={8} />
+        <AudienceDimensionCard title="Language" rows={dims.language} color="#0A66C2" maxRows={6} />
+      </div>
+    </div>
+  );
+};
+
+const AudienceSection = ({ activePlatform }) => {
+  const audience = D.audience || { allowed: false, locked: false, byAccount: {} };
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const trialActive = !!D.trial?.active;
+
+  // Tier-gate: Creator workspaces see the upgrade teaser.
+  if (!audience.allowed) {
+    return (
+      <div className="max-w-xl">
+        <TrialLockedCard
+          featureLabel="Audience demographics"
+          tier="brand"
+          sub="Age, gender, country, city, and language breakdowns for each connected account. Updates daily with the morning sync."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+        />
+      </div>
+    );
+  }
+
+  // Trial workspaces have Brand+ intent but haven't paid yet — show the
+  // same teaser that the Ads screen uses, with their declared intent tier.
+  if (trialActive) {
+    const intentTier = (D.trial?.intent_tier || tierKey || 'brand').toLowerCase();
+    const teaserTier = intentTier === 'creator' ? 'brand' : intentTier;
+    return (
+      <div className="max-w-xl">
+        <TrialLockedCard
+          featureLabel="Audience demographics"
+          tier={teaserTier}
+          sub="Demographics start populating once your trial converts. Saves a Zernio Analytics call against every connected account on your trial."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+        />
+      </div>
+    );
+  }
+
+  const allEntries = Object.entries(audience.byAccount || {});
+  const entries = isAll ? allEntries : allEntries.filter(([pk]) => pk === activePlatform);
+
+  // No data yet — explain why instead of showing an empty card.
+  if (!entries.length) {
+    return (
+      <Card className="!p-5">
+        <Eyebrow>Audience</Eyebrow>
+        <div className="font-display text-[17px] font-semibold tracking-tight mt-1.5">
+          {allEntries.length === 0 ? 'Demographics are still syncing' : 'No demographics for this platform'}
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark mt-2 leading-snug max-w-prose">
+          {allEntries.length === 0
+            ? 'Your next morning sync will pull age, gender, country, city, and language splits from Instagram, TikTok, and Facebook accounts that expose them. Smaller IG accounts (under 100 followers) won’t show data — that’s a platform limit.'
+            : 'This platform doesn’t expose follower demographics through our integration yet. The data for your other accounts is unaffected.'}
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <div className="flex items-end justify-between flex-wrap gap-3">
+        <div>
+          <Eyebrow color="text-ultra">Audience</Eyebrow>
+          <h3 className="font-display text-[20px] font-semibold tracking-tight mt-1">Who follows you</h3>
+          <p className="text-[12.5px] text-mute dark:text-muteDark mt-1.5 max-w-prose">
+            Latest demographic snapshot per account. Updates daily with the morning sync.
+          </p>
+        </div>
+        {audience.snapshotDate && (
+          <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">
+            Snapshot · {audience.snapshotDate}
+          </span>
+        )}
+      </div>
+      {entries.map(([pk, info]) => (
+        <AudienceAccountBlock key={pk} pk={pk} info={info} />
+      ))}
+    </div>
+  );
+};
+
+// Legacy fake-data chart — kept only so the export doesn't break if
+// referenced somewhere else. Not rendered by Overview anymore.
+const PerfChart = () => {
+  const data = [40,50,38,62,75,90,82,108,140];
+  const max = Math.max(...data);
+  return (
+    <div className="h-44 flex items-end gap-1.5">
+      {data.map((v, i) => {
+        const peak = i === data.length - 1;
+        return (
+          <div key={i} className="flex-1 flex flex-col items-center justify-end gap-1.5">
+            <div className="w-full rounded-md transition-all" style={{ height: `${(v / max) * 100}%`, background: peak ? '#6B5BFF' : 'linear-gradient(180deg, rgba(107,91,255,0.5) 0%, rgba(107,91,255,0.15) 100%)' }} />
+            {i % 2 === 0 && <span className="text-[9px] font-mono text-mute dark:text-muteDark">{`D${i+1}`}</span>}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+Object.assign(window, { OverviewScreen, AudienceSection });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 3940-4241
+// ═════════════════════════════════════════════════════════════════════════
+// Screen — Ads
+// ─────────────────────────────────────────────────────────────────────────
+// Paid performance dashboard. Gated to Brand + Agency tiers. Reads
+// briefData.ads (built by api/brief.js from posts where post_type='ad').
+// Renders:
+//   • KPI strip — total spend, impressions, clicks, avg CTR
+//   • Per-platform breakdown (Meta, TikTok, X) — driven by per_platform[]
+//   • Top-spend ads table — driven by ads.top[]
+//   • Organic vs Paid block — eng-rate vs CTR, organic reach vs paid imps
+//
+// Empty states:
+//   • Wrong tier → upgrade prompt
+//   • Right tier but no ads → "Connect a Meta/TikTok/X ad account" CTA
+
+const AdsKpi = ({ label, value, sub, tone }) => (
+  <Card className="!p-4">
+    <Eyebrow color={tone || 'text-mute dark:text-muteDark'}>{label}</Eyebrow>
+    <div className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tightest mt-2">{value}</div>
+    {sub && <div className="text-[11.5px] text-mute dark:text-muteDark font-mono mt-0.5">{sub}</div>}
+  </Card>
+);
+
+const AdsScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const adsAllowed = tierKey === 'brand' || tierKey === 'agency';
+  const trialActive = !!D.trial?.active;
+
+  // ── Trial users: scrape-only, no ad data — show locked teaser ─────────
+  // Honor the workspace's intent tier so an Agency-intent trial sees
+  // "Unlock with Agency", not the hardcoded Brand copy.
+  if (trialActive) {
+    const intentTier = (D.trial?.intent_tier || D.tier?.key || 'brand').toLowerCase();
+    const teaserTier = intentTier === 'creator' ? 'brand' : intentTier;
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
+        <TrialLockedCard
+          featureLabel="Ad performance dashboard"
+          tier={teaserTier}
+          sub="Live spend, impressions, clicks and CTR pulled from your Meta, TikTok and X ad accounts. Unlocks after you upgrade."
+          onUpgrade={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+        />
+      </div>
+    );
+  }
+
+  // ── Tier-gate: Creator sees an upgrade prompt ─────────────────────────
+  if (!adsAllowed) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 text-center">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber/20 text-amber flex items-center justify-center mb-6">
+          <Icon name="bolt" className="w-6 h-6" />
+        </div>
+        <Eyebrow color="text-amber">Brand & Agency feature</Eyebrow>
+        <h1 className="font-display text-[32px] sm:text-[44px] leading-[1.04] font-semibold tracking-tightest mt-3 mb-3">
+          Ad performance is a paid-tier add-on.
+        </h1>
+        <p className="text-[14.5px] text-mute dark:text-muteDark max-w-xl mx-auto leading-relaxed mb-7">
+          Mashal pulls Meta, TikTok, and X ad accounts alongside your organic posts and reports
+          spend, impressions, clicks, and CTR side-by-side with engagement. Upgrade to Brand
+          to enable it for one workspace, or Agency to enable it across all your clients.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}>
+            Upgrade workspace
+          </Btn>
+          <a href="/pricing" className="text-[13px] text-mute dark:text-muteDark hover:underline px-2 py-2">
+            See pricing →
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const ads = D.ads || null;
+
+  // ── No ads yet (right tier, but no Zernio /ads payloads landed) ────
+  if (!ads || ads.count === 0) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10">
+        <ScreenHeader
+          eyebrow="Paid · Last 30d"
+          title="Ad performance"
+          sub="Spend, impressions, clicks and CTR pulled from your connected ad accounts."
+        />
+        <Card className="!p-10 text-center">
+          <div className="w-12 h-12 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-5">
+            <Icon name="sparkle" className="w-6 h-6" />
+          </div>
+          <h2 className="font-display text-[22px] font-semibold tracking-tight mb-2">No ad data yet.</h2>
+          <p className="text-[13.5px] text-mute dark:text-muteDark max-w-md mx-auto leading-relaxed mb-5">
+            Connect a Meta, TikTok, or X account that has active ads. Mashal pulls spend and
+            performance hourly once an ad account is linked.
+          </p>
+          <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:gotoSettings', { detail: { anchor: 'accounts' } }))}>
+            Connect ad account
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
+
+  // Scope by active platform if not "all".
+  const scopedTop = isAll ? (ads.top || []) : (ads.top || []).filter(a => a.platform === activePlatform);
+  const scopedPerPlatform = isAll
+    ? (ads.per_platform || [])
+    : (ads.per_platform || []).filter(r => r.platform === activePlatform);
+  const scopedTotals = isAll
+    ? { spend: ads.total_spend, impressions: ads.total_impressions, clicks: ads.total_clicks, ctr: ads.avg_ctr, count: ads.count }
+    : (() => {
+        const row = scopedPerPlatform[0];
+        return row
+          ? { spend: row.spend, impressions: row.impressions, clicks: row.clicks, ctr: row.ctr, count: row.count }
+          : { spend: 0, impressions: 0, clicks: 0, ctr: 0, count: 0 };
+      })();
+
+  // Organic vs Paid — pulled from the same D.posts feed so the comparison
+  // is honest (same window, same workspace). Organic = posts.source='own'
+  // with post_type !== 'ad'. We compute totals client-side instead of
+  // asking the backend for yet another aggregate.
+  const organicPosts = (D.posts || []).filter(p => p.source === 'own' && p.post_type !== 'ad' && (isAll || p.platform === activePlatform));
+  const orgReach = organicPosts.reduce((s, p) => s + Number(p.views || 0), 0);
+  const orgEngActs = organicPosts.reduce((s, p) =>
+    s + Number(p.likes || 0) + Number(p.comments || 0) + Number(p.saves || 0) + Number(p.shares || 0), 0);
+  const orgEngRate = orgReach ? Math.round((orgEngActs / orgReach) * 10000) / 100 : 0;
+
+  const cur = ads.currency || 'USD';
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      {/* Ad Intelligence — Agency per-client switcher. Renders null off-tier. */}
+      {window.AdsIntel?.AgencySwitcher && <window.AdsIntel.AgencySwitcher />}
+
+      <ScreenHeader
+        eyebrow={isAll ? 'Paid · Last 30d' : `${platformLabel[activePlatform] || activePlatform} · Last 30d`}
+        title="Ad performance"
+        sub={
+          <span className="inline-flex items-center gap-2 flex-wrap">
+            <span>{`${scopedTotals.count} active ad${scopedTotals.count === 1 ? '' : 's'} across ${isAll ? (ads.per_platform || []).length : 1} platform${(isAll ? (ads.per_platform || []).length : 1) === 1 ? '' : 's'}.`}</span>
+            {window.AdsIntel?.ContextChips && <window.AdsIntel.ContextChips />}
+          </span>
+        }
+      />
+
+      {/* KPI strip — 4 cards across the top */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-5 sm:mb-6">
+        <AdsKpi label="Total spend"  value={`${cur} ${formatNum(scopedTotals.spend)}`} tone="text-ultra dark:text-lime" />
+        <AdsKpi label="Impressions"  value={formatNum(scopedTotals.impressions)} />
+        <AdsKpi label="Clicks"       value={formatNum(scopedTotals.clicks)} />
+        <AdsKpi label="Avg CTR"      value={`${scopedTotals.ctr}%`}
+                sub={scopedTotals.impressions ? `${formatNum(scopedTotals.clicks)} / ${formatNum(scopedTotals.impressions)}` : null}
+                tone="text-emerald-600 dark:text-lime" />
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        {/* Per-platform breakdown */}
+        <div className="lg:col-span-7">
+          <SectionHead eyebrow="Per platform" title="Where the spend lives" />
+          {scopedPerPlatform.length === 0 ? (
+            <Card><div className="py-6 text-center text-[13px] text-mute dark:text-muteDark">No platform data in this scope.</div></Card>
+          ) : (
+            <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+              {scopedPerPlatform.map(row => (
+                <Card key={row.platform} className="!p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Plat p={row.platform} className="w-5 h-5" />
+                      <span className="font-display text-[15px] font-semibold tracking-tight">{platformLabel[row.platform] || row.platform.toUpperCase()}</span>
+                    </div>
+                    <span className="text-[11px] font-mono text-mute dark:text-muteDark">{row.count} ad{row.count === 1 ? '' : 's'}</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Spend</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1">{cur} {formatNum(row.spend)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Impr.</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1">{formatNum(row.impressions)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">CTR</div>
+                      <div className="font-display text-[18px] font-semibold tracking-tighter mt-1 text-emerald-600 dark:text-lime">{row.ctr}%</div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Organic vs Paid */}
+        <div className="lg:col-span-5">
+          <SectionHead eyebrow="Organic vs Paid" title="How they stack up" />
+          <Card>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Organic</div>
+                <div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(orgReach)}</div>
+                <div className="text-[11.5px] text-mute dark:text-muteDark">reach (30d)</div>
+                <div className="mt-3 font-mono text-[12.5px]">
+                  <span className="text-emerald-600 dark:text-lime">{orgEngRate}%</span>
+                  <span className="text-mute dark:text-muteDark ml-1">eng. rate</span>
+                </div>
+              </div>
+              <div className="border-l border-line dark:border-lineDark pl-4">
+                <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-1">Paid</div>
+                <div className="font-display text-[22px] font-semibold tracking-tighter">{formatNum(scopedTotals.impressions)}</div>
+                <div className="text-[11.5px] text-mute dark:text-muteDark">impressions (30d)</div>
+                <div className="mt-3 font-mono text-[12.5px]">
+                  <span className="text-emerald-600 dark:text-lime">{scopedTotals.ctr}%</span>
+                  <span className="text-mute dark:text-muteDark ml-1">CTR</span>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-line dark:border-lineDark text-[12px] text-mute dark:text-muteDark leading-relaxed">
+              {orgReach && scopedTotals.impressions
+                ? `Paid impressions are ${(scopedTotals.impressions / Math.max(orgReach, 1)).toFixed(1)}× organic reach. ${
+                    orgEngRate > scopedTotals.ctr
+                      ? `Organic engages at a higher rate than paid clicks-through.`
+                      : `Paid clicks-through outperforms organic engagement.`
+                  }`
+                : 'Connect both organic and ad accounts to see the comparison.'}
+            </div>
+          </Card>
+        </div>
+      </div>
+
+      {/* Ad Intelligence — benchmark compare + recommended spots. Both
+          render null when there's nothing to show (no settings, no intel
+          payload), so it's safe to mount unconditionally here. */}
+      {window.AdsIntel?.ComparePanel && <window.AdsIntel.ComparePanel />}
+      {window.AdsIntel?.Recommendations && <window.AdsIntel.Recommendations />}
+
+      {/* Top ads table */}
+      <div className="mt-5 sm:mt-7">
+        <SectionHead eyebrow="Top spend" title="Highest-investment ads" />
+        <Card>
+          {scopedTop.length === 0 ? (
+            <div className="py-6 text-center text-[13px] text-mute dark:text-muteDark">No ads in this scope.</div>
+          ) : (
+            <>
+              <div className="grid grid-cols-[1fr_80px_90px_60px_70px] sm:grid-cols-[1fr_110px_120px_80px_90px] gap-3 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark py-2 border-b border-line dark:border-lineDark mb-1">
+                <span>Ad</span><span className="text-right">Spend</span><span className="text-right">Impressions</span><span className="text-right">CTR</span><span className="text-right">Status</span>
+              </div>
+              {scopedTop.map(a => (
+                <div key={a.id} className="grid grid-cols-[1fr_80px_90px_60px_70px] sm:grid-cols-[1fr_110px_120px_80px_90px] gap-3 py-2.5 items-center border-b border-line/50 dark:border-lineDark/50 last:border-0 text-[13px]">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <Plat p={a.platform} className="w-4 h-4 flex-shrink-0" />
+                    <span className="truncate">{a.name || 'Untitled ad'}</span>
+                  </div>
+                  <span className="text-right font-mono text-[12.5px]">{cur} {formatNum(a.spend)}</span>
+                  <span className="text-right font-mono text-[12.5px]">{formatNum(a.impressions)}</span>
+                  <span className="text-right font-mono text-[12.5px] text-emerald-600 dark:text-lime">{a.ctr}%</span>
+                  <span className="text-right text-[11px] text-mute dark:text-muteDark capitalize">{a.status || '—'}</span>
+                </div>
+              ))}
+            </>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+};
+
+// Compact Brief right-rail preview — single card summarising paid
+// performance with a CTA into the full Ads tab. Hidden when the
+// workspace isn't on a tier with ads enabled or has no ad data yet.
+const AdsPreviewCard = ({ setTab }) => {
+  const ads = D.ads || null;
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  if (tierKey !== 'brand' && tierKey !== 'agency') return null;
+  if (!ads || ads.count === 0) return null;
+  const cur = ads.currency || 'USD';
+  return (
+    <Card className="!p-4">
+      <div className="flex items-center justify-between mb-3">
+        <Eyebrow color="text-amber">Ad spend · 30d</Eyebrow>
+        <button
+          type="button"
+          onClick={() => setTab && setTab('Ads')}
+          className="text-[11px] font-mono text-ultra dark:text-lime hover:underline"
+        >
+          View →
+        </button>
+      </div>
+      <div className="font-display text-[26px] font-semibold tracking-tightest leading-none">
+        {cur} {formatNum(ads.total_spend)}
+      </div>
+      <div className="text-[11.5px] text-mute dark:text-muteDark mt-1">{ads.count} active · {formatNum(ads.total_impressions)} impressions</div>
+      <div className="mt-3 pt-3 border-t border-line dark:border-lineDark flex items-baseline gap-2">
+        <span className="font-mono text-[13px] text-emerald-600 dark:text-lime">{ads.avg_ctr}%</span>
+        <span className="text-[11.5px] text-mute dark:text-muteDark">avg CTR</span>
+      </div>
+    </Card>
+  );
+};
+
+Object.assign(window, { AdsScreen, AdsPreviewCard });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 4242-4794
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 3 — Growth
+// Platform palette for the trajectory chart. Keeping these inline so the
+// SVG paths can reference them without a Tailwind class lookup.
+const PLATFORM_COLOR = {
+  ig: '#FF2D6A', tt: '#010101', yt: '#FF0000',
+  fb: '#1877F2', li: '#0A66C2', x: '#000000', sc: '#FFFC00',
+};
+const PLATFORM_LABEL = {
+  ig: 'Instagram', tt: 'TikTok', yt: 'YouTube',
+  fb: 'Facebook', li: 'LinkedIn', x: 'X', sc: 'Snapchat',
+};
+
+// Multi-series line chart used by the Growth screen. Pure SVG, no deps.
+// Each series is { key, label, color, points: [{date, value}], dashed? }.
+// Renders an x-axis of date ticks (first / mid / last) and a y-axis with
+// min/max labels. Hover dots highlight the value at the cursor's x.
+const TrajectoryChart = ({ series, height = 260 }) => {
+  const containerRef = React.useRef(null);
+  const [width, setWidth] = React.useState(600);
+  const [hoverX, setHoverX] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver(entries => {
+      const w = Math.max(320, entries[0].contentRect.width);
+      setWidth(w);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
+  const padding = { top: 16, right: 16, bottom: 28, left: 48 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  // Flatten all points to find global x range (dates) + y range (values).
+  const allPoints = series.flatMap(s => s.points || []);
+  if (!allPoints.length) {
+    return (
+      <div ref={containerRef} className="flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark" style={{ height }}>
+        Not enough follower history yet — Mashal builds the trajectory from daily snapshots.
+      </div>
+    );
+  }
+
+  const dates = [...new Set(allPoints.map(p => p.date))].sort();
+  const minTs = new Date(dates[0]).getTime();
+  const maxTs = new Date(dates[dates.length - 1]).getTime();
+  const tsRange = Math.max(1, maxTs - minTs);
+
+  let yMin = Math.min(...allPoints.map(p => p.value));
+  let yMax = Math.max(...allPoints.map(p => p.value));
+  if (yMin === yMax) { yMin = yMin * 0.95; yMax = yMax * 1.05 || 1; }
+  // Round to nicer bounds
+  const yPad = (yMax - yMin) * 0.08;
+  yMin = Math.max(0, yMin - yPad);
+  yMax = yMax + yPad;
+
+  const x = (date) => padding.left + ((new Date(date).getTime() - minTs) / tsRange) * chartW;
+  const y = (val)  => padding.top  + (1 - (val - yMin) / (yMax - yMin)) * chartH;
+
+  const pathFor = (points) => {
+    if (!points.length) return '';
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+  };
+
+  // Y-axis tick values — min, mid, max
+  const yTicks = [yMin, (yMin + yMax) / 2, yMax];
+  // X-axis tick dates — first, mid, last
+  const xTicks = [dates[0], dates[Math.floor(dates.length / 2)], dates[dates.length - 1]];
+
+  // Hover: find the closest date for the current cursor x.
+  const hoverDate = React.useMemo(() => {
+    if (hoverX == null) return null;
+    let best = null, bestDist = Infinity;
+    for (const d of dates) {
+      const dist = Math.abs(x(d) - hoverX);
+      if (dist < bestDist) { bestDist = dist; best = d; }
+    }
+    return bestDist < 30 ? best : null;
+  }, [hoverX, dates, width]);
+
+  const formatTickDate = (d) => {
+    const dt = new Date(d);
+    return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <svg
+        width={width}
+        height={height}
+        onMouseMove={e => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHoverX(e.clientX - r.left);
+        }}
+        onMouseLeave={() => setHoverX(null)}
+        className="overflow-visible block"
+      >
+        {/* Y gridlines */}
+        {yTicks.map((t, i) => (
+          <g key={i}>
+            <line x1={padding.left} x2={width - padding.right} y1={y(t)} y2={y(t)}
+                  stroke="currentColor" strokeOpacity="0.08" strokeWidth="1" />
+            <text x={padding.left - 8} y={y(t) + 4} textAnchor="end"
+                  className="fill-current text-mute dark:text-muteDark" fontSize="10" fontFamily="ui-monospace,monospace">
+              {formatNum(Math.round(t))}
+            </text>
+          </g>
+        ))}
+        {/* X tick labels */}
+        {xTicks.map((d, i) => (
+          <text key={i} x={x(d)} y={height - 8} textAnchor={i === 0 ? 'start' : i === 2 ? 'end' : 'middle'}
+                className="fill-current text-mute dark:text-muteDark" fontSize="10" fontFamily="ui-monospace,monospace">
+            {formatTickDate(d)}
+          </text>
+        ))}
+        {/* Series paths */}
+        {series.map(s => (
+          <path key={s.key} d={pathFor(s.points)} fill="none"
+                stroke={s.color} strokeWidth={s.dashed ? 1.5 : 2.25}
+                strokeDasharray={s.dashed ? '4 4' : ''}
+                strokeLinecap="round" strokeLinejoin="round" opacity={s.dashed ? 0.65 : 1} />
+        ))}
+        {/* Hover crosshair + dots */}
+        {hoverDate && (
+          <>
+            <line x1={x(hoverDate)} x2={x(hoverDate)} y1={padding.top} y2={height - padding.bottom}
+                  stroke="currentColor" strokeOpacity="0.18" strokeWidth="1" />
+            {series.map(s => {
+              const pt = s.points.find(p => p.date === hoverDate);
+              if (!pt) return null;
+              return <circle key={s.key} cx={x(hoverDate)} cy={y(pt.value)} r="3.5"
+                             fill={s.color} stroke="white" strokeWidth="1.5" />;
+            })}
+          </>
+        )}
+      </svg>
+      {/* Hover tooltip */}
+      {hoverDate && (
+        <div className="absolute pointer-events-none text-[11px] font-mono px-2.5 py-1.5 rounded-lg bg-ink/95 text-paper dark:bg-paper dark:text-ink shadow-pop"
+             style={{ left: Math.min(width - 160, x(hoverDate) + 8), top: padding.top }}>
+          <div className="opacity-60 mb-0.5">{formatTickDate(hoverDate)}</div>
+          {series.map(s => {
+            const pt = s.points.find(p => p.date === hoverDate);
+            if (!pt) return null;
+            return (
+              <div key={s.key} className="flex items-center gap-2 whitespace-nowrap">
+                <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ background: s.color }} />
+                <span>{s.label}</span>
+                <span className="ml-auto opacity-80">{formatNum(pt.value)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { TrajectoryChart });
+
+const VELOCITY_TONE = {
+  surging:   { label: 'Surging',   tone: 'text-magenta' },
+  climbing:  { label: 'Climbing',  tone: 'text-ultra'   },
+  steady:    { label: 'Steady',    tone: 'text-emerald-600 dark:text-lime' },
+  declining: { label: 'Declining', tone: 'text-mute dark:text-muteDark' },
+  unknown:   { label: 'Building',  tone: 'text-mute dark:text-muteDark' },
+};
+
+const GrowthScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  const [data,    setData]    = React.useState(null);
+  const [days,    setDays]    = React.useState(30);
+  const [loading, setLoading] = React.useState(true);
+  const [showCompetitors, setShowCompetitors] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    api(`/growth?days=${days}`)
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [days]);
+
+  // Series for the trajectory chart. When a single platform is selected we
+  // narrow both the own line and the competitor overlay to that platform.
+  const series = React.useMemo(() => {
+    if (!data) return [];
+    const out = [];
+    const own = data.series?.own || {};
+    for (const [k, points] of Object.entries(own)) {
+      if (!points.length) continue;
+      if (!isAll && k !== activePlatform) continue;
+      out.push({
+        key: `own-${k}`,
+        label: `${PLATFORM_LABEL[k] || k} (you)`,
+        color: PLATFORM_COLOR[k] || '#6B5BFF',
+        points: points.map(p => ({ date: p.date, value: p.followers })),
+      });
+    }
+    if (showCompetitors) {
+      for (const c of (data.series?.competitors || [])) {
+        if (!c.points?.length) continue;
+        if (!isAll && c.platform !== activePlatform) continue;
+        out.push({
+          key: `comp-${c.platform}-${c.handle}`,
+          label: `@${c.handle.replace(/^@/, '')}`,
+          color: PLATFORM_COLOR[c.platform] || '#9A958A',
+          points: c.points.map(p => ({ date: p.date, value: p.followers })),
+          dashed: true,
+        });
+      }
+    }
+    return out;
+  }, [data, showCompetitors, activePlatform, isAll]);
+
+  const velocity = (data?.velocity || []).filter(v => isAll || v.platform === activePlatform);
+  const competitors = (data?.series?.competitors || []).filter(c => isAll || c.platform === activePlatform);
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow="Trajectory"
+        title="Growth strategy"
+        sub="Daily follower trajectory across your platforms, with optional competitor overlay."
+        right={
+          <div className="flex items-center gap-2">
+            <div className="inline-flex rounded-xl border border-line dark:border-lineDark p-0.5 bg-chalk dark:bg-coalsoft">
+              {[30, 90].map(d => (
+                <button
+                  key={d}
+                  onClick={() => setDays(d)}
+                  className={cls(
+                    'h-8 px-3 rounded-lg text-[12.5px] font-medium transition',
+                    days === d
+                      ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
+                      : 'text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
+                  )}
+                >
+                  {d}d
+                </button>
+              ))}
+            </div>
+            {competitors.length > 0 && (
+              <button
+                onClick={() => setShowCompetitors(v => !v)}
+                className={cls(
+                  'h-8 px-3 rounded-xl text-[12.5px] font-medium border transition',
+                  showCompetitors
+                    ? 'border-ultra/40 bg-ultraSoft text-ultra'
+                    : 'border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
+                )}
+              >
+                Competitors {showCompetitors ? 'on' : 'off'}
+              </button>
+            )}
+          </div>
+        }
+      />
+
+      {/* Top StatCards — driven by /api/growth */}
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
+        {velocity.slice(0, 3).map(v => (
+          <div key={v.platform} className="lg:col-span-4">
+            <StatCard
+              label={`${PLATFORM_LABEL[v.platform] || v.platform} followers`}
+              value={formatNum(v.latest || 0)}
+              delta={v.wow_pct ?? 0}
+              sparkData={(data?.series?.own?.[v.platform] || []).slice(-7).map(p => p.followers)}
+              color={PLATFORM_COLOR[v.platform]}
+              icon="users"
+            />
+          </div>
+        ))}
+        {/* Fill empty slots when fewer than 3 platforms are connected */}
+        {Array.from({ length: Math.max(0, 3 - velocity.length) }).map((_, i) => (
+          <div key={`empty-${i}`} className="lg:col-span-4">
+            <Card className="h-full flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark min-h-[112px]">
+              Connect more platforms to compare
+            </Card>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+        <div className="lg:col-span-7 space-y-4 sm:space-y-5">
+
+          {/* Trajectory chart — the headline view */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Follower trajectory</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">
+                  Daily snapshots · {days}-day window {competitors.length > 0 && showCompetitors ? `· ${competitors.length} competitor${competitors.length === 1 ? '' : 's'} overlaid` : ''}
+                </p>
+              </div>
+            </div>
+            {loading ? (
+              <div className="h-[260px] flex items-center justify-center text-[12.5px] text-mute dark:text-muteDark">Loading…</div>
+            ) : (
+              <TrajectoryChart series={series} height={260} />
+            )}
+            {/* Legend */}
+            {series.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 text-[11.5px]">
+                {series.map(s => (
+                  <div key={s.key} className="flex items-center gap-1.5">
+                    {s.dashed
+                      ? <span className="inline-block w-3" style={{ borderTop: `1.5px dashed ${s.color}` }} />
+                      : <span className="inline-block w-3 h-0.5 rounded-full" style={{ background: s.color }} />}
+                    <span className={cls(s.dashed && 'text-mute dark:text-muteDark')}>{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-1">Posting rhythm</h3>
+            <p className="text-[12px] text-mute dark:text-muteDark mb-4">Engagement heatmap by weekday × time window <span className="font-mono text-[10.5px]">· UTC</span></p>
+            <div className="grid grid-cols-[44px_1fr] gap-x-2">
+              <div /> {/* spacer above day columns */}
+              <div className="grid grid-cols-7 gap-1 mb-1.5">
+                {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => (
+                  <span key={d} className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark text-center">{d}</span>
+                ))}
+              </div>
+              {D.heatmap.map((row, ri) => (
+                <React.Fragment key={ri}>
+                  <span className="text-[10px] font-mono text-mute dark:text-muteDark flex items-center justify-end pr-0.5">{D.heatmapHours[ri]}</span>
+                  <div className="grid grid-cols-7 gap-1 mb-1">
+                    {row.map((v, ci) => (
+                      <div key={ci} className="aspect-square rounded-md transition-transform hover:scale-110" style={{ background: ['rgba(107,91,255,0.08)','rgba(107,91,255,0.28)','rgba(107,91,255,0.55)','rgba(255,45,106,0.75)','#FF2D6A'][v] }} title={`${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][ci]} ${D.heatmapHours[ri]} · ${['Quiet','Low','Steady','Strong','Peak'][v]}`} />
+                    ))}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+            <div className="flex items-center justify-between mt-3 text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">
+              <span>Low engagement</span>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.08)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.28)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(107,91,255,0.55)' }} />
+                <div className="w-3 h-3 rounded-sm" style={{ background: 'rgba(255,45,106,0.75)' }} />
+                <div className="w-3 h-3 rounded-sm bg-magenta" />
+              </div>
+              <span>Peak</span>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-baseline justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[18px] font-semibold tracking-tight">Reach scorecard</h3>
+                <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">Followers vs the leader of your tracked set. Your accounts are highlighted.</p>
+              </div>
+            </div>
+            <ReachGapBars velocity={velocity} competitors={competitors} />
+          </Card>
+        </div>
+
+        <div className="lg:col-span-5 space-y-4 sm:space-y-5">
+          {/* Authority verdict — driven by the AI verdict already in D */}
+          {D.verdict && (
+            <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+              <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-ultra/30 blur-2xl" />
+              <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Authority verdict</Pill>
+              <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
+              <p className="text-[13.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+            </Card>
+          )}
+
+          {/* Growth velocity — real data from /api/growth */}
+          <Card>
+            <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Growth velocity</h3>
+            {velocity.length === 0 ? (
+              <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
+                Velocity appears once we have at least two daily snapshots — usually after the second nightly sync.
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {velocity.map(v => {
+                  const tone = VELOCITY_TONE[v.state] || VELOCITY_TONE.unknown;
+                  return (
+                    <div key={v.platform} className="flex items-center gap-3 py-2">
+                      <Plat p={v.platform} className="w-7 h-7" />
+                      <div className="flex-1">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">{PLATFORM_LABEL[v.platform] || v.platform}</div>
+                        <div className={cls('font-display text-[16px] font-semibold tracking-tight', tone.tone)}>{tone.label}</div>
+                      </div>
+                      <span className={cls('font-mono text-[12.5px]', v.wow_pct == null ? 'text-mute dark:text-muteDark' : v.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                        {v.wow_pct == null ? '—' : `${v.wow_pct >= 0 ? '+' : ''}${v.wow_pct}%`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          {/* Best gain day + totals — derived from the same series the chart
+              renders. Each card hides when there's no data so the rail
+              shrinks gracefully on cold workspaces. */}
+          {(() => {
+            // Stitch every own-platform series into a flat array of
+            // { date, platform, gain } entries by diffing consecutive
+            // followers values. Then surface the single best day.
+            const own = data?.series?.own || {};
+            const gains = [];
+            for (const [k, points] of Object.entries(own)) {
+              if (!points || points.length < 2) continue;
+              if (!isAll && k !== activePlatform) continue;
+              for (let i = 1; i < points.length; i++) {
+                gains.push({
+                  date: points[i].date,
+                  platform: k,
+                  gain: (points[i].followers || 0) - (points[i - 1].followers || 0),
+                });
+              }
+            }
+            const best = gains.reduce((b, g) => (g.gain > (b?.gain ?? -Infinity) ? g : b), null);
+            const totalGain = gains.reduce((s, g) => s + g.gain, 0);
+
+            if (!best || best.gain <= 0) return null;
+            const dateLabel = (() => {
+              try { return new Date(best.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+              catch { return best.date; }
+            })();
+
+            return (
+              <Card>
+                <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Best gain day</h3>
+                <div className="flex items-baseline gap-2">
+                  <div className="font-display text-[28px] font-semibold tracking-tighter">+{formatNum(best.gain)}</div>
+                  <Plat p={best.platform} className="w-3.5 h-3.5" />
+                  <span className="text-[12px] text-mute dark:text-muteDark">{PLATFORM_LABEL[best.platform] || best.platform}</span>
+                </div>
+                <div className="text-[11px] font-mono text-mute dark:text-muteDark mt-1">{dateLabel}</div>
+                <div className="mt-3 pt-3 border-t border-line/60 dark:border-lineDark/60 flex items-baseline justify-between text-[11.5px]">
+                  <span className="text-mute dark:text-muteDark">Net followers · {days}d</span>
+                  <span className={cls('font-mono', totalGain >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                    {totalGain >= 0 ? '+' : ''}{formatNum(totalGain)}
+                  </span>
+                </div>
+              </Card>
+            );
+          })()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ReachGapBars — horizontal "% of leader" bars combining the user's own
+// accounts and tracked competitors into one ranked scorecard. The user's
+// rows are highlighted in the brand color so the gap is obvious. Replaces
+// the older flat "competitor comparison" list.
+const ReachGapBars = ({ velocity, competitors }) => {
+  const rows = React.useMemo(() => {
+    const own = (velocity || [])
+      .filter(v => v.latest && v.latest > 0)
+      .map(v => ({
+        key: `own-${v.platform}`,
+        platform: v.platform,
+        handle: 'you',
+        display_name: `${PLATFORM_LABEL[v.platform] || v.platform} (you)`,
+        followers: v.latest,
+        wow_pct: v.wow_pct,
+        own: true,
+      }));
+    const comp = (competitors || [])
+      .filter(c => c.latest && c.latest > 0)
+      .map(c => ({
+        key: `comp-${c.platform}-${c.handle}`,
+        platform: c.platform,
+        handle: c.handle,
+        display_name: c.display_name || c.handle,
+        followers: c.latest,
+        wow_pct: c.wow_pct,
+        own: false,
+      }));
+    return [...own, ...comp].sort((a, b) => b.followers - a.followers);
+  }, [velocity, competitors]);
+
+  if (rows.length === 0) {
+    return (
+      <div className="text-[12.5px] text-mute dark:text-muteDark py-3">
+        Reach scorecard appears once at least one account or competitor has follower data. Add comparison accounts in Settings → Competitors.
+      </div>
+    );
+  }
+
+  const leader = rows[0].followers;
+
+  return (
+    <div className="space-y-2.5">
+      {rows.map(r => {
+        const pct = Math.max(1.5, (r.followers / leader) * 100);
+        // Soft "% of leader" label shown only on rows that aren't the leader.
+        const ratioLabel = r === rows[0] ? 'leader' : `${pct < 10 ? pct.toFixed(1) : Math.round(pct)}% of leader`;
+        return (
+          <div
+            key={r.key}
+            className={cls(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg border',
+              r.own
+                ? 'bg-ultraSoft border-ultra/30 dark:bg-ultra/10'
+                : 'bg-chalk dark:bg-coalsoft border-line dark:border-lineDark'
+            )}
+          >
+            <Plat p={r.platform} className="w-4 h-4 flex-shrink-0" />
+            <div className="min-w-0 w-[120px] sm:w-[140px] flex-shrink-0">
+              <div className={cls('text-[12.5px] font-semibold truncate', r.own && 'text-ultra')}>
+                {r.own ? r.display_name : `@${String(r.handle).replace(/^@/, '')}`}
+              </div>
+              <div className="text-[10.5px] font-mono text-mute dark:text-muteDark truncate">
+                {ratioLabel}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="h-2 rounded-full bg-ink/5 dark:bg-paper/5 overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${pct}%`,
+                    background: r.own ? PLATFORM_COLOR[r.platform] || '#6B5BFF' : (PLATFORM_COLOR[r.platform] || '#9A958A') + 'AA',
+                  }}
+                />
+              </div>
+            </div>
+            <div className="w-[64px] sm:w-[88px] flex-shrink-0 text-right">
+              <div className="font-mono text-[12.5px] font-semibold">{formatNum(r.followers)}</div>
+              {r.wow_pct != null && (
+                <div className={cls('font-mono text-[10.5px]', r.wow_pct >= 0 ? 'text-emerald-600 dark:text-lime' : 'text-magenta')}>
+                  {r.wow_pct >= 0 ? '↑' : '↓'} {Math.abs(r.wow_pct)}%
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+Object.assign(window, { GrowthScreen, ReachGapBars });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 4795-5272
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 4 — Content Deep-Dive
+const PLATFORM_LABEL_FULL = {
+  ig: 'Instagram', tt: 'TikTok', yt: 'YouTube',
+  fb: 'Facebook', li: 'LinkedIn', x: 'X', sc: 'Snapchat',
+};
+const SIGNAL_TONE = {
+  viral:     { label: 'Viral peak',  tone: 'magenta' },
+  rising:    { label: 'Rising',      tone: 'lime'    },
+  steady:    { label: 'Steady',      tone: 'ultraSoft' },
+  declining: { label: 'Declining',   tone: 'mute'    },
+};
+
+// One row of the per-metric benchmark panel.
+const BenchmarkRow = ({ label, value, suffix = '', percentile, avg }) => {
+  const pct = percentile;
+  // Tone: top quartile green, mid amber-ish, bottom magenta.
+  const tone = pct == null ? 'text-mute dark:text-muteDark'
+            : pct >= 75 ? 'text-emerald-600 dark:text-lime'
+            : pct >= 25 ? 'text-ultra'
+            : 'text-magenta';
+  return (
+    <div className="flex items-baseline gap-3 py-2 border-b border-line/50 dark:border-lineDark/50 last:border-0">
+      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark w-24 flex-shrink-0">{label}</div>
+      <div className="font-display text-[18px] font-semibold tracking-tighter flex-1">
+        {typeof value === 'number' ? formatNum(value) : value}{suffix}
+      </div>
+      <div className="text-[11px] font-mono text-right">
+        <div className={cls('font-medium', tone)}>
+          {pct == null ? '—' : `${pct}th pct`}
+        </div>
+        {avg != null && (
+          <div className="text-mute dark:text-muteDark">
+            avg {typeof avg === 'number' ? formatNum(avg) : avg}{suffix}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ContentScreen = ({ activePlatform, activeBrand }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  // Local list — start with whatever brief seeded into D, then enrich from
+  // /api/posts on mount so the picker isn't capped at 12.
+  const [posts, setPosts]     = React.useState(D.posts || []);
+  const [activeId, setActive] = React.useState((D.posts || [])[0]?.id || null);
+  const [detail, setDetail]   = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  // Scope the picker to the active AccountBar tab.
+  const scopedPosts = React.useMemo(
+    () => isAll ? posts : posts.filter(p => p.platform === activePlatform),
+    [posts, activePlatform, isAll]
+  );
+
+  // If the active post falls outside the new scope, jump to the first
+  // post in the scoped list (or clear).
+  React.useEffect(() => {
+    if (!scopedPosts.length) { setActive(null); return; }
+    if (!scopedPosts.find(p => p.id === activeId)) setActive(scopedPosts[0].id);
+  }, [scopedPosts]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    api('/posts?limit=60').then(r => {
+      if (cancelled) return;
+      if (r.posts?.length) {
+        setPosts(r.posts);
+        if (!activeId) setActive(r.posts[0].id);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  React.useEffect(() => {
+    if (!activeId) { setDetail(null); return; }
+    let cancelled = false;
+    setLoading(true);
+    api(`/posts?id=${encodeURIComponent(activeId)}`)
+      .then(r => { if (!cancelled) setDetail(r); })
+      .catch(() => { if (!cancelled) setDetail(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeId]);
+
+  if (!scopedPosts.length) {
+    return (
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+        <ScreenHeader eyebrow="Anatomy" title="Content deep-dive" sub="Break down what worked — and how to replicate it." />
+        <Card>
+          <div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">
+            {posts.length === 0
+              ? 'No posts yet. Once Mashal syncs your accounts, your published posts appear here for analysis.'
+              : `No posts yet on ${PLATFORM_LABEL_FULL[activePlatform] || activePlatform}. Switch tabs or pick "All accounts" to see other platforms.`}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const p = detail?.post;
+  const bm = detail?.benchmarks;
+  const signal = SIGNAL_TONE[p?.signal] || SIGNAL_TONE.steady;
+  const platformLabel = p ? (PLATFORM_LABEL_FULL[p.platform] || p.platform) : '';
+  const daysAgo = p?.posted_at ? Math.max(0, Math.floor((Date.now() - new Date(p.posted_at).getTime()) / 86400000)) : null;
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow="Anatomy"
+        title="Content deep-dive"
+        sub="Per-post benchmarks against your own catalogue — what's an outlier vs the baseline you've established."
+        right={
+          detail?.nav && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => detail.nav.prev && setActive(detail.nav.prev.id)}
+                disabled={!detail.nav.prev}
+                className="h-8 px-2.5 rounded-lg border border-line dark:border-lineDark text-[12px] disabled:opacity-40 hover:bg-ink/5 dark:hover:bg-paper/5"
+              >← Older</button>
+              <button
+                onClick={() => detail.nav.next && setActive(detail.nav.next.id)}
+                disabled={!detail.nav.next}
+                className="h-8 px-2.5 rounded-lg border border-line dark:border-lineDark text-[12px] disabled:opacity-40 hover:bg-ink/5 dark:hover:bg-paper/5"
+              >Newer →</button>
+            </div>
+          )
+        }
+      />
+
+      {/* Post picker — scrollable pills, scoped to active platform */}
+      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-5 pb-1">
+        {scopedPosts.slice(0, 24).map(post => (
+          <button
+            key={post.id}
+            onClick={() => setActive(post.id)}
+            className={cls(
+              'flex items-center gap-2 h-9 px-3.5 rounded-full text-[12.5px] font-medium whitespace-nowrap border transition',
+              activeId === post.id
+                ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                : 'border-line dark:border-lineDark hover:border-ink/30'
+            )}
+          >
+            <Plat p={post.platform} className="w-3 h-3" />
+            {(post.title || '').length > 28 ? post.title.slice(0, 28) + '…' : (post.title || 'Untitled')}
+          </button>
+        ))}
+      </div>
+
+      {loading && !p ? (
+        <Card><div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">Loading post detail…</div></Card>
+      ) : !p ? (
+        <Card><div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">Couldn't load this post.</div></Card>
+      ) : (
+        <div className="grid lg:grid-cols-12 gap-4 sm:gap-5">
+          <div className="lg:col-span-8 space-y-4 sm:space-y-5">
+
+            {/* Hero card */}
+            <Card>
+              <div className="grid sm:grid-cols-[180px_1fr] gap-5">
+                <div className="aspect-[9/16] rounded-2xl bg-gradient-to-br from-ink via-ultra/40 to-magenta/40 flex flex-col justify-between p-3 text-white relative overflow-hidden">
+                  {p.thumbnail && (
+                    <img
+                      src={`${API_BASE}/api/post-image?id=${encodeURIComponent(p.id)}&t=${encodeURIComponent(window.__pulseToken || '')}`}
+                      alt=""
+                      className="absolute inset-0 w-full h-full object-cover opacity-90"
+                      onError={e => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  )}
+                  <div className="relative z-10">
+                    <Pill color={signal.tone}>{signal.label}</Pill>
+                  </div>
+                  <div className="relative z-10">
+                    <div className="text-[11px] font-mono">{daysAgo != null ? `${daysAgo}d ago` : ''}</div>
+                  </div>
+                </div>
+                <div className="min-w-0">
+                  <Eyebrow>{platformLabel} · {p.type}</Eyebrow>
+                  <h2 className="font-display text-[22px] sm:text-[28px] leading-[1.1] font-semibold tracking-tighter mt-2 mb-3 break-words">
+                    {p.caption ? (p.caption.length > 240 ? `${p.caption.slice(0, 240)}…` : p.caption) : 'Untitled post'}
+                  </h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Views</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.views)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Likes</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.likes)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Eng. rate</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{p.engagement_rate}%</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Shares</div>
+                      <div className="font-display text-[20px] font-semibold tracking-tighter">{formatNum(p.shares)}</div>
+                    </div>
+                  </div>
+                  {safeHref(p.permalink) && (
+                    <a href={safeHref(p.permalink)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-4 text-[12px] text-ultra dark:text-lime hover:underline">
+                      <Icon name="arrowUpRight" className="w-3 h-3" /> View original post
+                    </a>
+                  )}
+                </div>
+              </div>
+            </Card>
+
+            {/* Benchmarks card */}
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="font-display text-[18px] font-semibold tracking-tight">Benchmarks vs your catalogue</h3>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-0.5">
+                    Compared to your last {bm?.peer_count ?? 0} {platformLabel} posts.
+                  </p>
+                </div>
+              </div>
+              {bm?.peer_count > 0 ? (
+                <div>
+                  <BenchmarkRow label="Views"        value={bm.views.value}            percentile={bm.views.percentile}            avg={bm.views.avg} />
+                  <BenchmarkRow label="Eng. rate"    value={bm.engagement_rate.value}  suffix="%" percentile={bm.engagement_rate.percentile} avg={bm.engagement_rate.avg} />
+                  <BenchmarkRow label="Shares"       value={bm.shares.value}           percentile={bm.shares.percentile}           avg={bm.shares.avg} />
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-mute dark:text-muteDark py-2">
+                  No peer posts yet on this platform — percentiles appear once Mashal has at least 2 same-platform posts.
+                </div>
+              )}
+            </Card>
+
+            {/* Caption + hashtags + mentions */}
+            {(p.caption || p.hashtags?.length || p.mentions?.length) && (
+              <Card>
+                <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Caption breakdown</h3>
+                {p.caption && (
+                  <p className="text-[13.5px] leading-relaxed whitespace-pre-wrap text-ink dark:text-paper">{p.caption}</p>
+                )}
+                {p.hashtags?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-2">Hashtags · {p.hashtags.length}</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.hashtags.map(h => (
+                        <span key={h} className="text-[11.5px] px-2 py-0.5 rounded-full bg-ultraSoft dark:bg-ultra/15 text-ultra font-mono">{h}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {p.mentions?.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark mb-2">Mentions</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {p.mentions.map(m => (
+                        <span key={m} className="text-[11.5px] px-2 py-0.5 rounded-full bg-ink/5 dark:bg-paper/5 font-mono">{m}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+
+          <div className="lg:col-span-4 space-y-4">
+
+            {/* Engagement breakdown — with peer-percentile badges so each
+                metric reads as "where this post sits in your catalogue" */}
+            <Card>
+              <div className="flex items-baseline justify-between mb-3">
+                <h3 className="font-display text-[15px] font-semibold tracking-tight">Engagement breakdown</h3>
+                {bm?.peer_count > 0 && (
+                  <span className="text-[10px] font-mono text-mute dark:text-muteDark">vs {bm.peer_count} peer{bm.peer_count === 1 ? '' : 's'}</span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {[
+                  { l: 'Likes',    v: p.likes,    i: 'heart',    pct: null },
+                  { l: 'Comments', v: p.comments, i: 'message',  pct: null },
+                  { l: 'Shares',   v: p.shares,   i: 'share',    pct: bm?.shares?.percentile },
+                  { l: 'Saves',    v: p.saves,    i: 'bookmark', pct: null },
+                ].map(row => {
+                  const pct = row.pct;
+                  const pctTone = pct == null ? '' :
+                    pct >= 75 ? 'text-emerald-600 dark:text-lime' :
+                    pct >= 25 ? 'text-ultra dark:text-ultra' : 'text-magenta';
+                  return (
+                    <div key={row.l} className="flex items-center gap-3 py-1.5">
+                      <div className="w-8 h-8 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
+                        <Icon name={row.i} className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="flex-1 text-[13px]">{row.l}</span>
+                      <span className="font-mono text-[12.5px]">{formatNum(row.v)}</span>
+                      {pct != null && (
+                        <span className={cls('font-mono text-[10.5px] w-12 text-right', pctTone)}>{pct}th</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {bm?.views?.avg != null && (
+                <div className="mt-3 pt-3 border-t border-line/60 dark:border-lineDark/60 text-[11px] font-mono text-mute dark:text-muteDark flex items-center justify-between">
+                  <span>Catalogue avg views</span>
+                  <span>{formatNum(bm.views.avg)}</span>
+                </div>
+              )}
+            </Card>
+
+            {/* Posting context */}
+            <Card>
+              <h3 className="font-display text-[15px] font-semibold tracking-tight mb-3">Posting context</h3>
+              <div className="space-y-2 text-[13px]">
+                {p.day_of_week && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Day</span><span className="font-medium">{p.day_of_week}</span></div>
+                )}
+                {p.time_bucket && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Time</span><span className="font-medium">{p.time_bucket}</span></div>
+                )}
+                {p.posted_at && (
+                  <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Posted</span><span className="font-mono text-[12px]">{new Date(p.posted_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span></div>
+                )}
+                <div className="flex justify-between"><span className="text-mute dark:text-muteDark">Type</span><span className="font-medium">{p.type}</span></div>
+              </div>
+            </Card>
+
+            {/* Workspace verdict — context, not per-post */}
+            {D.verdict && (
+              <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
+                <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-magenta/30 blur-2xl" />
+                <Pill color="lime"><Icon name="brain" className="w-3 h-3" /> Workspace verdict</Pill>
+                <h3 className="font-display text-[18px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
+                <p className="text-[12.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+              </Card>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Top Competitor Content ──────────────────────────────────────── */}
+      <CompetitorTopContent activePlatform={activePlatform} activeBrand={activeBrand} />
+    </div>
+  );
+};
+
+// Top-performing competitor posts, sorted by views, with pattern badges.
+// Lazy-loads on mount and quietly hides itself if the workspace has no
+// competitors connected yet.
+const CompetitorTopContent = ({ activePlatform, activeBrand }) => {
+  const [posts, setPosts] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const q = activePlatform && activePlatform !== 'all' ? `&platform=${activePlatform}` : '';
+    api(`/competitors?mode=top-content&limit=40${q}`)
+      .then(r => { if (!cancelled) setPosts(r.posts || []); })
+      .catch(() => { if (!cancelled) setPosts([]); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activePlatform]);
+
+  // Brand filter is client-side — the endpoint already returned the top set
+  // and we just narrow it down to the chosen competitor when one is selected.
+  const visible = React.useMemo(() => {
+    if (!posts) return null;
+    if (!activeBrand) return posts.slice(0, 20);
+    return posts.filter(p => p.competitor.id === activeBrand).slice(0, 20);
+  }, [posts, activeBrand]);
+
+  if (loading) return null;
+  if (!visible || visible.length === 0) return null;
+
+  // Format big numbers compactly. 32,600,000 → 32.6M, 182,400 → 182K.
+  const fmt = (n) => {
+    if (n == null) return '—';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  };
+
+  const patternBadgeClass = (tone) => {
+    switch (tone) {
+      case 'magenta': return 'bg-magenta/15 text-magenta border-magenta/30';
+      case 'ultra':   return 'bg-ultra/15 text-ultra border-ultra/30';
+      case 'lime':    return 'bg-lime/25 text-limeDeep dark:text-lime border-lime/30';
+      case 'amber':   return 'bg-amber/15 text-amber border-amber/30';
+      default:        return 'bg-ink/5 dark:bg-paper/5 text-mute dark:text-muteDark border-line dark:border-lineDark';
+    }
+  };
+
+  return (
+    <div className="mt-10">
+      <SectionHead
+        eyebrow="Benchmark"
+        title="Top competitor content"
+        sub={activeBrand
+          ? `Filtered to one brand. Clear the brand filter in the top bar to see everyone.`
+          : "What's working for the brands you track — and the hook formula behind each one."}
+        right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><MashalDot color="bg-magenta" size="w-1.5 h-1.5" /> {visible.length} post{visible.length === 1 ? '' : 's'}</span>}
+      />
+
+      <Card className="overflow-hidden p-0">
+        {/* Desktop table */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark bg-ink/5 dark:bg-paper/5 border-b border-line dark:border-lineDark">
+                <th className="px-4 py-3 font-medium">Brand</th>
+                <th className="px-4 py-3 font-medium">Platform</th>
+                <th className="px-4 py-3 font-medium">Caption</th>
+                <th className="px-4 py-3 font-medium text-right">Views</th>
+                <th className="px-4 py-3 font-medium text-right">Likes</th>
+                <th className="px-4 py-3 font-medium">Pattern</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map(p => (
+                <tr key={p.id} className="border-b border-line dark:border-lineDark last:border-b-0 hover:bg-ink/[0.02] dark:hover:bg-paper/[0.02] transition">
+                  <td className="px-4 py-3 align-top">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 rounded-full bg-ink/5 dark:bg-paper/5 flex items-center justify-center flex-shrink-0">
+                        <Plat p={p.platform} className="w-3.5 h-3.5" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{p.competitor.display_name}</div>
+                        <div className="text-[11px] font-mono text-mute dark:text-muteDark truncate">@{p.competitor.handle}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 align-top text-[12px] text-mute dark:text-muteDark whitespace-nowrap">{platformLabel[p.platform] || p.platform}</td>
+                  <td className="px-4 py-3 align-top max-w-[340px]">
+                    <div className="text-[12.5px] leading-relaxed line-clamp-2">{p.caption_excerpt || <span className="text-mute dark:text-muteDark italic">No caption</span>}</div>
+                  </td>
+                  <td className="px-4 py-3 align-top text-right font-mono font-semibold">{fmt(p.views)}</td>
+                  <td className="px-4 py-3 align-top text-right font-mono">{fmt(p.likes)}</td>
+                  <td className="px-4 py-3 align-top">
+                    <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[11px] font-mono', patternBadgeClass(p.pattern.tone))}>
+                      {p.pattern.label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile card list */}
+        <div className="md:hidden">
+          {visible.map(p => (
+            <div key={p.id} className="px-4 py-3 border-b border-line dark:border-lineDark last:border-b-0">
+              <div className="flex items-start justify-between gap-3 mb-1.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Plat p={p.platform} className="w-3.5 h-3.5 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-[13px] truncate">{p.competitor.display_name}</div>
+                    <div className="text-[10.5px] font-mono text-mute dark:text-muteDark truncate">@{p.competitor.handle}</div>
+                  </div>
+                </div>
+                <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10px] font-mono flex-shrink-0', patternBadgeClass(p.pattern.tone))}>
+                  {p.pattern.label}
+                </span>
+              </div>
+              <div className="text-[12px] text-mute dark:text-muteDark leading-relaxed line-clamp-2 mb-2">{p.caption_excerpt}</div>
+              <div className="flex items-center gap-3 text-[11px] font-mono">
+                <span><span className="text-mute dark:text-muteDark">views</span> <strong>{fmt(p.views)}</strong></span>
+                <span><span className="text-mute dark:text-muteDark">likes</span> <strong>{fmt(p.likes)}</strong></span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+Object.assign(window, { ContentScreen, CompetitorTopContent });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 5273-5978
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 5 — Intelligence
+const IntelScreen = ({ activePlatform }) => {
+  const isAll = activePlatform === 'all' || !activePlatform;
+  // Scoped signal stream — when a platform tab is active, narrow to that
+  // platform plus any cross-platform ("all") signals.
+  const scoped = (D.signals || []).filter(s =>
+    isAll || s.platform === activePlatform || s.platform === 'all'
+  );
+  const hero = scoped[0];
+  const rest = scoped.slice(1);
+  const todayActions = (D.todayActions || []);
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-magenta" size="w-1.5 h-1.5" /> Live intelligence engine</span>}
+        title="Strategic signals"
+        sub={isAll
+          ? "AI-derived analysis across your entire catalogue, refreshed with every sync."
+          : `Signals scoped to ${platformLabel[activePlatform] || activePlatform}.`}
+      />
+
+      {scoped.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">
+            {isAll
+              ? 'No signals yet — they appear after your first AI brief generates.'
+              : `No ${platformLabel[activePlatform] || activePlatform} signals in the current brief. Switch tabs or check back after the next sync.`}
+          </div>
+        </Card>
+      ) : (
+        <>
+          {/* Hero — the top signal in the current scope */}
+          {hero && (
+            <div className="grid lg:grid-cols-12 gap-4 sm:gap-5 mb-5">
+              <div className="lg:col-span-8 rounded-2xl bg-gradient-to-br from-ultra via-ultra to-magenta text-white p-6 sm:p-8 relative overflow-hidden fade-up">
+                <div className="absolute -right-16 -bottom-16 w-56 h-56 rounded-full bg-white/10 blur-2xl" />
+                <div className="absolute right-6 top-6 opacity-20"><Icon name="sparkle" className="w-20 h-20" /></div>
+                <Pill color="ink"><span className="text-white">Priority signal · {hero.impact || 'Strategic'}</span></Pill>
+                <h2 className="font-display text-[26px] sm:text-[36px] leading-[1.05] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">{hero.title}</h2>
+                <p className="text-[13.5px] text-white/85 max-w-xl leading-relaxed">{hero.body}</p>
+                {hero.action && (
+                  <div className="mt-6 inline-flex items-center gap-1.5 text-[13px] text-lime font-medium">
+                    <Icon name="arrowRight" className="w-3.5 h-3.5" /> {hero.action}
+                  </div>
+                )}
+              </div>
+              <div className="lg:col-span-4 space-y-4">
+                {/* Workspace verdict as the right-rail context card */}
+                {D.verdict && (
+                  <Card>
+                    <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Workspace verdict</Pill>
+                    <h3 className="font-display text-[18px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">{D.verdict.title}</h3>
+                    <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{D.verdict.body}</p>
+                  </Card>
+                )}
+                {typeof D.intelScore === 'number' && D.intelScore > 0 && (
+                  <Card className="bg-ink text-paper border-transparent">
+                    <Eyebrow color="text-lime">Intelligence score</Eyebrow>
+                    <div className="font-display text-[40px] font-semibold leading-none tracking-tightest mt-2">{D.intelScore}<span className="text-[18px] text-paper/40">/100</span></div>
+                    <div className="text-[11.5px] text-paper/60 mt-2">Updated with each brief</div>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Today's actions — real AI output (also surfaced on Brief) */}
+          {todayActions.length > 0 && (
+            <Card className="mb-5 bg-chalk dark:bg-coalsoft">
+              <div className="flex items-center gap-2 mb-4">
+                <Icon name="bolt" className="w-4 h-4 text-magenta" />
+                <h3 className="font-display text-[16px] font-semibold tracking-tight">Action plan · this cycle</h3>
+              </div>
+              <div className="grid sm:grid-cols-3 gap-3">
+                {todayActions.map(a => (
+                  <div key={a.id} className="rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink p-4">
+                    <div className="w-9 h-9 rounded-lg bg-ink/5 dark:bg-paper/5 flex items-center justify-center mb-3"><Icon name={a.icon || 'sparkle'} className="w-4 h-4" /></div>
+                    <div className="text-[13.5px] font-semibold mb-1">{a.title}</div>
+                    <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed mb-2">{a.body}</p>
+                    {a.cta && (
+                      <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra dark:text-lime">{a.cta}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Content Formula — the AI-derived "do this exact thing" playbook */}
+          <ContentFormulaCard />
+
+          {/* What's working · missing · unlock — triage panel from the brief */}
+          <WhatsWorkingMissingCard />
+
+          {/* Strategic Rewrite — competitor's hook + yours + suggested rewrite */}
+          <StrategicRewriteCard />
+
+          {/* Competitor ads — Meta Ad Library scrape, currently-running creative */}
+          <CompetitorAdsCard />
+
+          {/* Market context — country-level TAM + platform reference */}
+          <MarketContextCard />
+
+          {/* Stream — every other signal in the current scope */}
+          {rest.length > 0 && (
+            <>
+              <SectionHead
+                eyebrow="Stream"
+                title="Intelligence stream"
+                right={<span className="text-[11px] font-mono text-mute dark:text-muteDark flex items-center gap-1.5"><MashalDot color="bg-lime" size="w-1.5 h-1.5" /> {scoped.length} signal{scoped.length === 1 ? '' : 's'}{isAll ? '' : ` · ${platformLabel[activePlatform] || activePlatform}`}</span>}
+              />
+              <div className="space-y-2.5">
+                {rest.map(s => <SignalRow key={s.id} signal={s} />)}
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ContentFormulaCard — distilled "do this exact thing" playbook from the
+// latest brief. Renders the 4 ingredients (hook, differentiator, caption,
+// niche) plus a brand-positioning one-liner footer. Hides itself if the
+// brief didn't produce a formula.
+const ContentFormulaCard = () => {
+  const f = D.formula;
+  if (!f || (!f.hook && !f.differentiator && !f.caption && !f.niche)) return null;
+
+  const ingredients = [
+    { eyebrow: '① The hook',           tone: 'magenta', body: f.hook },
+    { eyebrow: '② The differentiator', tone: 'ultra',   body: f.differentiator },
+    { eyebrow: '③ Caption structure',  tone: 'amber',   body: f.caption },
+    { eyebrow: '④ Your niche',         tone: 'lime',    body: f.niche },
+  ].filter(i => i.body);
+
+  if (ingredients.length === 0) return null;
+
+  const toneBg = {
+    magenta: 'bg-magenta/8 border-magenta/25',
+    ultra:   'bg-ultra/8 border-ultra/25',
+    amber:   'bg-amber/8 border-amber/25',
+    lime:    'bg-lime/15 border-lime/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="layers" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">The content formula</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Distilled from your data: the four ingredients to apply on your next post.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {ingredients.map(i => (
+          <div key={i.eyebrow} className={cls('rounded-xl border p-3.5', toneBg[i.tone])}>
+            <div className={cls('text-[10px] font-mono uppercase tracking-[0.12em] mb-1.5 font-semibold',
+              i.tone === 'magenta' ? 'text-magenta' :
+              i.tone === 'ultra'   ? 'text-ultra'   :
+              i.tone === 'amber'   ? 'text-amber'   : 'text-limeDeep dark:text-lime'
+            )}>{i.eyebrow}</div>
+            <p className="text-[13px] leading-relaxed">{i.body}</p>
+          </div>
+        ))}
+      </div>
+      {f.positioning && (
+        <div className="mt-4 rounded-xl bg-ink dark:bg-coalsoft text-paper p-4">
+          <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-paper/60 font-semibold mb-1.5">Positioning · in one sentence</div>
+          <p className="font-display text-[15px] leading-snug italic">"{f.positioning}"</p>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// WhatsWorkingMissingCard — three-panel triage from the AI brief: what's
+// earning reach today, what competitors do that you don't, and the single
+// highest-leverage unlock. Reads formula.whats_working / whats_missing /
+// unlock; hides itself when those fields are empty.
+const WhatsWorkingMissingCard = () => {
+  const f = D.formula;
+  const working = (f?.whats_working || []).filter(Boolean);
+  const missing = (f?.whats_missing || []).filter(Boolean);
+  const unlock = f?.unlock || null;
+  if (working.length === 0 && missing.length === 0 && !unlock) return null;
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="target" className="w-4 h-4 text-magenta" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">What's working · missing · unlock</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Triage from the latest brief — keep doing the wins, close the gaps, ship the unlock.
+      </p>
+      <div className="grid md:grid-cols-3 gap-3">
+        {working.length > 0 && (
+          <div className="rounded-xl border border-lime/30 bg-lime/12 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-limeDeep dark:text-lime font-semibold mb-2">✓ Working</div>
+            <ul className="space-y-1.5 text-[12.5px] leading-snug">
+              {working.map((w, i) => <li key={i} className="flex gap-1.5"><span className="text-limeDeep dark:text-lime flex-shrink-0">•</span><span>{w}</span></li>)}
+            </ul>
+          </div>
+        )}
+        {missing.length > 0 && (
+          <div className="rounded-xl border border-magenta/30 bg-magenta/10 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-magenta font-semibold mb-2">✗ Missing</div>
+            <ul className="space-y-1.5 text-[12.5px] leading-snug">
+              {missing.map((m, i) => <li key={i} className="flex gap-1.5"><span className="text-magenta flex-shrink-0">•</span><span>{m}</span></li>)}
+            </ul>
+          </div>
+        )}
+        {unlock && (
+          <div className="rounded-xl border border-ultra/30 bg-ultra/10 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-2">→ The unlock</div>
+            <p className="text-[12.5px] leading-relaxed">{unlock}</p>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+};
+
+// StrategicRewriteCard — competitor's top post next to one of the user's
+// posts, with an AI-suggested rewrite in the winning structure. The single
+// most actionable artifact in the brief. Hides itself when no clean
+// comparison exists.
+const StrategicRewriteCard = () => {
+  const r = D.rewrite;
+  if (!r || (!r.competitor_quote && !r.your_quote && !r.suggested_rewrite)) return null;
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="sparkle" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Strategic rewrite</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        A top competitor's hook + one of your posts + how yours would read in their structure.
+      </p>
+      <div className="grid md:grid-cols-2 gap-3 mb-3">
+        {r.competitor_quote && (
+          <div className="rounded-xl border border-magenta/30 bg-magenta/8 p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-magenta font-semibold mb-1.5">
+              What works · {r.competitor_handle ? `@${String(r.competitor_handle).replace(/^@/, '')}` : 'top competitor'}
+            </div>
+            <p className="text-[13px] leading-relaxed italic mb-2">"{r.competitor_quote}"</p>
+            {r.competitor_metric && (
+              <div className="text-[10.5px] font-mono text-magenta">{r.competitor_metric}</div>
+            )}
+          </div>
+        )}
+        {r.your_quote && (
+          <div className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-3.5">
+            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark font-semibold mb-1.5">
+              Your post today
+            </div>
+            <p className="text-[13px] leading-relaxed italic mb-2">"{r.your_quote}"</p>
+            {r.your_metric && (
+              <div className="text-[10.5px] font-mono text-mute dark:text-muteDark">{r.your_metric}</div>
+            )}
+          </div>
+        )}
+      </div>
+      {r.suggested_rewrite && (
+        <div className="rounded-xl border border-ultra/30 bg-ultra/10 p-3.5">
+          <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-1.5">→ Suggested rewrite · your voice, their structure</div>
+          <p className="text-[14px] leading-relaxed font-medium mb-2">"{r.suggested_rewrite}"</p>
+          {r.why && (
+            <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed">{r.why}</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// ChannelPriorityMatrix — derived from current data (no AI). One row per
+// connected platform showing user position vs the leader of the tracked
+// competitor set, plus a tactical verdict (Maintain+Grow / Urgent Fix /
+// Minimum Viable). Hides itself when nothing's connected.
+const ChannelPriorityMatrix = () => {
+  const ownByPlatform = D.accounts || {};
+  const competitors = D.competitors || [];
+
+  // Group competitors by platform for ranking math.
+  const compsByPlatform = {};
+  competitors.forEach(c => {
+    const p = c.platform;
+    if (!p) return;
+    if (!compsByPlatform[p]) compsByPlatform[p] = [];
+    compsByPlatform[p].push(c);
+  });
+
+  // Build rows from the platforms we actually have data for.
+  const rows = Object.entries(ownByPlatform)
+    .map(([key, a]) => {
+      const yourFollowers = a?.followers || a?.subs || a?.connections || 0;
+      const comps = compsByPlatform[key === 'ig' ? 'instagram'
+                              : key === 'tt' ? 'tiktok'
+                              : key === 'yt' ? 'youtube'
+                              : key === 'li' ? 'linkedin'
+                              : key === 'fb' ? 'facebook'
+                              : key === 'sc' ? 'snapchat'
+                              : key] || [];
+      const leader = comps.reduce((max, c) => Math.max(max, c.followers || 0), yourFollowers);
+      const rankList = [
+        { name: 'you', followers: yourFollowers, own: true },
+        ...comps.map(c => ({ name: c.handle, followers: c.followers || 0, own: false })),
+      ].sort((a, b) => b.followers - a.followers);
+      const yourRank = rankList.findIndex(r => r.own) + 1;
+      const totalCount = rankList.length;
+      const pct = leader > 0 ? (yourFollowers / leader) * 100 : 0;
+
+      // Tactical verdict heuristic — same as the prototype's labels.
+      let verdict, tone;
+      if (yourRank === 1 || pct >= 80) { verdict = 'Maintain + Grow'; tone = 'lime'; }
+      else if (pct >= 30)              { verdict = 'Strong · Push';   tone = 'ultra'; }
+      else if (pct >= 10)              { verdict = 'Build · Activate'; tone = 'amber'; }
+      else                              { verdict = 'Urgent Fix';      tone = 'magenta'; }
+
+      return {
+        key, yourFollowers, yourRank, totalCount, pct, leader, verdict, tone,
+        hasComp: comps.length > 0,
+      };
+    })
+    .filter(r => r.yourFollowers > 0)
+    .sort((a, b) => b.pct - a.pct);
+
+  if (rows.length === 0) return null;
+
+  const toneClass = {
+    lime:    'bg-lime/20 text-limeDeep dark:text-lime border-lime/30',
+    ultra:   'bg-ultra/12 text-ultra border-ultra/25',
+    amber:   'bg-amber/15 text-amber border-amber/25',
+    magenta: 'bg-magenta/12 text-magenta border-magenta/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="grid" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Channel priority matrix</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Where you stand on each channel + where to spend your next hour.
+      </p>
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark border-b border-line dark:border-lineDark">
+              <th className="px-2 py-2 font-medium">Channel</th>
+              <th className="px-2 py-2 font-medium">Your position</th>
+              <th className="px-2 py-2 font-medium text-right">Of leader</th>
+              <th className="px-2 py-2 font-medium">Priority</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(r => (
+              <tr key={r.key} className="border-b border-line/60 dark:border-lineDark/60 last:border-b-0">
+                <td className="px-2 py-3 align-middle">
+                  <div className="flex items-center gap-2">
+                    <Plat p={r.key} className="w-4 h-4 flex-shrink-0" />
+                    <span className="font-semibold">{platformLabel[r.key] || r.key}</span>
+                  </div>
+                </td>
+                <td className="px-2 py-3 align-middle text-[12.5px] text-mute dark:text-muteDark">
+                  <span className="font-mono">{formatNum(r.yourFollowers)}</span> followers
+                  {r.hasComp && (
+                    <span className="ml-1.5 font-mono text-[11px]">
+                      · #{r.yourRank} of {r.totalCount}
+                    </span>
+                  )}
+                </td>
+                <td className="px-2 py-3 align-middle text-right font-mono text-[12px]">
+                  {r.hasComp ? `${r.pct < 10 ? r.pct.toFixed(1) : Math.round(r.pct)}%` : '—'}
+                </td>
+                <td className="px-2 py-3 align-middle">
+                  <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10.5px] font-mono', toneClass[r.tone])}>
+                    {r.verdict}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+};
+
+// AllPlatformsScorecard — single landscape table showing every brand
+// (you + competitors) across every connected platform. Derived from current
+// data; no AI. Adds a per-row "position" verdict so agencies can scan
+// who's dominant where.
+const AllPlatformsScorecard = () => {
+  const competitors = D.competitors || [];
+  const accounts = D.accounts || {};
+
+  // Platform key set — union of connected accounts + competitor platforms.
+  const platformSet = new Set();
+  Object.keys(accounts).forEach(k => platformSet.add(k));
+  competitors.forEach(c => {
+    if (!c.platform) return;
+    platformSet.add(
+      c.platform === 'instagram' ? 'ig' :
+      c.platform === 'tiktok'    ? 'tt' :
+      c.platform === 'youtube'   ? 'yt' :
+      c.platform === 'linkedin'  ? 'li' :
+      c.platform === 'facebook'  ? 'fb' :
+      c.platform === 'snapchat'  ? 'sc' :
+      c.platform
+    );
+  });
+  const platforms = [...platformSet];
+  if (platforms.length === 0) return null;
+
+  // Helper to look up a competitor's follower count on a given platform key.
+  const platformLong = (k) => k === 'ig' ? 'instagram' : k === 'tt' ? 'tiktok'
+                              : k === 'yt' ? 'youtube' : k === 'li' ? 'linkedin'
+                              : k === 'fb' ? 'facebook' : k === 'sc' ? 'snapchat'
+                              : k;
+  const compFollowers = (c, key) => {
+    if (c.platform === platformLong(key)) return c.followers || 0;
+    return null;
+  };
+
+  // Build rows — user first, then competitors in follower-rank order.
+  const userRow = {
+    name: 'You',
+    handle: '',
+    own: true,
+    cells: Object.fromEntries(platforms.map(k => {
+      const a = accounts[k] || {};
+      return [k, a.followers || a.subs || a.connections || 0];
+    })),
+  };
+  const compRows = competitors.map(c => ({
+    name: c.display_name || c.handle,
+    handle: c.handle,
+    own: false,
+    cells: Object.fromEntries(platforms.map(k => [k, compFollowers(c, k) ?? null])),
+  }));
+  const rows = [userRow, ...compRows];
+
+  // Derive a single-word position verdict per row from where they lead.
+  const leaderPerPlatform = {};
+  platforms.forEach(k => {
+    let max = 0;
+    rows.forEach(r => { const v = r.cells[k] || 0; if (v > max) max = v; });
+    leaderPerPlatform[k] = max;
+  });
+  const verdictFor = (row) => {
+    const leads = platforms.filter(k => (row.cells[k] || 0) > 0 && row.cells[k] === leaderPerPlatform[k]);
+    if (leads.length >= 2) return { txt: 'Multi-platform', tone: 'lime' };
+    if (leads.length === 1) {
+      const p = platformLabel[leads[0]] || leads[0];
+      return { txt: `${p} dominant`, tone: 'lime' };
+    }
+    // Closest to leader on any platform → "Strong"
+    const bestPct = Math.max(0, ...platforms.map(k =>
+      leaderPerPlatform[k] ? (row.cells[k] || 0) / leaderPerPlatform[k] : 0
+    ));
+    if (bestPct >= 0.3) return { txt: 'Strong', tone: 'ultra' };
+    if (bestPct >= 0.05) return { txt: 'Building', tone: 'amber' };
+    return { txt: 'Behind', tone: 'magenta' };
+  };
+
+  const toneClass = {
+    lime:    'bg-lime/20 text-limeDeep dark:text-lime border-lime/30',
+    ultra:   'bg-ultra/12 text-ultra border-ultra/25',
+    amber:   'bg-amber/15 text-amber border-amber/25',
+    magenta: 'bg-magenta/12 text-magenta border-magenta/30',
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <Icon name="grid" className="w-4 h-4 text-ultra" />
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">All-platforms scorecard</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        Followers across every connected platform. Empty cells = not present on that channel.
+      </p>
+      <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark border-b border-line dark:border-lineDark">
+              <th className="px-2 py-2 font-medium">Brand</th>
+              {platforms.map(k => (
+                <th key={k} className="px-2 py-2 font-medium text-right whitespace-nowrap">
+                  <span className="inline-flex items-center gap-1.5"><Plat p={k} className="w-3.5 h-3.5" /> {platformLabel[k] || k}</span>
+                </th>
+              ))}
+              <th className="px-2 py-2 font-medium">Position</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const v = verdictFor(r);
+              return (
+                <tr key={i} className={cls('border-b border-line/60 dark:border-lineDark/60 last:border-b-0', r.own && 'bg-ultra/5')}>
+                  <td className="px-2 py-3 align-middle">
+                    <div className={cls('font-semibold text-[12.5px]', r.own && 'text-ultra')}>
+                      {r.own ? 'You' : r.name}
+                    </div>
+                    {!r.own && r.handle && (
+                      <div className="text-[10.5px] font-mono text-mute dark:text-muteDark">@{String(r.handle).replace(/^@/, '')}</div>
+                    )}
+                  </td>
+                  {platforms.map(k => (
+                    <td key={k} className="px-2 py-3 align-middle text-right font-mono text-[12px] whitespace-nowrap">
+                      {r.cells[k] ? formatNum(r.cells[k]) : <span className="text-mute/40">—</span>}
+                    </td>
+                  ))}
+                  <td className="px-2 py-3 align-middle">
+                    <span className={cls('inline-flex items-center px-2 py-0.5 rounded border text-[10.5px] font-mono', toneClass[v.tone])}>
+                      {v.txt}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+};
+
+// MarketContextCard — TAM, platform usage, and a one-line "what travels"
+// editorial note for the workspace's country. Hidden when country isn't
+// set on the workspace, or when we don't have reference data for it.
+const MarketContextCard = () => {
+  const m = D.marketContext;
+  if (!m) return null;
+
+  const fmtM = (n) => n == null ? null : (n >= 100 ? Math.round(n) : n.toFixed(1).replace(/\.0$/, ''));
+  // Sort platforms by user count desc — biggest first.
+  const platforms = Object.entries(m.platforms || {})
+    .map(([key, p]) => ({ key, ...p }))
+    .sort((a, b) => (b.users_m || 0) - (a.users_m || 0));
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center gap-2 mb-1">
+        <span className="text-[20px] leading-none">{m.flag}</span>
+        <h3 className="font-display text-[16px] font-semibold tracking-tight">Market context · {m.name}</h3>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4">
+        TAM signals and how content travels in your home market. Population: <strong className="text-ink dark:text-paper">{fmtM(m.population_m)}M</strong>.
+      </p>
+
+      <div className="grid sm:grid-cols-2 gap-2.5 mb-4">
+        {platforms.map(p => (
+          <div key={p.key} className="rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft px-3.5 py-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <Plat p={p.key === 'youtube' ? 'yt' : p.key === 'tiktok' ? 'tt' : p.key === 'instagram' ? 'ig' : p.key === 'facebook' ? 'fb' : p.key === 'linkedin' ? 'li' : p.key === 'snapchat' ? 'sc' : p.key} className="w-3.5 h-3.5" />
+              <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                {platformLabel[p.key === 'youtube' ? 'yt' : p.key === 'tiktok' ? 'tt' : p.key === 'instagram' ? 'ig' : p.key === 'facebook' ? 'fb' : p.key === 'linkedin' ? 'li' : 'sc'] || p.key}
+              </span>
+              <span className="ml-auto font-display text-[15px] font-semibold tracking-tight">{fmtM(p.users_m)}M</span>
+            </div>
+            <p className="text-[11.5px] text-mute dark:text-muteDark leading-relaxed line-clamp-2">{p.note}</p>
+          </div>
+        ))}
+      </div>
+
+      {m.hot_topic && (
+        <div className="rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/25 px-3.5 py-3">
+          <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-ultra font-semibold mb-1">What travels here</div>
+          <p className="text-[12.5px] leading-relaxed">{m.hot_topic}</p>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// CompetitorAdsCard — Meta Ad Library scrape grouped by competitor.
+// Hides itself when the user isn't on Brand+ or no ads have been scraped
+// yet. When the trial is active, Brand-intent users see a teaser. The
+// data shape is shaped server-side in api/brief.js — we just render it.
+const CompetitorAdsCard = () => {
+  const c = D.competitorAds;
+  if (!c) return null;
+
+  // Tier gate — Creator workspaces never see this card. We don't show a
+  // TrialLockedCard here because the Intel screen is already gated for
+  // Creator at a higher level and we'd be doubling the upgrade prompt.
+  if (!c.allowed) return null;
+
+  // Trial — show a locked teaser inline so the section's purpose is clear
+  // before the user converts.
+  if (c.locked) {
+    return (
+      <Card className="mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">
+          Every paid Meta ad your tracked competitors are currently running, refreshed daily. The scrape unlocks once your trial converts.
+        </p>
+      </Card>
+    );
+  }
+
+  if (!c.byCompetitor?.length) {
+    return (
+      <Card className="mb-5">
+        <div className="flex items-center gap-2 mb-1">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">
+          No Meta ads detected for your tracked Facebook and Instagram competitors yet. The next nightly scrape will populate this card if any of them are spending on Meta. Competitors on TikTok, YouTube, X, and LinkedIn aren't covered (Meta's Ad Library only catalogues Meta-owned ads).
+        </p>
+      </Card>
+    );
+  }
+
+  const creativePill = (kind) => {
+    const colour = kind === 'video' ? 'magenta' : kind === 'image' ? 'lime' : kind === 'carousel' ? 'ultraSoft' : 'ink';
+    return <Pill color={colour}>{kind}</Pill>;
+  };
+
+  return (
+    <Card className="mb-5">
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <Icon name="layers" className="w-4 h-4 text-magenta" />
+          <h3 className="font-display text-[16px] font-semibold tracking-tight">Competitor ads · live</h3>
+        </div>
+        <span className="text-[11px] font-mono text-mute dark:text-muteDark uppercase tracking-[0.12em]">
+          {c.totalAds} ad{c.totalAds === 1 ? '' : 's'} · {c.byCompetitor.length} competitor{c.byCompetitor.length === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="text-[12.5px] text-mute dark:text-muteDark mb-4 leading-relaxed">
+        Every paid Meta ad currently running on each tracked Facebook and Instagram competitor. Pulled from Meta's public Ad Library, refreshed daily.
+      </p>
+
+      <div className="space-y-4">
+        {c.byCompetitor.slice(0, 5).map(b => (
+          <div key={b.competitor_handle} className="rounded-xl border border-line dark:border-lineDark p-3.5">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <Plat p={b.platform} className="w-3.5 h-3.5" />
+                <span className="font-display text-[14.5px] font-semibold tracking-tight truncate">
+                  {b.display_name}
+                </span>
+                <span className="text-[11px] font-mono text-mute dark:text-muteDark">@{String(b.competitor_handle).replace(/^@/, '')}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Pill color="magenta">{b.running} live</Pill>
+                {b.ended > 0 && <span className="text-[11px] font-mono text-mute dark:text-muteDark">{b.ended} ended</span>}
+                {Object.entries(b.creative_mix).slice(0, 3).map(([kind, count]) => (
+                  <span key={kind} className="inline-flex items-center gap-1 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                    {kind} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {b.sample.length > 0 && (
+              <div className="space-y-2">
+                {b.sample.map(ad => (
+                  <div key={ad.ad_id} className="rounded-lg bg-chalk dark:bg-coalsoft p-3 text-[12.5px] leading-relaxed">
+                    <div className="flex items-center gap-2 mb-1.5 text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">
+                      {creativePill(ad.creative_type)}
+                      {ad.start_date && <span>started {ad.start_date}</span>}
+                      {ad.region && <span>· {ad.region}</span>}
+                      {ad.spend_range && <span>· {ad.spend_range}</span>}
+                    </div>
+                    {ad.headline && <p className="text-[13px] mb-1">{ad.headline}</p>}
+                    <div className="flex items-center gap-3 mt-1">
+                      {ad.cta && <span className="text-[11px] font-mono text-magenta">{ad.cta}</span>}
+                      {safeHref(ad.permalink) && (
+                        <a href={safeHref(ad.permalink)} target="_blank" rel="noopener noreferrer" className="text-[11px] font-mono text-ultra hover:underline">
+                          View in Ad Library →
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {c.byCompetitor.length > 5 && (
+        <div className="mt-3 text-[11.5px] font-mono text-mute dark:text-muteDark text-center">
+          {c.byCompetitor.length - 5} more competitor{c.byCompetitor.length - 5 === 1 ? '' : 's'} not shown
+        </div>
+      )}
+    </Card>
+  );
+};
+
+Object.assign(window, { IntelScreen, ContentFormulaCard, MarketContextCard, CompetitorAdsCard });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 5979-6105
+// ═════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen — Action Plan
+// Surfaces the full set of brief-generated actions, grouped by timeframe
+// (Now / Today / This week / This month). Reads from D.actionPlan which the
+// brief endpoint exposes as the full ordered list; falls back to D.todayActions
+// if the field is missing (older briefs / mid-deploy).
+// ─────────────────────────────────────────────────────────────────────────────
+const ActionsScreen = ({ activePlatform }) => {
+  const all = (D.actionPlan && D.actionPlan.length) ? D.actionPlan : (D.todayActions || []);
+
+  // Bucket by `when`. Anything that doesn't match a known bucket falls into
+  // "This week" — that's the median urgency the prompt asks for.
+  const norm = (w) => {
+    const v = String(w || '').toLowerCase();
+    if (v.includes('now') || v.includes('immediate')) return 'now';
+    if (v.includes('today')) return 'today';
+    if (v.includes('month') || v.includes('strategic') || v.includes('quarter')) return 'month';
+    if (v.includes('week')) return 'week';
+    return 'week';
+  };
+  const buckets = { now: [], today: [], week: [], month: [] };
+  all.forEach(a => buckets[norm(a.when)].push(a));
+
+  const groups = [
+    { id: 'now',   eyebrow: 'Right now',      title: 'Act in the next hour',  accent: 'magenta', border: 'border-magenta' },
+    { id: 'today', eyebrow: 'Today',          title: 'Finish before EOD',     accent: 'ultra',   border: 'border-ultra'   },
+    { id: 'week',  eyebrow: 'This week',      title: 'Fix the foundation',    accent: 'amber',   border: 'border-amber'   },
+    { id: 'month', eyebrow: 'This month',     title: 'Build the engine',      accent: 'lime',    border: 'border-lime'    },
+  ].filter(g => buckets[g.id].length > 0);
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-lime" size="w-1.5 h-1.5" /> Prioritised by impact</span>}
+        title="Action plan"
+        sub="Every move the latest brief surfaced — grouped by when it needs to happen. Start at the top."
+        right={typeof D.intelScore === 'number' && D.intelScore > 0 ? (
+          <Card className="bg-ink text-paper border-transparent px-5 py-4">
+            <Eyebrow color="text-lime">Intel score</Eyebrow>
+            <div className="font-display text-[32px] font-semibold leading-none tracking-tightest mt-1">{D.intelScore}<span className="text-[14px] text-paper/40">/100</span></div>
+          </Card>
+        ) : null}
+      />
+
+      {all.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">
+            No actions yet — they appear after your first AI brief generates.
+          </div>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {groups.map(g => (
+            <section key={g.id}>
+              <div className="flex items-baseline justify-between mb-3">
+                <div>
+                  <Eyebrow color={`text-${g.accent}`}>{g.eyebrow}</Eyebrow>
+                  <h2 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tight mt-1">{g.title}</h2>
+                </div>
+                <span className="text-[11px] font-mono text-mute dark:text-muteDark">
+                  {buckets[g.id].length} action{buckets[g.id].length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <div className="grid md:grid-cols-2 gap-3">
+                {buckets[g.id].map(a => (
+                  <div
+                    key={a.id}
+                    className={cls(
+                      'rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft p-4 sm:p-5 border-l-4',
+                      g.accent === 'magenta' ? 'border-l-magenta' :
+                      g.accent === 'ultra'   ? 'border-l-ultra'   :
+                      g.accent === 'amber'   ? 'border-l-amber'   : 'border-l-lime'
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cls(
+                        'w-9 h-9 rounded-lg flex-shrink-0 flex items-center justify-center',
+                        g.accent === 'magenta' ? 'bg-magenta/15 text-magenta' :
+                        g.accent === 'ultra'   ? 'bg-ultra/15 text-ultra'     :
+                        g.accent === 'amber'   ? 'bg-amber/15 text-amber'     : 'bg-lime/25 text-limeDeep dark:text-lime'
+                      )}>
+                        <Icon name={a.icon || 'sparkle'} className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1">
+                          {a.when || g.eyebrow}
+                        </div>
+                        <h3 className="font-display text-[15px] sm:text-[16px] font-semibold tracking-tight leading-snug mb-1.5">
+                          {a.title}
+                        </h3>
+                        <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{a.body}</p>
+                        {a.cta && (
+                          <p className={cls(
+                            'text-[11.5px] mt-2.5 font-medium',
+                            g.accent === 'magenta' ? 'text-magenta' :
+                            g.accent === 'ultra'   ? 'text-ultra dark:text-lime' :
+                            g.accent === 'amber'   ? 'text-amber' : 'text-limeDeep dark:text-lime'
+                          )}>→ {a.cta}</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
+
+          {/* Closing goal panel — only shows if there's a verdict to anchor it */}
+          {D.verdict?.title && (
+            <Card className="bg-ink text-paper border-transparent p-6 sm:p-8 mt-2">
+              <Eyebrow color="text-lime">The goal</Eyebrow>
+              <h2 className="font-display text-[22px] sm:text-[26px] font-semibold tracking-tightest leading-tight mt-2 mb-2 text-paper">
+                {D.verdict.title}
+              </h2>
+              <p className="text-[13px] text-paper/70 leading-relaxed max-w-2xl">{D.verdict.body}</p>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ActionsScreen });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 6106-6349
+// ═════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Screen — Reports & Export
+// Lists past PDFs for the workspace and lets the user generate a new one.
+// "Email me" optionally attaches the PDF to a transactional Resend email.
+// ─────────────────────────────────────────────────────────────────────────────
+const ReportsScreen = () => {
+  const [reports, setReports]     = React.useState(null);
+  const [loading, setLoading]     = React.useState(true);
+  const [generating, setGen]      = React.useState(false);
+  const [withEmail, setWithEmail] = React.useState(false);
+  const [toast, setToast]         = React.useState(null);
+
+  const fetchReports = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await api('/reports');
+      setReports(r.reports || []);
+    } catch (e) {
+      setReports([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { fetchReports(); }, [fetchReports]);
+
+  const showToast = (msg, tone = 'ok') => {
+    setToast({ msg, tone });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const generate = async () => {
+    setGen(true);
+    setToast(null);
+    try {
+      const body = withEmail ? { action: 'email' } : {};
+      const r = await api('/reports', { method: 'POST', body: JSON.stringify(body) });
+      if (r?.ok) {
+        showToast(
+          r.email?.sent
+            ? `Report generated and emailed to ${r.email.to}.`
+            : `Report ready.`
+        );
+        fetchReports();
+        // Auto-open the new PDF in a new tab — small UX win.
+        if (r.report?.signed_url) {
+          window.open(r.report.signed_url, '_blank', 'noopener');
+        }
+      } else {
+        showToast(r?.message || r?.error || 'Generation failed', 'err');
+      }
+    } catch (e) {
+      showToast(e.message || 'Generation failed', 'err');
+    } finally {
+      setGen(false);
+    }
+  };
+
+  const removeReport = async (id) => {
+    if (!confirm('Delete this report permanently?')) return;
+    try {
+      await api(`/reports?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      fetchReports();
+    } catch (e) {
+      showToast(e.message || 'Delete failed', 'err');
+    }
+  };
+
+  const fmtDate = (iso) => {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit',
+      });
+    } catch { return iso; }
+  };
+
+  // TIER GATE — PDF report generation is a Pro Creator+ feature. Render
+  // the button as a locked upgrade pointer for Creator workspaces so the
+  // user doesn't click into a 402 error toast. Trial workspaces preview
+  // the button until conversion (server still allows generate during
+  // trial of any tier).
+  const tierKey = (D.tier?.key || 'creator').toLowerCase();
+  const reportsLocked = tierKey === 'creator' && !D.trial?.active;
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow={<span className="flex items-center gap-1.5"><MashalDot color="bg-ultra" size="w-1.5 h-1.5" /> Executive PDFs</span>}
+        title="Reports & export"
+        sub="Export the current intelligence brief as a one-page executive PDF. History stays here for 50 reports per workspace."
+        right={
+          <div className="flex items-center gap-2">
+            {!reportsLocked && (
+              <label className="flex items-center gap-1.5 text-[12.5px] text-mute dark:text-muteDark cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={withEmail}
+                  onChange={(e) => setWithEmail(e.target.checked)}
+                  className="accent-ultra"
+                />
+                Email me
+              </label>
+            )}
+            {reportsLocked ? (
+              <a
+                href="/pricing"
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-xl text-[13px] font-medium bg-ultra/10 text-ultra hover:bg-ultra/15 transition"
+              >
+                <Icon name="lock" className="w-3.5 h-3.5" />
+                Unlock with Pro Creator
+              </a>
+            ) : (
+              <button
+                onClick={generate}
+                disabled={generating}
+                className={cls(
+                  'h-9 px-4 rounded-xl text-[13px] font-medium transition',
+                  generating
+                    ? 'bg-ink/10 dark:bg-paper/10 text-mute dark:text-muteDark cursor-wait'
+                    : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90'
+                )}
+              >
+                {generating ? 'Generating…' : '+ Generate report'}
+              </button>
+            )}
+          </div>
+        }
+      />
+
+      {toast && (
+        <div className={cls(
+          'mb-4 rounded-xl px-4 py-3 text-[13px] flex items-center gap-2',
+          toast.tone === 'err'
+            ? 'bg-magenta/10 text-magenta border border-magenta/25'
+            : 'bg-lime/15 text-limeDeep dark:text-lime border border-lime/30'
+        )}>
+          <Icon name={toast.tone === 'err' ? 'bolt' : 'sparkle'} className="w-3.5 h-3.5" />
+          {toast.msg}
+        </div>
+      )}
+
+      {loading ? (
+        <Card>
+          <div className="py-12 text-center text-[13px] text-mute dark:text-muteDark">Loading reports…</div>
+        </Card>
+      ) : reports.length === 0 ? (
+        <Card>
+          <div className="py-12 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-ultra/15 text-ultra mx-auto mb-3 flex items-center justify-center">
+              <Icon name="layers" className="w-6 h-6" />
+            </div>
+            <h3 className="font-display text-[18px] font-semibold tracking-tight mb-2">No reports yet</h3>
+            {reportsLocked ? (
+              <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
+                PDF reports unlock on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo) and above. Your brief is still available on the dashboard every morning at 6 AM.
+              </p>
+            ) : (
+              <p className="text-[13px] text-mute dark:text-muteDark max-w-md mx-auto mb-5">
+                Click <strong>Generate report</strong> above to render the current brief into a one-page PDF you can share, archive, or email.
+              </p>
+            )}
+            {D.tier?.key !== 'creator' && (
+              <p className="text-[11.5px] font-mono text-mute dark:text-muteDark">
+                Weekly recap email? Enable in Settings → Workspace.
+              </p>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-0 overflow-hidden">
+          <table className="w-full text-[13px]">
+            <thead>
+              <tr className="text-left text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark bg-ink/5 dark:bg-paper/5 border-b border-line dark:border-lineDark">
+                <th className="px-4 py-3 font-medium">Generated</th>
+                <th className="px-4 py-3 font-medium">Period</th>
+                <th className="px-4 py-3 font-medium">Verdict</th>
+                <th className="px-4 py-3 font-medium">Kind</th>
+                <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map(r => {
+                const s = r.summary || {};
+                return (
+                  <tr key={r.id} className="border-b border-line dark:border-lineDark last:border-b-0">
+                    <td className="px-4 py-3 align-top whitespace-nowrap font-mono text-[11.5px]">{fmtDate(r.generated_at)}</td>
+                    <td className="px-4 py-3 align-top whitespace-nowrap text-mute dark:text-muteDark text-[12px]">{r.period || '—'}</td>
+                    <td className="px-4 py-3 align-top max-w-[360px]">
+                      <div className="font-medium line-clamp-1">{s.verdict_title || '—'}</div>
+                      <div className="text-[11px] font-mono text-mute dark:text-muteDark mt-0.5">
+                        {s.actions || 0} actions · {s.signals || 0} signals
+                        {s.intel_score ? ` · ${s.intel_score}/100` : ''}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className={cls(
+                        'inline-flex items-center px-2 py-0.5 rounded text-[10.5px] font-mono border',
+                        r.kind === 'weekly'
+                          ? 'bg-ultra/10 text-ultra border-ultra/25'
+                          : 'bg-ink/5 dark:bg-paper/5 text-mute dark:text-muteDark border-line dark:border-lineDark'
+                      )}>{r.kind === 'weekly' ? 'Weekly digest' : 'On-demand'}</span>
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      <span className={cls(
+                        'inline-flex items-center px-2 py-0.5 rounded text-[10.5px] font-mono border',
+                        r.status === 'ready'     ? 'bg-lime/20 text-limeDeep dark:text-lime border-lime/30' :
+                        r.status === 'rendering' ? 'bg-amber/15 text-amber border-amber/25' :
+                                                   'bg-magenta/15 text-magenta border-magenta/25'
+                      )}>{r.status}</span>
+                    </td>
+                    <td className="px-4 py-3 align-top text-right whitespace-nowrap">
+                      {r.signed_url ? (
+                        <>
+                          <a
+                            href={r.signed_url}
+                            target="_blank"
+                            rel="noopener"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-ultra hover:bg-ultra/5 mr-1"
+                          ><Icon name="arrowRight" className="w-3 h-3" /> Open</a>
+                        </>
+                      ) : null}
+                      <button
+                        onClick={() => removeReport(r.id)}
+                        className="inline-flex items-center px-2.5 py-1 rounded-lg text-[11.5px] font-medium text-mute dark:text-muteDark hover:text-magenta hover:bg-magenta/5"
+                      >Delete</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+Object.assign(window, { ReportsScreen });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 6350-6377
+// ═════════════════════════════════════════════════════════════════════════
+// Screen 6 — Targets & Actuals
+// Targets aren't backed by Supabase yet — there's no /api/targets endpoint
+// and no `targets` table. Showing fabricated cycles here would teach users
+// to trust numbers that aren't theirs, so we render an honest empty state
+// until the feature is wired up.
+const TargetsScreen = () => (
+  <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+    <ScreenHeader
+      eyebrow="Cycles"
+      title="Targets & actuals"
+      sub="Set 30-day growth cycles and let Mashal track pace, project outcomes, and recommend pivots."
+    />
+    <Card className="text-center py-16">
+      <div className="w-14 h-14 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-5">
+        <Icon name="target" className="w-6 h-6" />
+      </div>
+      <h3 className="font-display text-[22px] font-semibold tracking-tighter">Targets are coming next.</h3>
+      <p className="text-[13.5px] text-mute dark:text-muteDark mt-2 max-w-md mx-auto">
+        Set follower, view, or engagement goals per platform and Mashal will calculate the daily pace, surface pivots when you slip, and grade the cycle when it closes. We'll enable this once the underlying growth data has settled.
+      </p>
+    </Card>
+  </div>
+);
+
+Object.assign(window, { TargetsScreen });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 6378-7852
+// ═════════════════════════════════════════════════════════════════════════
+// Mashal Settings — clean OAuth connect flow, no API keys shown to users
+// All keys held server-side. Users only connect their social accounts.
+
+
+// ── Platform config ───────────────────────────────────────────────────────────
+const PLATFORMS = [
+  { id: 'instagram', label: 'Instagram',  icon: 'ig', color: '#D62976', note: 'Business or Creator account required' },
+  { id: 'tiktok',    label: 'TikTok',     icon: 'tt', color: '#010101', note: 'Personal or Business account' },
+  // YouTube uses direct Google OAuth (not Zernio) for full read access
+  // including Analytics API. Public competitor data uses the API key.
+  { id: 'youtube',   label: 'YouTube',    icon: 'yt', color: '#FF0000', note: 'Sign in with Google · read-only' },
+  { id: 'facebook',  label: 'Facebook',   icon: 'fb', color: '#1877F2', note: 'Page required (not personal profile)' },
+  { id: 'linkedin',  label: 'LinkedIn',   icon: 'li', color: '#0A66C2', note: 'Personal profile or Company page' },
+  { id: 'x',         label: 'X / Twitter', icon: 'x', color: '#000',   note: 'Basic or higher API access needed' },
+  { id: 'snapchat',  label: 'Snapchat',   icon: 'sc', color: '#FFFC00', note: 'Business account recommended for GCC' },
+];
+
+// ── Platform connect card ─────────────────────────────────────────────────────
+const PlatformCard = ({ platform, account, onConnect, onDisconnect, loading, onBackfill, backfilling, disabledReason }) => {
+  const connected = !!account;
+  // One-shot history fetch — only meaningful when an account is actually
+  // connected. The server stamps historic_backfilled_at and refuses to
+  // re-run, so once it's done the button flips to a status pill.
+  const canBackfill = connected;
+  const alreadyBackfilled = !!account?.historic_backfilled_at;
+  return (
+    <div className={cls(
+      'flex items-start justify-between gap-3 p-4 rounded-2xl border transition min-h-[72px]',
+      connected
+        ? 'border-lime/40 bg-chalk dark:bg-coalsoft'
+        : 'border-line dark:border-lineDark bg-chalk dark:bg-coalsoft hover:border-ink/20 dark:hover:border-paper/20'
+    )}>
+      <div className="flex items-start gap-3.5 min-w-0">
+        {/* Platform icon */}
+        <div className="w-11 h-11 rounded-xl border border-line dark:border-lineDark bg-paper dark:bg-ink flex items-center justify-center flex-shrink-0">
+          <Plat p={platform.icon} className="w-5 h-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[14px] font-semibold">{platform.label}</span>
+            {connected && (
+              <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full bg-lime/20 text-limeDeep dark:text-lime text-[10px] font-medium">
+                <span className="w-1 h-1 rounded-full bg-limeDeep dark:bg-lime" />
+                Connected
+              </span>
+            )}
+          </div>
+          <div className="text-[12px] text-mute dark:text-muteDark font-mono mt-0.5 break-words">
+            {connected
+              ? (account.platform_username || account.platform_name || 'Account linked')
+              : platform.note}
+          </div>
+        </div>
+      </div>
+
+      {connected ? (
+        <div className="flex-shrink-0 self-center flex items-center gap-2">
+          {canBackfill && (
+            alreadyBackfilled ? (
+              <span
+                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[11.5px] font-medium text-mute dark:text-muteDark border border-line dark:border-lineDark"
+                title={`History fetched on ${new Date(account.historic_backfilled_at).toLocaleDateString()}`}
+              >
+                <Icon name="check" className="w-3 h-3 text-limeDeep dark:text-lime" stroke={2.5} />
+                History fetched
+              </span>
+            ) : (
+              <button
+                onClick={() => onBackfill && onBackfill(account.id)}
+                disabled={backfilling}
+                title="One-time pull of the last ~100 public posts on this profile"
+                className={cls(
+                  'inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-medium border transition whitespace-nowrap',
+                  backfilling
+                    ? 'border-line dark:border-lineDark text-mute dark:text-muteDark cursor-wait'
+                    : 'border-line dark:border-lineDark hover:border-ultra hover:text-ultra dark:hover:text-lime'
+                )}
+              >
+                {backfilling
+                  ? <><Icon name="refresh" className="w-3 h-3 animate-spin" /> Fetching…</>
+                  : <><Icon name="download" className="w-3 h-3" /> Fetch history</>}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => onDisconnect(platform.id)}
+            className="h-8 px-3 rounded-lg text-[12px] font-medium border border-line dark:border-lineDark hover:border-magenta hover:text-magenta transition"
+          >
+            Disconnect
+          </button>
+        </div>
+      ) : platform.comingSoon ? (
+        <span
+          className="flex-shrink-0 self-center inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl text-[12.5px] font-medium border border-line dark:border-lineDark text-mute dark:text-muteDark cursor-not-allowed whitespace-nowrap"
+          title="Direct Google integration is being built"
+        >
+          <Icon name="clock" className="w-3.5 h-3.5" /> Coming soon
+        </span>
+      ) : (
+        <button
+          onClick={() => onConnect(platform.id)}
+          disabled={loading || !!disabledReason}
+          title={disabledReason || undefined}
+          className={cls(
+            'flex-shrink-0 self-center h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5 whitespace-nowrap',
+            (loading || disabledReason)
+              ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5 border border-line dark:border-lineDark text-mute dark:text-muteDark'
+              : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:bg-coal dark:hover:bg-chalk'
+          )}
+        >
+          {loading
+            ? <><Icon name="clock" className="w-3.5 h-3.5" /> Opening...</>
+            : disabledReason
+              ? <><Icon name="info" className="w-3.5 h-3.5" /> {disabledReason}</>
+              : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>
+          }
+        </button>
+      )}
+    </div>
+  );
+};
+
+// ── Usage meter ───────────────────────────────────────────────────────────────
+const UsageMeter = ({ used, limit, tier }) => {
+  const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const color = pct > 85 ? 'bg-magenta' : pct > 60 ? 'bg-amber' : 'bg-ultra';
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[12px] font-medium">Monthly data refreshes</span>
+        <span className="text-[12px] font-mono text-mute dark:text-muteDark">
+          {limit === -1 ? `${used} used · Unlimited` : `${used} / ${limit}`}
+        </span>
+      </div>
+      {limit !== -1 && (
+        <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden">
+          <div
+            className={cls('h-full rounded-full transition-all', color)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
+      {pct > 85 && limit !== -1 && (
+        <p className="text-[11px] text-magenta mt-1.5">
+          Approaching limit. Consider upgrading your plan.
+        </p>
+      )}
+    </div>
+  );
+};
+
+// ── Intelligence Layer (model switcher + comparison) ────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ToneSwitcher (formerly ModelSwitcher). Agency-only control during the
+// Gemini-only phase. Lets the workspace owner pick a brief tone preset.
+// The backend (api/_lib/intelligence.js) layers a TONE OVERRIDE on top of
+// the system prompt at generation time, so the change is visible on the
+// very next brief. Removed when public model selection ships.
+// ─────────────────────────────────────────────────────────────────────────────
+const TONE_META = {
+  analytical: { label: 'Analytical', sub: 'Data-heavy. Numbers-forward. Minimal narrative.', accent: '#1A7FD4' },
+  strategic:  { label: 'Strategic',  sub: 'Balanced data + recommendations. The default.',   accent: '#6B5BFF' },
+  executive:  { label: 'Executive',  sub: 'Short, direct, action items only.',                accent: '#FF2D6A' },
+};
+const ToneSwitcher = ({ workspaceId, tier, onSwitched, onRegenerated, onError }) => {
+  const [active, setActive]   = React.useState(null);
+  const [switching, setSwitching] = React.useState(null);
+  // Manual brief regenerate state — explicit diagnostic surface so the user
+  // can see exactly what generateBrief returned (success counts, persist
+  // errors, fallbacks).
+  const [generating, setGenerating] = React.useState(false);
+  const [generateResult, setGenerateResult] = React.useState(null);
+
+  // Load current tone preference on mount.
+  React.useEffect(() => {
+    let cancelled = false;
+    api('/workspace/ai-model')
+      .then(r => { if (!cancelled) setActive(r.brief_tone || 'strategic'); })
+      .catch(() => { if (!cancelled) setActive('strategic'); });
+    return () => { cancelled = true; };
+  }, [workspaceId]);
+
+  const switchTo = async (tone) => {
+    if (tone === active || switching) return;
+    setSwitching(tone);
+    try {
+      const r = await api('/workspace/ai-model', {
+        method: 'PATCH',
+        body: JSON.stringify({ brief_tone: tone }),
+      });
+      const newTone = r.brief_tone || tone;
+      setActive(newTone);
+      onSwitched?.(newTone);
+      // Just save the preference. The user clicks "Regenerate brief now"
+      // when they're ready to spend a quota credit seeing the new tone
+      // applied — auto-regenerating here used the credit silently.
+    } catch (e) {
+      onError?.(e.message);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
+  const runRegenerate = async () => {
+    setGenerating(true);
+    setGenerateResult(null);
+    try {
+      const r = await api('/intelligence/generate', { method: 'POST' });
+      setGenerateResult(r);
+      if (r?.skipped) onError?.(r.message || `Skipped: ${r.skipped}`);
+      else if (r?.error && !r?.ok) onError?.(`Brief error: ${r.message || r.error}`);
+      else if (r?.ok) onRegenerated?.(r);
+    } catch (e) {
+      onError?.(e.message);
+      setGenerateResult({ error: 'request_failed', message: e.message });
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Brief tone</h3>
+      <p className="text-[13px] text-mute dark:text-muteDark mb-4">
+        Agency-only preview. Pick how the daily brief reads — switches on the next regeneration.
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 items-stretch gap-3">
+        {['analytical', 'strategic', 'executive'].map(t => {
+          const meta = TONE_META[t];
+          const isActive = active === t;
+          const isSwitching = switching === t;
+          return (
+            <button
+              key={t}
+              onClick={() => switchTo(t)}
+              disabled={isActive || !!switching}
+              className={cls(
+                'h-full text-left p-4 rounded-2xl border transition relative overflow-hidden',
+                isActive
+                  ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                  : 'border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
+              )}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="w-3 h-3 rounded-full" style={{ background: meta.accent }} />
+                {/* Single status pill — Applying while the PATCH is in flight,
+                    Active once it's saved. Previously the spinner and the
+                    Active badge could both render at once (different conditions
+                    weren't mutually exclusive), which made the badge drift
+                    around horizontally as the layout reflowed. */}
+                {isSwitching ? (
+                  <span className="inline-flex items-center gap-1.5 px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] bg-amber/15 text-amber">
+                    <span className="w-2.5 h-2.5 border-2 border-amber/30 border-t-amber rounded-full animate-spin" />
+                    Applying
+                  </span>
+                ) : isActive ? (
+                  <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] bg-lime/25 text-limeDeep dark:text-lime">
+                    <span className="w-1 h-1 rounded-full bg-limeDeep dark:bg-lime" /> Active
+                  </span>
+                ) : null}
+              </div>
+              <div className="font-display text-[16px] font-semibold tracking-tighter">{meta.label}</div>
+              <div className={cls('text-[11.5px] mt-1 leading-relaxed', isActive ? 'text-paper/70 dark:text-ink/70' : 'text-mute dark:text-muteDark')}>
+                {meta.sub}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mt-4">
+        <Btn variant="ink" size="sm" onClick={runRegenerate} disabled={generating}>
+          {generating ? 'Generating…' : 'Regenerate brief now'}
+        </Btn>
+        <span className="text-[11.5px] text-mute dark:text-muteDark">
+          Picks the active tone above. Cycles up against your monthly quota.
+        </span>
+      </div>
+
+      {/* Compact status row — replaces the raw JSON dump we shipped during
+          diagnostics. Failures still surface their error so the user can
+          report what they saw; success states stay quiet because the
+          dashboard's own data refresh is the real signal that it worked. */}
+      {generateResult && !generateResult.ok && (
+        <div className="mt-3 p-3 rounded-xl border border-magenta/40 bg-magenta/10 text-magenta text-[12.5px]">
+          <strong className="font-semibold">Couldn't generate brief:</strong>{' '}
+          {generateResult.message || generateResult.error || 'Unknown error.'}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main Settings Screen ──────────────────────────────────────────────────────
+const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
+  const [accounts, setAccounts]     = React.useState([]);
+  const [workspace, setWorkspace]   = React.useState(null);
+  const [workspaces, setWorkspaces] = React.useState([]);
+  const [competitors, setCompetitors] = React.useState([]);
+  const [usage, setUsage]           = React.useState(null);
+  // Tier object (full TIERS entry from /api/workspaces) so the SPA can
+  // pre-flight account-cap and platform-tier checks before the OAuth
+  // round-trip. Server-side is still the authoritative gate.
+  const [tierInfo, setTierInfo]     = React.useState(null);
+  const [loading, setLoading]       = React.useState(true);
+  const [connecting, setConnecting] = React.useState(null);
+  const [toast, setToast]           = React.useState(null);
+  const [saving, setSaving]         = React.useState(false);
+  // Add-competitor form
+  const [compForm, setCompForm]   = React.useState({ platform: 'instagram', handle: '' });
+  const [addingComp, setAddingComp] = React.useState(false);
+  // Create-workspace form
+  const [newWsName, setNewWsName] = React.useState('');
+  const [creatingWs, setCreatingWs] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
+  // Personal profile — separate from workspace settings because first_name
+  // lives on the user, not the workspace.
+  const [firstName, setFirstName] = React.useState(D.user?.firstName || '');
+  const [savingName, setSavingName] = React.useState(false);
+  // Tracks the in-flight OAuth poll so the postMessage handler can cancel it.
+  const pollerRef = React.useRef(null);
+
+  // Scroll-to-anchor on mount when navigation set scrollAnchor.
+  // Two-frame delay so the section actually exists in the DOM before
+  // scrollIntoView fires. Anchors use scrollMarginTop so the sticky header
+  // doesn't cover the title.
+  React.useEffect(() => {
+    if (!scrollAnchor) return;
+    const id = scrollAnchor === 'workspaces' ? 'settings-workspaces'
+            : scrollAnchor === 'profile'    ? 'settings-profile'
+            : scrollAnchor === 'ad-intel'   ? 'settings-ad-intel'
+            : null;
+    if (!id) return;
+    const raf = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        onAnchorConsumed?.();
+      });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [scrollAnchor, onAnchorConsumed]);
+
+  // Workspace form state
+  const [form, setForm] = React.useState({
+    name: '', user_type: 'creator', category: 'music',
+    country: 'CA', focus_regions: [],
+    account_age: '6-12mo',
+    brief_language: 'en',
+  });
+  const toggleFocus = (id) =>
+    setForm(f => ({
+      ...f,
+      focus_regions: f.focus_regions?.includes(id)
+        ? f.focus_regions.filter(x => x !== id)
+        : [...(f.focus_regions || []), id],
+    }));
+
+  // Listen for the OAuth success postMessage from /api/connect/callback so we
+  // can sync immediately instead of waiting for the next 2s poll. Robust to
+  // popup window.close() being blocked or the user closing it manually.
+  React.useEffect(() => {
+    const onMsg = async (e) => {
+      if (e?.data?.type !== 'pulse:connected') return;
+      const platform = e.data.platform;
+      // Stop any in-flight poll to avoid duplicate sync/toast.
+      if (pollerRef.current?.platform === platform) {
+        clearInterval(pollerRef.current.poll);
+        try { pollerRef.current.popup?.close(); } catch {}
+        pollerRef.current = null;
+      }
+      try {
+        const synced = await api('/accounts', { method: 'POST' });
+        setAccounts(synced.accounts || []);
+
+        // Surface any handles the server refused. Two reasons: another
+        // workspace already owns them (taken), or a previous trial that
+        // never converted is still holding the binding (trial_locked).
+        const rejForPlatform = (synced.rejected || []).filter(r => r.platform === platform);
+        if (rejForPlatform.length) {
+          const r0 = rejForPlatform[0];
+          const msg =
+            r0.reason === 'trial_locked'
+              ? `${r0.handle || 'That handle'} was used in another workspace's trial. Contact support if it's yours.`
+              : r0.reason === 'trial_cap'
+                ? `Trial allows ${r0.limit} accounts max. Upgrade for more.`
+                : r0.reason === 'cap_exceeded'
+                  ? `Account limit reached for your plan.`
+                  : `${r0.handle || 'That handle'} is already connected to another Mashal workspace.`;
+          showToast(msg, 'err');
+        }
+
+        const justConnected = (synced.new_accounts || []).find(a => a.platform === platform);
+        const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
+        if (justConnected) {
+          const label = PLATFORMS.find(p => p.id === platform)?.label || platform;
+          showToast(`${label} connected — backfilling history…`);
+          // First-connect backfill: server reads workspace.account_age and
+          // pulls 90/180/365 days accordingly. Gated server-side by
+          // initial_sync_complete so subsequent connects of the same account
+          // no-op. Refresh the dashboard once it returns.
+          api('/sync?mode=backfill', { method: 'POST' })
+            .then(r => {
+              if (r?.ran) showToast(`Backfilled ${r.posts || 0} posts ✓`);
+              // Refresh the brief so the dashboard shows fresh data the
+              // instant the backfill lands. Without this the new user
+              // would have to navigate away from Settings and back to
+              // see anything. The first-brief auto-generation effect in
+              // App reads briefData and kicks /api/intelligence/generate
+              // once it sees verdict===null with posts available.
+              try { window.dispatchEvent(new CustomEvent('pulse:refresh-brief')); } catch {}
+            })
+            .catch(() => {});
+        } else if (!anyConnected) {
+          // OAuth round-tripped but Zernio didn't surface the account. Most
+          // common cause for Instagram: a personal IG profile (Mashal needs a
+          // Business or Creator account). Same for Facebook personal profiles.
+          showToast(
+            'OAuth completed but no account was returned. ' +
+            (platform === 'instagram' || platform === 'facebook'
+              ? 'Mashal needs a Business or Creator account — check your account type.'
+              : 'Check your account permissions and try again.'),
+            'warn'
+          );
+        }
+      } catch (err) { showToast(err.message, 'err'); }
+      setConnecting(null);
+    };
+    window.addEventListener('message', onMsg);
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const showToast = (msg, type = 'ok') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  // ── Load workspace + accounts on mount ──────────────────────────────────
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const [wsData, acctData, wsList, comps] = await Promise.all([
+          api('/workspaces'),
+          api('/accounts'),
+          api('/workspaces').catch(() => ({ workspaces: [] })),
+          api('/competitors').catch(() => ({ competitors: [] })),
+        ]);
+        setWorkspace(wsData.workspace);
+        setWorkspaces(wsList.workspaces || []);
+        setUsage(wsData.usage);
+        setTierInfo(wsData.tier || null);
+        setAccounts(acctData.accounts || []);
+        setCompetitors(comps.competitors || []);
+        setForm({
+          name:          wsData.workspace.name || '',
+          user_type:     wsData.workspace.user_type || 'creator',
+          category:      wsData.workspace.category || 'music',
+          country:       wsData.workspace.country
+                          || ({ ksa:'SA', uae:'AE', pakistan:'PK', canada:'CA', global:'GLOBAL' }[wsData.workspace.market])
+                          || 'CA',
+          focus_regions: wsData.workspace.focus_regions || [],
+          account_age:   wsData.workspace.account_age || '6-12mo',
+          weekly_digest_enabled: !!wsData.workspace.weekly_digest_enabled,
+          digest_email:  wsData.workspace.digest_email || '',
+          featured_on_homepage: !!wsData.workspace.featured_on_homepage,
+          brief_language: wsData.workspace.brief_language || 'en',
+        });
+      } catch (e) {
+        // Not yet authenticated — show form with defaults
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false, brief_language: 'en' });
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
+
+  // ── Connect a platform ───────────────────────────────────────────────────
+  const connectPlatform = async (platformId) => {
+    // Pre-flight cap check — refuse before opening the OAuth popup so the
+    // user doesn't round-trip through Zernio just to be told no. Server
+    // at /api/accounts still enforces this authoritatively as a backstop.
+    const activeCount = (accounts || []).filter(a => a.is_active !== false).length;
+    const capLimit = tierInfo?.accounts_total;
+    if (capLimit != null && capLimit !== -1 && activeCount >= capLimit) {
+      showToast(`You're at your ${capLimit}-account limit on ${tierInfo?.label || 'this plan'}. Upgrade to add more.`, 'warn');
+      return;
+    }
+
+    setConnecting(platformId);
+    try {
+      const data = await api(`/connect/${platformId}`);
+      if (!data.authUrl) throw new Error('No auth URL returned');
+
+      const popup = window.open(
+        data.authUrl,
+        `connect-${platformId}`,
+        'width=620,height=720,left=200,top=80'
+      );
+
+      // Poll for successful connection every 2 seconds. The poll is a fallback
+      // for when the popup's postMessage didn't reach us (popup blocked,
+      // window.close() blocked, user closed manually, etc.).
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        if (attempts > 60 || popup?.closed) {
+          clearInterval(poll);
+          // Sync accounts from Zernio to confirm
+          try {
+            const synced = await api('/accounts', { method: 'POST' });
+            setAccounts(synced.accounts || []);
+            const connected = synced.accounts?.find(a => a.platform === platformId);
+            if (connected) showToast(`${platformId} connected ✓`);
+            else if (popup?.closed) showToast('Window closed — try connecting again', 'warn');
+          } catch {}
+          setConnecting(null);
+          return;
+        }
+
+        // Check if account appeared
+        try {
+          const synced = await api('/accounts', { method: 'POST' });
+          const connected = (synced.accounts || []).find(a => a.platform === platformId);
+          const isNewlyConnected = (synced.new_accounts || []).some(a => a.platform === platformId);
+          if (connected) {
+            clearInterval(poll);
+            popup?.close();
+            setAccounts(synced.accounts || []);
+            setConnecting(null);
+            showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label} connected ✓`);
+            // Fire first analytics refresh in the background — your dashboard
+            // will populate within ~30s. We don't await; the user can keep working.
+            if (isNewlyConnected) {
+              api('/analytics/refresh', { method: 'POST' }).catch(() => {});
+            }
+          }
+        } catch {}
+      }, 2000);
+
+      // Save the poll handle so the postMessage handler can cancel it on success.
+      pollerRef.current = { poll, popup, platform: platformId };
+
+    } catch (e) {
+      showToast(e.message, 'err');
+      setConnecting(null);
+    }
+  };
+
+  // ── Backfill historic posts for one account ─────────────────────────────
+  // One-shot Apify scrape of the account's last ~100 public posts. The
+  // server stamps connected_accounts.historic_backfilled_at so the button
+  // flips to a permanent "Backfilled" state. Tier-gated server-side too;
+  // this is just the UX-side guard.
+  const [backfillingId, setBackfillingId] = React.useState(null);
+  const backfillAccount = async (accountId) => {
+    setBackfillingId(accountId);
+    try {
+      const r = await api('/accounts/backfill', {
+        method: 'POST',
+        body: JSON.stringify({ accountId }),
+      });
+      showToast(
+        r?.persisted
+          ? `Fetched ${r.persisted} post${r.persisted === 1 ? '' : 's'} from ${r.platform}.`
+          : `No historic posts found for this account.`
+      );
+      // Mark locally so the button updates instantly — server already
+      // persisted the timestamp.
+      setAccounts(prev => prev.map(a =>
+        a.id === accountId ? { ...a, historic_backfilled_at: new Date().toISOString() } : a
+      ));
+      // Refresh the brief so the new posts feed into Growth/Content/Targets.
+      window.dispatchEvent(new CustomEvent('pulse:refresh-brief'));
+    } catch (e) {
+      // Surface the actual server message (409 already done, scrape failure, etc.)
+      showToast(`Fetch failed: ${e.message}`, 'err');
+    } finally {
+      setBackfillingId(null);
+    }
+  };
+
+  // ── Disconnect a platform ────────────────────────────────────────────────
+  const disconnectPlatform = async (platformId) => {
+    const acct = accounts.find(a => a.platform === platformId);
+    // Optimistic update
+    setAccounts(prev => prev.filter(a => a.platform !== platformId));
+    try {
+      await api('/accounts', {
+        method: 'DELETE',
+        body: JSON.stringify(acct?.id ? { id: acct.id } : { platform: platformId }),
+      });
+      showToast(`${PLATFORMS.find(p=>p.id===platformId)?.label || platformId} disconnected`);
+    } catch (e) {
+      // Rollback the optimistic update on failure
+      if (acct) setAccounts(prev => [...prev, acct]);
+      showToast(`Disconnect failed: ${e.message}`, 'err');
+    }
+  };
+
+  // ── Save personal profile (first name) ───────────────────────────────────
+  const saveProfile = async () => {
+    const name = firstName.trim();
+    if (!name) return;
+    setSavingName(true);
+    try {
+      await sbAuth.updateUser(window.__pulseToken, { data: { first_name: name } });
+      // Reflect locally so the next Brief render greets correctly without
+      // waiting for the next /api/brief refresh.
+      D.user = { ...(D.user || {}), firstName: name, name };
+      showToast('Profile saved ✓');
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setSavingName(false);
+    }
+  };
+
+  // ── Save workspace settings ───────────────────────────────────────────────
+  const saveWorkspace = async () => {
+    setSaving(true);
+    try {
+      await api('/workspaces', {
+        method: 'PATCH',
+        body: JSON.stringify(form)
+      });
+      showToast('Workspace settings saved ✓');
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Competitors ─────────────────────────────────────────────────────────
+  const addCompetitor = async () => {
+    const handle = (compForm.handle || '').trim().replace(/^@/, '');
+    if (!handle) return;
+    setAddingComp(true);
+    try {
+      const r = await api('/competitors', {
+        method: 'POST',
+        body: JSON.stringify({ platform: compForm.platform, handle }),
+      });
+      if (r.competitor) {
+        setCompetitors(prev => [r.competitor, ...prev]);
+        setCompForm(f => ({ ...f, handle: '' }));
+        showToast(`Added @${handle} ✓`);
+      }
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setAddingComp(false);
+    }
+  };
+
+  const removeCompetitor = async (id) => {
+    const prev = competitors;
+    setCompetitors(p => p.filter(c => c.id !== id));
+    try {
+      await api(`/competitors?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      showToast('Competitor removed');
+    } catch (e) {
+      setCompetitors(prev);
+      showToast(e.message, 'err');
+    }
+  };
+
+  // ── Workspaces ──────────────────────────────────────────────────────────
+  const createWorkspace = async () => {
+    const name = (newWsName || '').trim();
+    if (!name) return;
+    setCreatingWs(true);
+    try {
+      const r = await api('/workspaces', {
+        method: 'POST',
+        body: JSON.stringify({ name }),
+      });
+      if (r.workspace) {
+        setWorkspaces(prev => [...prev, r.workspace]);
+        setNewWsName('');
+        showToast(`Workspace "${name}" created ✓`);
+        // Switch into it — full reload so all screens re-hydrate.
+        setTimeout(() => window.switchWorkspace(r.workspace.id), 600);
+      }
+    } catch (e) {
+      showToast(e.message, 'err');
+    } finally {
+      setCreatingWs(false);
+    }
+  };
+
+  const connectedMap = React.useMemo(() => {
+    const m = {};
+    for (const a of accounts) m[a.platform] = a;
+    return m;
+  }, [accounts]);
+
+  const connectedCount = accounts.length;
+  // tier is unknown until /api/workspaces resolves. Don't fall back to
+  // 'creator' on the initial render — that produces a visible flip when an
+  // agency-tier user loads the page (briefly shows Creator, then jumps to
+  // Agency). Drive the card off a separate "loaded" gate instead.
+  const tier = workspace?.tier || null;
+  const tierLabel = tier ? { creator: 'Creator', brand: 'Brand', agency: 'Agency' }[tier] : null;
+
+  return (
+    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-24 md:pb-10">
+      <ScreenHeader
+        eyebrow="Configuration"
+        title="Settings"
+        sub="Connect your social accounts and configure your workspace. All credentials are managed securely on our servers."
+      />
+
+      {/* Toast */}
+      {toast && (
+        <div className={cls(
+          'fixed top-5 right-5 z-50 px-4 py-3 rounded-xl text-[13px] font-medium shadow-pop fade-up flex items-center gap-2',
+          toast.type === 'err' ? 'bg-magenta text-white' :
+          toast.type === 'warn' ? 'bg-amber/90 text-ink' :
+          'bg-ink text-paper dark:bg-lime dark:text-ink'
+        )}>
+          <Icon name={toast.type === 'err' ? 'x' : 'check'} className="w-3.5 h-3.5" />
+          {toast.msg}
+        </div>
+      )}
+
+      <div className="grid lg:grid-cols-[1fr_320px] gap-6 sm:gap-8">
+
+        {/* ── LEFT — Profile, platform connections, competitors, workspaces ── */}
+        <div className="space-y-6">
+
+          {/* Personal profile — first name powers the greeting on Brief */}
+          <div id="settings-profile" style={{ scrollMarginTop: '80px' }}>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-1">Your profile</h3>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-4">
+              How Mashal greets you across workspaces.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2 max-w-md">
+              <input
+                value={firstName}
+                onChange={e => setFirstName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveProfile(); }}
+                placeholder="First name"
+                className="flex-1 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+              />
+              <Btn variant="ink" onClick={saveProfile} disabled={savingName || !firstName.trim() || firstName.trim() === (D.user?.firstName || '')}>
+                {savingName ? 'Saving…' : 'Save'}
+              </Btn>
+            </div>
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Platform connections */}
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-display text-[17px] font-semibold tracking-tight">Connected accounts</h3>
+                <p className="text-[13px] text-mute dark:text-muteDark mt-0.5">
+                  {connectedCount} of {tier === 'agency'     ? '∞'
+                                       : tier === 'brand'       ? '7'
+                                       : tier === 'pro_creator' ? '7'
+                                       :                          '5'} accounts connected
+                </p>
+              </div>
+              {connectedCount > 0 && (
+                <Btn
+                  variant="outline"
+                  size="sm"
+                  disabled={syncing}
+                  onClick={async () => {
+                    setSyncing(true);
+                    try {
+                      // Account-handle refresh first (fast, just listAccounts).
+                      const synced = await api('/accounts', { method: 'POST' });
+                      setAccounts(synced.accounts || []);
+                      // Manual data sync — bypasses the 60-min cooldown but
+                      // counts against the daily tier cap (3 / 8 / unlimited).
+                      api('/analytics/refresh', {
+                        method: 'POST',
+                        body: JSON.stringify({ mode: 'incremental' }),
+                      })
+                        .then(r => showToast(`Refreshed ${r.posts || 0} posts ✓`))
+                        .catch(e => showToast(e.message, 'warn'));
+                      showToast(`Synced ${synced.synced} accounts — pulling latest data…`);
+                    } catch (e) {
+                      showToast(e.message, 'err');
+                    } finally {
+                      setSyncing(false);
+                    }
+                  }}
+                >
+                  <Icon name="refresh" className={cls('w-3.5 h-3.5', syncing && 'animate-spin')} />
+                  {syncing ? 'Syncing…' : 'Sync all'}
+                </Btn>
+              )}
+            </div>
+
+            {(() => {
+              const activeCount = (accounts || []).filter(a => a.is_active !== false).length;
+              const capLimit = tierInfo?.accounts_total;
+              const atCap = capLimit != null && capLimit !== -1 && activeCount >= capLimit;
+              return (
+                <>
+                  {atCap && (
+                    <div className="text-[12px] text-mute dark:text-muteDark mb-2.5 flex items-center gap-2">
+                      <Icon name="info" className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span>You're using <strong>{activeCount}/{capLimit}</strong> accounts on {tierInfo?.label || 'your plan'}. Disconnect one or upgrade to add more.</span>
+                    </div>
+                  )}
+                  <div className="space-y-2.5">
+                    {PLATFORMS.map(platform => {
+                      // TIER GATE — Creator tier can connect IG/TT/YT/FB/LI
+                      // only. X and Snapchat unlock on Pro Creator+. Trial
+                      // workspaces preview the full set until conversion.
+                      const tierLocked = tier === 'creator'
+                        && !workspace?.trial_active
+                        && (platform.id === 'x' || platform.id === 'snapchat');
+                      const tileDisabledReason = tierLocked
+                        ? 'Pro Creator unlocks X & Snapchat'
+                        : (atCap && !connectedMap[platform.id] ? `Cap reached (${activeCount}/${capLimit})` : null);
+                      return (
+                        <PlatformCard
+                          key={platform.id}
+                          platform={platform}
+                          account={connectedMap[platform.id]}
+                          loading={connecting === platform.id}
+                          // Disable Connect when at cap UNLESS the platform is
+                          // already connected — disconnecting still has to work.
+                          disabledReason={tileDisabledReason}
+                          onConnect={connectPlatform}
+                          onDisconnect={disconnectPlatform}
+                          onBackfill={backfillAccount}
+                          backfilling={backfillingId === connectedMap[platform.id]?.id}
+                        />
+                      );
+                    })}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Intelligence Layer — agency-only (internal model-comparison tool).
+              Other tiers always get the default provider chosen server-side. */}
+          {tier === 'agency' && (
+            <>
+              <ToneSwitcher
+                workspaceId={workspace?.id}
+                tier={tier}
+                onSwitched={(tone) => {
+                  const label = { analytical: 'Analytical', strategic: 'Strategic', executive: 'Executive' }[tone] || tone;
+                  showToast(`Brief tone switched to ${label}`);
+                }}
+                // After a Regenerate writes a fresh usage_log row, pull the
+                // workspace + usage state again so the "Monthly Data
+                // Refreshes" counter on this page bumps up live.
+                onRegenerated={() => {
+                  showToast('Brief regenerated ✓');
+                  api('/workspaces').then(d => {
+                    if (d?.workspace) setWorkspace(d.workspace);
+                    if (d?.usage) setUsage(d.usage);
+                  }).catch(() => {});
+                }}
+                onError={(msg) => showToast(msg, 'err')}
+              />
+              <div className="h-px bg-line dark:bg-lineDark" />
+            </>
+          )}
+
+          {/* Brief language — Pro Creator+ feature. Creator workspaces
+              see the picker as locked with an upgrade pointer. Trial
+              workspaces preview the picker until conversion (matches
+              the trial-state policy in api/workspaces.js PATCH). */}
+          <div id="settings-brief-language" style={{ scrollMarginTop: '80px' }}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <h3 className="font-display text-[17px] font-semibold tracking-tight">Brief language</h3>
+              {tier === 'creator' && !workspace?.trial_active && (
+                <span className="inline-flex items-center px-2 h-5 rounded-full bg-ultra/10 text-ultra text-[10px] font-mono uppercase tracking-[0.12em]">Pro Creator</span>
+              )}
+            </div>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-3">
+              The language Mashal writes your daily brief in. The app interface stays in English — only the AI-generated verdict, actions, and signals change language.
+            </p>
+            <select
+              value={form.brief_language || 'en'}
+              onChange={e => setForm(f => ({ ...f, brief_language: e.target.value }))}
+              disabled={tier === 'creator' && !workspace?.trial_active}
+              className="w-full max-w-xs h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <option value="en">English</option>
+              <option value="ar">Arabic — عربي</option>
+              <option value="fr">French — Français</option>
+              <option value="tr">Turkish — Türkçe</option>
+              <option value="ur">Urdu — اردو</option>
+              <option value="pt-BR">Portuguese (Brazil) — Português</option>
+              <option value="id">Bahasa Indonesia</option>
+              <option value="hi">Hindi — हिन्दी</option>
+              <option value="es">Spanish — Español</option>
+            </select>
+            {tier === 'creator' && !workspace?.trial_active && (
+              <p className="text-[11.5px] text-mute dark:text-muteDark mt-2">
+                Multilingual brief unlocks on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo). Creator briefs are written in English.
+              </p>
+            )}
+            {tier !== 'creator' && form.brief_language && form.brief_language !== 'en' && (
+              <p className="text-[11.5px] text-ultra dark:text-lime mt-2 font-mono">
+                Your next brief will be written in {
+                  { ar: 'Arabic', fr: 'French', tr: 'Turkish', ur: 'Urdu', 'pt-BR': 'Brazilian Portuguese', id: 'Bahasa Indonesia', hi: 'Hindi', es: 'Spanish' }[form.brief_language]
+                }. The Mashal interface stays in English.
+              </p>
+            )}
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Team — Brand/Agency only, admin+. Panel hides itself on 403
+              (non-admin or non-eligible tier) so we mount it unconditionally
+              and let it self-gate. See js/team/panel.js. */}
+          {(tier === 'brand' || tier === 'agency') && window.Team?.Panel && <window.Team.Panel />}
+
+          {(tier === 'brand' || tier === 'agency') && <div className="h-px bg-line dark:bg-lineDark" />}
+
+          {/* Competitors — comparative accounts pulled via Apify (or YouTube
+              direct). Nothing is scraped unless the user adds at least one. */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-display text-[17px] font-semibold tracking-tight">Competitors & comparison accounts</h3>
+              <span className="text-[11px] font-mono text-mute dark:text-muteDark">
+                {competitors.length} / {tier === 'agency'     ? 30
+                                      : tier === 'brand'       ? 10
+                                      : tier === 'pro_creator' ? 10
+                                      :                          5}
+              </span>
+            </div>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-4">
+              Add public handles you want Mashal to scrape and compare against. Without any entries here, no scrapes run.
+            </p>
+
+            {D.canWrite && (
+              <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                <select
+                  value={compForm.platform}
+                  onChange={e => setCompForm(f => ({ ...f, platform: e.target.value }))}
+                  className="h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none sm:w-44"
+                >
+                  <option value="instagram">Instagram</option>
+                  <option value="tiktok">TikTok</option>
+                  <option value="youtube">YouTube</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="linkedin">LinkedIn</option>
+                  <option value="x">X / Twitter</option>
+                </select>
+                <input
+                  value={compForm.handle}
+                  onChange={e => setCompForm(f => ({ ...f, handle: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') addCompetitor(); }}
+                  placeholder="@handle or channel ID"
+                  className="flex-1 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                />
+                <Btn variant="ink" onClick={addCompetitor} disabled={addingComp || !compForm.handle.trim()}>
+                  {addingComp ? 'Adding…' : 'Add'}
+                </Btn>
+              </div>
+            )}
+
+            {competitors.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-line dark:border-lineDark p-4 text-[12.5px] text-mute dark:text-muteDark">
+                No competitors yet. Add one above to start scraping.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {competitors.map(c => (
+                  <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Plat p={({ instagram: 'ig', tiktok: 'tt', youtube: 'yt', facebook: 'fb', linkedin: 'li', x: 'x' })[c.platform] || c.platform} className="w-4 h-4 flex-shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-[13.5px] font-medium truncate">@{c.handle.replace(/^@/, '')}</div>
+                        <div className="text-[11px] text-mute dark:text-muteDark font-mono">
+                          {c.platform}{c.followers ? ` · ${formatNum ? formatNum(c.followers) : c.followers} followers` : ''}
+                          {c.last_synced_at ? ` · synced ${new Date(c.last_synced_at).toLocaleDateString()}` : ' · not yet synced'}
+                        </div>
+                      </div>
+                    </div>
+                    {D.canWrite && (
+                      <button
+                        onClick={() => removeCompetitor(c.id)}
+                        className="text-[11.5px] font-medium text-mute dark:text-muteDark hover:text-magenta transition px-2 py-1"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Ad Intelligence — module-mounted. Component owns its own
+              load/save state; this is the only line that references it
+              inside SettingsScreen. See js/ads-intel/settings-section.js. */}
+          {window.AdsIntel?.Settings && <window.AdsIntel.Settings onToast={showToast} />}
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Workspaces — a user can own multiple workspaces, e.g. one per
+              brand or client. Each workspace = its own subscription/quota. */}
+          <div id="settings-workspaces" style={{ scrollMarginTop: '80px' }}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-display text-[17px] font-semibold tracking-tight">Your workspaces</h3>
+              <span className="text-[11px] font-mono text-mute dark:text-muteDark">
+                {workspaces.length} {workspaces.length === 1 ? 'workspace' : 'workspaces'}
+              </span>
+            </div>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-4">
+              Each workspace has its own connected accounts, competitors and AI quota — useful if you manage multiple profiles or brands. Each workspace requires its own subscription.
+            </p>
+
+            <div className="space-y-2 mb-4">
+              {workspaces.map(w => {
+                const isActive = workspace && w.id === workspace.id;
+                return (
+                  <div key={w.id} className={cls(
+                    'flex items-center justify-between p-3 rounded-xl border bg-chalk dark:bg-coalsoft transition',
+                    isActive ? 'border-lime/50' : 'border-line dark:border-lineDark'
+                  )}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13.5px] font-semibold truncate">{w.name || 'Untitled'}</span>
+                        {isActive && (
+                          <span className="inline-flex items-center gap-1 px-2 h-5 rounded-full bg-lime/20 text-limeDeep dark:text-lime text-[10px] font-medium">
+                            <span className="w-1 h-1 rounded-full bg-limeDeep dark:bg-lime" /> Active
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-mute dark:text-muteDark font-mono">
+                        {(w.tier || 'creator')} · created {w.created_at ? new Date(w.created_at).toLocaleDateString() : '—'}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {!isActive && (
+                        <button
+                          onClick={() => window.switchWorkspace(w.id)}
+                          className="text-[12px] font-medium text-ultra dark:text-lime hover:underline px-2 py-1"
+                        >
+                          Switch →
+                        </button>
+                      )}
+                      {workspaces.length > 1 && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Delete "${w.name || 'this workspace'}" permanently? This removes all its accounts, posts, signals, and reports.`)) return;
+                            try {
+                              await api(`/workspaces?id=${encodeURIComponent(w.id)}`, { method: 'DELETE' });
+                              showToast('Workspace deleted ✓');
+                              // If we deleted the active one, switch to the first remaining.
+                              if (isActive) {
+                                const remaining = workspaces.find(x => x.id !== w.id);
+                                if (remaining) window.switchWorkspace(remaining.id);
+                              } else {
+                                setWorkspaces(prev => prev.filter(x => x.id !== w.id));
+                              }
+                            } catch (e) {
+                              showToast(e.message || 'Delete failed', 'err');
+                            }
+                          }}
+                          className="text-[12px] font-medium text-mute dark:text-muteDark hover:text-magenta px-2 py-1"
+                          title="Delete workspace"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Add workspace — row by default; falls back to column on
+                screens under 375px (where the button label crowds the input). */}
+            <div className="flex flex-col [@media(min-width:375px)]:flex-row gap-2">
+              <input
+                value={newWsName}
+                onChange={e => setNewWsName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') createWorkspace(); }}
+                placeholder="New workspace name"
+                className="flex-1 min-w-0 h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                style={{ WebkitAppearance: 'none' }}
+              />
+              <Btn
+                variant="outline"
+                onClick={createWorkspace}
+                disabled={creatingWs || !newWsName.trim()}
+                className="flex-shrink-0 w-auto"
+              >
+                {creatingWs ? 'Creating…' : 'Add workspace'}
+              </Btn>
+            </div>
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Workspace settings */}
+          <div>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-4">Workspace settings</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Workspace name</label>
+                <input
+                  value={form.name}
+                  onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                  placeholder="My Workspace"
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                  style={{ WebkitAppearance: 'none' }}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Account type</label>
+                <select
+                  value={form.user_type}
+                  onChange={e => setForm(f => ({ ...f, user_type: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
+                >
+                  <option value="creator">Individual Creator</option>
+                  <option value="brand">Brand / Business</option>
+                  <option value="agency">Agency</option>
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Content category</label>
+                <select
+                  value={form.category}
+                  onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
+                >
+                  {CATEGORIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">Your country</label>
+                <select
+                  value={form.country}
+                  onChange={e => setForm(f => ({ ...f, country: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
+                >
+                  {COUNTRIES.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[12.5px] font-medium">How long active on social</label>
+                <select
+                  value={form.account_age}
+                  onChange={e => setForm(f => ({ ...f, account_age: e.target.value }))}
+                  className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition appearance-none"
+                  style={{ WebkitAppearance: 'none', MozAppearance: 'none', appearance: 'none', height: '2.75rem' }}
+                >
+                  <option value="under-6mo">Under 6 months</option>
+                  <option value="6-12mo">6 – 12 months</option>
+                  <option value="1-3yr">1 – 3 years</option>
+                  <option value="3yr+">3+ years</option>
+                </select>
+              </div>
+
+            </div>
+
+            {/* Focus regions — full-width below the 2-col grid */}
+            <div className="mt-4">
+              <label className="block text-[12.5px] font-medium mb-1">
+                Focus regions <span className="text-[11px] text-mute dark:text-muteDark">— who you want to compare against</span>
+              </label>
+              <p className="text-[11.5px] text-mute dark:text-muteDark mb-3">
+                {form.focus_regions?.length ? `${form.focus_regions.length} selected` : 'None selected. Pick regions or specific countries to track competitors in.'}
+              </p>
+
+              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Regions</div>
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {REGION_PRESETS.map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleFocus(id)}
+                    className={cls(
+                      'inline-flex items-center h-9 px-3.5 rounded-full text-[12.5px] font-medium border transition whitespace-nowrap',
+                      form.focus_regions?.includes(id)
+                        ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                        : 'border-line dark:border-lineDark hover:border-ink/30'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-1.5">Specific countries</div>
+              <div className="flex flex-wrap items-center gap-2 max-h-36 overflow-y-auto pr-1">
+                {COUNTRIES.filter(([id]) => id !== 'GLOBAL').map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleFocus(id)}
+                    className={cls(
+                      'inline-flex items-center h-9 px-3.5 rounded-full text-[12px] font-medium border transition whitespace-nowrap',
+                      form.focus_regions?.includes(id)
+                        ? 'bg-ultra text-white border-ultra'
+                        : 'border-line dark:border-lineDark hover:border-ink/30 text-mute dark:text-muteDark'
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Weekly digest — opt-in Sunday-morning email with the brief
+                PDF attached + next-week plan. Pro Creator+ feature; locked
+                on Creator with an inline upgrade pointer. Trial workspaces
+                preview the toggle until conversion. */}
+            <div className="mt-5 pt-5 border-t border-line dark:border-lineDark">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <label className="block text-[13.5px] font-semibold">Weekly recap email</label>
+                    {tier === 'creator' && !workspace?.trial_active && (
+                      <span className="inline-flex items-center px-2 h-5 rounded-full bg-ultra/10 text-ultra text-[10px] font-mono uppercase tracking-[0.12em]">Pro Creator</span>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
+                    Sunday morning, you'll get a recap of the week plus next-week plans, with the latest brief attached as a PDF. Off by default.
+                  </p>
+                  {tier === 'creator' && !workspace?.trial_active && (
+                    <p className="text-[11.5px] text-mute dark:text-muteDark mt-1.5">
+                      Unlocks on <a href="/pricing" className="text-ultra hover:underline">Pro Creator</a> ($29/mo).
+                    </p>
+                  )}
+                </div>
+                <label className={cls('inline-flex items-center select-none flex-shrink-0',
+                  tier === 'creator' && !workspace?.trial_active ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+                )}>
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!form.weekly_digest_enabled}
+                    disabled={tier === 'creator' && !workspace?.trial_active}
+                    onChange={e => setForm(f => ({ ...f, weekly_digest_enabled: e.target.checked }))}
+                  />
+                  <div className="w-10 h-6 rounded-full bg-ink/10 dark:bg-paper/15 peer-checked:bg-lime relative transition">
+                    <div className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                  </div>
+                </label>
+              </div>
+              {form.weekly_digest_enabled && (
+                <div className="mt-3 space-y-1.5">
+                  <label className="block text-[12px] text-mute dark:text-muteDark">
+                    Send to <span className="text-[11px] font-mono">(leave blank to use your account email)</span>
+                  </label>
+                  <input
+                    type="email"
+                    value={form.digest_email || ''}
+                    onChange={e => setForm(f => ({ ...f, digest_email: e.target.value }))}
+                    placeholder="reports@youragency.com"
+                    className="w-full sm:max-w-md h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] focus:outline-none focus:border-ultra transition"
+                    style={{ WebkitAppearance: 'none' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Feature on homepage — opt-in. Shows the workspace name in
+                the "Trusted by" marquee on the public landing page. Name
+                only — no handles, no metrics. Off by default. */}
+            <div className="mt-5 pt-5 border-t border-line dark:border-lineDark">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <label className="block text-[13.5px] font-semibold">Feature on homepage</label>
+                  <p className="text-[12px] text-mute dark:text-muteDark mt-1 max-w-md">
+                    Show <strong>{form.name || 'this workspace'}</strong> in the "Trusted by" marquee on mashal.app. Only the workspace name is shown — never your handles, follower counts, or any account data.
+                  </p>
+                </div>
+                <label className="inline-flex items-center cursor-pointer select-none flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={!!form.featured_on_homepage}
+                    onChange={e => setForm(f => ({ ...f, featured_on_homepage: e.target.checked }))}
+                  />
+                  <div className="w-10 h-6 rounded-full bg-ink/10 dark:bg-paper/15 peer-checked:bg-lime relative transition">
+                    <div className="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition peer-checked:translate-x-4" />
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end items-center gap-3">
+              {/* Hide while in app-managed trial — Stripe has no subscription
+                  yet, so the portal would just show an empty page. The link
+                  reappears once a real subscription exists (any state). */}
+              {workspace?.stripe_subscription_status && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const r = await api('/stripe?action=portal', { method: 'POST' });
+                      if (r?.url) window.location.href = r.url;
+                    } catch (e) {
+                      showToast(e.message || 'Could not open billing portal', 'err');
+                    }
+                  }}
+                  className="mr-auto text-[13px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper underline underline-offset-4"
+                >
+                  Manage your subscription →
+                </button>
+              )}
+              <Btn
+                onClick={saveWorkspace}
+                disabled={saving || !D.canWrite}
+                variant="ink"
+              >
+                {saving ? 'Saving...' : 'Save settings'}
+              </Btn>
+            </div>
+          </div>
+        </div>
+
+        {/* ── RIGHT — Plan + usage ── */}
+        <div className="space-y-4">
+
+          {/* Current plan — renders a skeleton until the workspace
+              fetch resolves, so the tier label doesn't flip Creator→Agency
+              after first paint. Subscription state pill, renewal date, and
+              cancel-pending warning surface what /api/brief returns from
+              the Stripe mirror columns. */}
+          {(() => {
+            // Pull Stripe state directly from the workspace state already
+            // resolved earlier in this component (line ~6354). Same source
+            // as `tier`, so they paint atomically.
+            const subStatus = workspace?.stripe_subscription_status || null;
+            const renewsAt  = workspace?.stripe_current_period_end  || null;
+            const cancelPending = !!workspace?.stripe_cancel_at_period_end;
+            const statusLabel = subStatus
+              ? subStatus.replace('_', ' ')
+              : null;
+            const statusColor = subStatus === 'active'    ? 'bg-lime/15 text-lime'
+                              : subStatus === 'trialing'  ? 'bg-paper/15 text-paper'
+                              : subStatus === 'past_due'  ? 'bg-magenta/15 text-magenta'
+                              : subStatus === 'canceled'  ? 'bg-paper/10 text-paper/60'
+                              : 'bg-paper/10 text-paper/60';
+            return (
+              <div className="rounded-2xl bg-ink text-paper dark:bg-coalsoft p-5 border border-transparent">
+                <Eyebrow color="text-lime">Current plan</Eyebrow>
+                {tier ? (
+                  <>
+                    <div className="font-display text-[28px] font-semibold tracking-tightest mt-2 mb-1">
+                      {tierLabel}
+                    </div>
+                    {statusLabel && (
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className={cls('inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em]', statusColor)}>
+                          {statusLabel}
+                        </span>
+                        {renewsAt && subStatus === 'active' && !cancelPending && (
+                          <span className="text-[11px] font-mono text-paper/60">
+                            Renews {new Date(renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                        {cancelPending && renewsAt && (
+                          <span className="text-[11px] font-mono text-amber">
+                            Ends {new Date(renewsAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-[12px] text-paper/60 dark:text-muteDark mb-4">
+                      {tier === 'creator'     ? '$15/month · 2 workspaces · 5 accounts · 5 competitors · daily brief · solo'
+                       : tier === 'pro_creator' ? '$29/month · 2 workspaces · 7 accounts (1/platform) · 10 competitors · multilingual brief · solo'
+                       : tier === 'brand'      ? '$99/month · 3 workspaces · 7 accounts (1/platform) · 10 competitors · 3 team seats, unlimited Viewer access · daily brief, ads'
+                                                : '$449/month · 20 workspaces · ~100 accounts · 30 competitors · 10 team seats, unlimited Viewer access · daily brief, alerts'}
+                    </p>
+                    {usage && (
+                      <div className="pt-4 border-t border-paper/10">
+                        <UsageMeter used={usage.used} limit={usage.limit} tier={tier} />
+                      </div>
+                    )}
+                    {/* CTA varies by state: no sub → Upgrade (always, even
+                        for Agency-trial — workspace.tier reflects the intent
+                        tier and they still need to convert); past_due → fix
+                        card via portal; canceled → resubscribe; active →
+                        Change plan only when not on agency (no higher tier). */}
+                    {subStatus === 'past_due' ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            const r = await api('/stripe?action=portal', { method: 'POST' });
+                            if (r?.url) window.location.href = r.url;
+                          } catch (e) { showToast(e.message, 'err'); }
+                        }}
+                        className="mt-4 w-full h-9 rounded-xl bg-magenta text-paper text-[13px] font-medium hover:brightness-110 transition"
+                      >
+                        Update payment method →
+                      </button>
+                    ) : subStatus === 'canceled' ? (
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+                        className="mt-4 w-full h-9 rounded-xl bg-lime text-ink text-[13px] font-medium hover:brightness-105 transition"
+                      >
+                        Subscribe again →
+                      </button>
+                    ) : (!subStatus || tier !== 'agency') && (
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}
+                        className="mt-4 w-full h-9 rounded-xl bg-lime text-ink text-[13px] font-medium hover:brightness-105 transition"
+                      >
+                        {subStatus ? 'Change plan →' : 'Upgrade plan →'}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <div className="h-8 w-28 rounded bg-paper/10 animate-pulse" />
+                    <div className="h-3 w-40 rounded bg-paper/10 animate-pulse" />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Refer & earn — paid Creator-tier only. Trialing Creators
+              don't get to invite (credit only makes sense once they have
+              a subscription, and the trial referrer is an abuse vector).
+              The Panel hides itself on 403 too, but we gate the mount
+              so Brand/Agency/trialing users don't even issue the fetch.
+              See js/referral/panel.js. */}
+          {tier === 'creator' && !workspace?.trial_active && window.Referral?.Panel && <window.Referral.Panel />}
+
+          {/* Outbound webhooks — Slack / Teams / Zapier targets that
+              receive a signed POST when Mashal fires an event. Available
+              to every workspace (no tier gate). Up to 5 per workspace,
+              enforced server-side. See js/webhooks/panel.js. */}
+          {window.Webhooks?.Panel && <window.Webhooks.Panel />}
+
+          {/* Suggestions & bugs — available to every authenticated user
+              regardless of tier or role. Goes straight to the founder
+              inbox; status changes email back to the submitter. See
+              js/support/panel.js. */}
+          {window.Support?.Panel && <window.Support.Panel />}
+
+          {/* Privacy note */}
+          <div className="p-3.5 rounded-xl bg-ultraSoft dark:bg-ultra/10 border border-ultra/20 text-[12px] leading-relaxed text-ultra dark:text-ultra/80">
+            <Icon name="sparkle" className="w-3.5 h-3.5 inline mr-1" />
+            <strong>Your credentials are secure.</strong> API keys are stored on our servers only. You connect your accounts via official OAuth — Mashal never sees your passwords.
+          </div>
+
+        </div>
+      </div>
+    </div>
+  );
+};
+
+Object.assign(window, { SettingsScreen });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 7853-8008
+// ═════════════════════════════════════════════════════════════════════════
+
+// Empty-state UI (no accounts connected yet)
+const EmptyDashboardCTA = ({ onGoToSettings }) => (
+  <div className="max-w-2xl mx-auto px-5 sm:px-8 py-16 sm:py-24 text-center">
+    <div className="w-16 h-16 mx-auto rounded-2xl bg-ultra/15 text-ultra flex items-center justify-center mb-6">
+      <Icon name="sparkle" className="w-7 h-7" />
+    </div>
+    <Eyebrow color="text-ultra">Let's start</Eyebrow>
+    <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+      Connect your first account.
+    </h1>
+    <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8">
+      Mashal generates your daily intelligence brief from your real social data.
+      Connect Instagram, TikTok, YouTube, or any other platform to get started.
+    </p>
+    <Btn variant="ink" size="lg" onClick={onGoToSettings}>
+      Go to Settings <Icon name="arrowRight" className="w-4 h-4" />
+    </Btn>
+  </div>
+);
+
+// Loading-state UI (account connected, first brief still generating)
+const BriefGenerating = ({ onGoToSettings }) => (
+  <div className="max-w-2xl mx-auto px-5 sm:px-8 py-16 sm:py-24 text-center">
+    <div className="w-16 h-16 mx-auto rounded-2xl bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-6">
+      <div className="w-7 h-7 border-2 border-current/30 border-t-current rounded-full animate-spin" />
+    </div>
+    <Eyebrow color="text-limeDeep dark:text-lime">Working on it</Eyebrow>
+    <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+      Your first brief is generating.
+    </h1>
+    <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8">
+      We're pulling the last 30 days from your connected accounts. This usually
+      takes 30–60 seconds. Refresh this page in a moment.
+    </p>
+    <Btn variant="outline" size="md" onClick={onGoToSettings}>
+      Connect more accounts
+    </Btn>
+  </div>
+);
+
+// ─── Trial UX primitives ────────────────────────────────────────────────
+// Three pieces:
+//   1. TrialBanner — top-of-app strip with day counter and upgrade CTA
+//   2. TrialLockedPaywall — full-screen takeover once the 7-day window
+//      elapses without conversion. Honors the user's intent_tier.
+//   3. TrialLockedCard — inline teaser for paid-only features (audience
+//      demos, ad performance, daily-only data) during the active trial.
+
+const TrialBanner = ({ trial, intentTier, referralUnlockAvailable, onUpgrade, onReferralUnlock }) => {
+  if (!trial?.active) return null;
+  const days = trial.days_left ?? 0;
+  // Referred Creators see a lime "Add card to unlock 30 days" CTA. It
+  // takes priority over the urgency-tinted upgrade CTA because the
+  // 30-day extension is the more generous, lower-friction action.
+  const urgency = days <= 1 ? 'magenta' : days <= 3 ? 'amber' : 'ultra';
+  const colorMap = {
+    magenta: 'bg-magenta text-paper',
+    amber:   'bg-amber text-ink',
+    ultra:   'bg-ultra text-paper',
+    lime:    'bg-lime text-ink',
+  };
+  const tone = referralUnlockAvailable ? 'lime' : urgency;
+  return (
+    <div className={cls(
+      'w-full text-center text-[12.5px] sm:text-[13px] font-medium px-5 py-2 flex items-center justify-center gap-3 flex-wrap',
+      colorMap[tone]
+    )}>
+      <span>
+        {referralUnlockAvailable
+          ? <>You were invited to Mashal. Add a card to unlock your first month free, no charge for 30 days.</>
+          : <>
+              Trial · {days === 0 ? 'last day' : days === 1 ? '1 day left' : `${days} days left`}
+              {intentTier && <> · upgrading to {intentTier.charAt(0).toUpperCase() + intentTier.slice(1)}</>}
+            </>
+        }
+      </span>
+      <button
+        type="button"
+        onClick={referralUnlockAvailable ? onReferralUnlock : onUpgrade}
+        className="inline-flex items-center gap-1 h-7 px-3 rounded-full bg-ink/15 hover:bg-ink/25 text-inherit transition text-[11.5px] font-mono uppercase tracking-[0.12em]"
+      >
+        {referralUnlockAvailable ? 'Add card' : 'Upgrade now'} <Icon name="arrowRight" className="w-3 h-3" />
+      </button>
+    </div>
+  );
+};
+
+
+const TrialLockedPaywall = ({ trial, intentTier, onUpgrade }) => {
+  const planLabel = intentTier
+    ? intentTier.charAt(0).toUpperCase() + intentTier.slice(1)
+    : 'a paid plan';
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper flex items-center justify-center px-5 py-16">
+      <div className="max-w-xl w-full text-center">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-magenta/15 text-magenta flex items-center justify-center mb-6">
+          <Icon name="lock" className="w-7 h-7" />
+        </div>
+        <Eyebrow color="text-magenta">Trial ended</Eyebrow>
+        <h1 className="font-display text-[36px] sm:text-[48px] leading-[1.02] font-semibold tracking-tightest mt-3 mb-3">
+          Your data is waiting.
+        </h1>
+        <p className="text-[15px] text-mute dark:text-muteDark max-w-md mx-auto mb-8 leading-relaxed">
+          Your 7-day trial is over. Upgrade to {planLabel} to unlock every brief, signal, and competitor insight Mashal has been collecting.
+          Your accounts and competitor list are saved — they reconnect the moment you pay.
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-2.5">
+          <Btn variant="ink" size="lg" onClick={onUpgrade}>
+            Upgrade to {planLabel} <Icon name="arrowRight" className="w-4 h-4" />
+          </Btn>
+          <a href="/pricing" className="text-[13px] text-mute dark:text-muteDark hover:underline px-2 py-2">
+            Compare plans →
+          </a>
+        </div>
+        <p className="text-[11.5px] font-mono text-mute dark:text-muteDark mt-8 uppercase tracking-[0.12em]">
+          Data retained for 30 days · cancel anytime after
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const TrialLockedCard = ({ featureLabel, tier = 'brand', sub, onUpgrade }) => {
+  const tierLabel = tier.charAt(0).toUpperCase() + tier.slice(1);
+  return (
+    <Card className="!p-5 relative overflow-hidden">
+      <div className="absolute inset-0 backdrop-blur-[3px] bg-paper/30 dark:bg-ink/30 pointer-events-none" aria-hidden="true" />
+      <div className="relative flex items-start gap-3">
+        <div className="w-9 h-9 rounded-xl bg-ultra/15 text-ultra flex items-center justify-center flex-shrink-0">
+          <Icon name="lock" className="w-4 h-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <Eyebrow color="text-ultra">{tierLabel} feature</Eyebrow>
+          <div className="font-display text-[17px] font-semibold tracking-tight mt-1.5 mb-1">{featureLabel}</div>
+          {sub && <p className="text-[12.5px] text-mute dark:text-muteDark mb-3 leading-snug">{sub}</p>}
+          <button
+            type="button"
+            onClick={onUpgrade}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-[11.5px] font-mono uppercase tracking-[0.12em] bg-ink text-paper dark:bg-paper dark:text-ink hover:opacity-90 transition"
+          >
+            Unlock with {tierLabel}
+          </button>
+        </div>
+      </div>
+    </Card>
+  );
+};
+
+
+// hydrateD lives in js/core/data.js; SubscriptionBanner + UpgradeDialog
+// in js/billing/. Don't re-reference those bare identifiers here.
+Object.assign(window, { EmptyDashboardCTA, BriefGenerating, TrialBanner, TrialLockedPaywall, TrialLockedCard });
+
+
+// ═════════════════════════════════════════════════════════════════════════
+// Extracted from index.html lines 8009-8825
+// ═════════════════════════════════════════════════════════════════════════
+// Mashal App — root routing + Supabase auth wired
+
+const DEFAULTS = /*EDITMODE-BEGIN*/{
+  "theme": "light",
+  "density": "comfortable",
+  "heroVariant": "gradient",
+  "activePlan": "brand",
+  "persona": "creator"
+}/*EDITMODE-END*/;
+
+// ── Referral attribution capture ─────────────────────────────────────────
+// /?ref=NAWAZ7K → stash the code in localStorage with a timestamp and
+// strip it from the URL so the address bar stays clean. Read back in
+// OnboardingScreen when the user hits the promo-code step. 30-day TTL
+// matches industry-standard referral cookies.
+const REF_STORAGE_KEY = 'pulse_ref_code';
+const REF_TTL_MS = 30 * 86400000;
+
+function captureRefFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get('ref');
+    if (!ref) return;
+    const code = String(ref).trim().toUpperCase();
+    if (!code) return;
+    localStorage.setItem(REF_STORAGE_KEY, JSON.stringify({ code, savedAt: Date.now() }));
+    // Strip ?ref from the URL so it doesn't stick around or get re-shared
+    // accidentally. Preserves other params (e.g. ?route=signup).
+    params.delete('ref');
+    const qs = params.toString();
+    const next = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+    window.history.replaceState({}, '', next);
+  } catch {}
+}
+
+function readStoredRefCode() {
+  try {
+    const raw = localStorage.getItem(REF_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.code || !parsed?.savedAt) return null;
+    if (Date.now() - parsed.savedAt > REF_TTL_MS) {
+      localStorage.removeItem(REF_STORAGE_KEY);
+      return null;
+    }
+    return parsed.code;
+  } catch { return null; }
+}
+
+// ── Team-invite token capture ────────────────────────────────────────────
+// /?invite=TOKEN → stash the token in localStorage with a short TTL and
+// strip it from the URL. After auth resolves, App() POSTs to
+// /api/team/accept and clears the token. 30-minute window — invite tokens
+// are one-shot and time-sensitive; we don't want a stale token to fire
+// auto-accept the next time the user opens the app.
+const INVITE_STORAGE_KEY = 'pulse_invite_token';
+const INVITE_TTL_MS = 30 * 60 * 1000;
+
+function captureInviteFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('invite');
+    if (!token) return;
+    const clean = String(token).trim();
+    if (!clean) return;
+    localStorage.setItem(INVITE_STORAGE_KEY, JSON.stringify({ token: clean, savedAt: Date.now() }));
+    params.delete('invite');
+    const qs = params.toString();
+    const next = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+    window.history.replaceState({}, '', next);
+  } catch {}
+}
+
+function readStoredInviteToken() {
+  try {
+    const raw = localStorage.getItem(INVITE_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.token || !parsed?.savedAt) return null;
+    if (Date.now() - parsed.savedAt > INVITE_TTL_MS) {
+      localStorage.removeItem(INVITE_STORAGE_KEY);
+      return null;
+    }
+    return parsed.token;
+  } catch { return null; }
+}
+
+function clearStoredInviteToken() {
+  try { localStorage.removeItem(INVITE_STORAGE_KEY); } catch {}
+}
+
+function App() {
+  // Capture URL params on the very first render before anything else
+  // touches the URL. Idempotent — no-op if the params aren't present.
+  React.useMemo(() => {
+    captureRefFromUrl();
+    captureInviteFromUrl();
+  }, []);
+
+  // Synchronous init — read localStorage during the first render so the
+  // browser never paints the loading spinner for returning users. Magic
+  // links still need an async exchange and fall through to 'loading'.
+  const [route, setRoute] = React.useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+        return 'loading'; // magic link — async exchange below resolves this
+      }
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pulse_session') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token) {
+          window.__pulseToken = parsed.access_token;
+          // Best-effort: hydrate the session synchronously too so the
+          // TopBar avatar/email/userMeta don't pop in after first paint.
+          return 'app';
+        }
+      }
+      // Deep-link hint from the static marketing pages — they don't have a
+      // sign-in form of their own, so they navigate to /?route=signin|signup
+      // and we land directly on the right view. Only respected for
+      // unauthenticated visitors; signed-in users stay in 'app'.
+      const params = new URLSearchParams(window.location.search);
+      const r = params.get('route');
+      if (r === 'signin' || r === 'signup') return r;
+    } catch { /* fall through to landing */ }
+    return 'landing';
+  });
+
+  const [tab, setTabState]              = React.useState('Brief');
+  // Brief fade between tabs without a forced remount — flips opacity for
+  // ~120ms, swaps the screen, then fades back in. Replaces the previous
+  // key={tab} remount that cascaded a fade-up re-fire across the whole
+  // app tree on every navigation.
+  const [tabAnimating, setTabAnimating] = React.useState(false);
+  const setTab = React.useCallback((next) => {
+    if (next === tab) return;
+    setTabAnimating(true);
+    setTimeout(() => {
+      setTabState(next);
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      // Frame-delay the un-fade so the new screen's first paint is at
+      // opacity 0 → 1, not flashing in already-rendered.
+      requestAnimationFrame(() => setTabAnimating(false));
+    }, 80);
+  }, [tab]);
+  // Optional anchor hint for Settings — set when navigating from the
+  // TopBar workspace dropdown ('workspaces'), the avatar menu ('profile'),
+  // etc. Settings reads it on mount and scrolls to the matching section.
+  const [settingsAnchor, setSettingsAnchor] = React.useState(null);
+  const [upgradeOpen, setUpgradeOpen]       = React.useState(false);
+  // Optional trial-days override when opening the UpgradeDialog. Used by
+  // the referral-unlock CTA on the TrialBanner to launch Stripe Checkout
+  // with a 30-day trial period instead of an immediate paid conversion.
+  const [upgradeTrialDays, setUpgradeTrialDays] = React.useState(null);
+
+  // Global listeners so any component (including ones rendered via the
+  // screen registry, which don't have direct access to setTab) can:
+  //   • pulse:gotoSettings  → navigate to Settings with an optional anchor
+  //   • pulse:openUpgrade   → open the upgrade dialog from anywhere
+  React.useEffect(() => {
+    const onGo = (e) => {
+      setSettingsAnchor(e?.detail?.anchor || null);
+      setTab('Settings');
+    };
+    const onUpgrade = (e) => {
+      setUpgradeTrialDays(e?.detail?.trialDays || null);
+      setUpgradeOpen(true);
+    };
+    window.addEventListener('pulse:gotoSettings', onGo);
+    window.addEventListener('pulse:openUpgrade', onUpgrade);
+    return () => {
+      window.removeEventListener('pulse:gotoSettings', onGo);
+      window.removeEventListener('pulse:openUpgrade', onUpgrade);
+    };
+  }, [setTab]);
+  const [activePlatform, setActivePlatform] = React.useState('all');
+  // activeBrand: null = all brands; or a competitor id (string). Drives the
+  // "filter to one brand" mode on competitor-aware screens (Content tab's
+  // Top Competitor Content table). Platform-axis filters stay independent.
+  const [activeBrand, setActiveBrand]   = React.useState(null);
+  const [range, setRange]               = React.useState('4W');
+  const [t, setTweak]                   = useTweaks(DEFAULTS);
+  const [showTweaks, setShowTweaks]     = React.useState(false);
+  // Hydrate session synchronously from the same localStorage read so TopBar
+  // / AccountBar render with the right user metadata on first paint.
+  const [session, setSession]           = React.useState(() => {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('pulse_session') : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed?.access_token) return parsed;
+      }
+    } catch {}
+    return null;
+  });
+  const [briefData, setBriefData]       = React.useState(null);
+  const [briefError, setBriefError]     = React.useState(null);
+  const [dataKey, setDataKey]           = React.useState(0);  // remount trigger
+
+  // Fetch the live brief whenever the user is in the app tab.
+  // Sends x-workspace-id so the response matches the currently-active
+  // workspace selected in the TopBar dropdown (not just the oldest one
+  // we own). On failure, sets briefError so the UI can show an actionable
+  // fallback rather than spinning forever.
+  const refreshBrief = React.useCallback(async () => {
+    if (!window.__pulseToken) return;
+    let wsId = null;
+    try { wsId = localStorage.getItem('pulse:workspaceId') || null; } catch {}
+    try {
+      const res = await fetch('/api/brief', {
+        headers: {
+          'Authorization': `Bearer ${window.__pulseToken}`,
+          ...(wsId ? { 'x-workspace-id': wsId } : {}),
+        },
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data || data.error) {
+        setBriefError({
+          status: res.status,
+          message: data?.error || `HTTP ${res.status}`,
+        });
+        return;
+      }
+      setBriefError(null);
+      hydrateD(data);
+      setBriefData(data);
+      setDataKey(k => k + 1);
+
+      // If the workspace doesn't have an explicit timezone yet (or is
+      // still on the schema default 'UTC'), detect the browser timezone
+      // and persist it. This drives:
+      //   • The "generated at" line on the brief
+      //   • The hourly cron's 6 AM local dispatch
+      //   • The Sunday-morning weekly digest delivery time
+      // Fire-and-forget; the response next time around will reflect the
+      // new value. Guarded by a session flag so we only PATCH once.
+      try {
+        const wsTz = data?.workspace?.timezone;
+        if ((!wsTz || wsTz === 'UTC') && !window.__pulseTzPersisted) {
+          const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+          if (browserTz && browserTz !== 'UTC') {
+            window.__pulseTzPersisted = true;
+            fetch('/api/workspaces', {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.__pulseToken}`,
+                ...(wsId ? { 'x-workspace-id': wsId } : {}),
+              },
+              body: JSON.stringify({ timezone: browserTz }),
+            }).catch(() => {});
+          }
+        }
+      } catch {}
+    } catch (e) {
+      setBriefError({ status: 0, message: e?.message || 'Network error' });
+    }
+  }, []);
+
+  // Fetch the brief once on app entry, and again whenever the user switches
+  // to a non-Settings tab (catches data that arrived during a connect flow).
+  // Collapsed into one effect — two separate effects both fire on mount and
+  // cause a double-fetch/remount blink.
+  React.useEffect(() => {
+    if (route !== 'app') return;
+    if (tab === 'Settings') return;
+    refreshBrief();
+  }, [route, tab, refreshBrief]);
+
+  // Track whether we've already kicked the on-entry sync for this session
+  // so a subsequent briefData update doesn't retrigger it. (Bug fix: the
+  // previous version depended on briefData.tier and ran every time
+  // briefData changed → agency users hit an infinite refreshBrief loop.)
+  const syncFiredRef = React.useRef(false);
+  const agencyRegenFiredRef = React.useRef(false);
+
+  // Silent background sync on app entry. Server-side cooldown (60 min) keeps
+  // this cheap — the call returns { ran: false, reason: 'cooldown' } when
+  // skipped. When it actually runs, refresh the brief afterwards so the UI
+  // reflects the new posts without the user clicking anything.
+  //
+  // Agency tier: server bypasses the 60-min cooldown entirely, AND the
+  // morning brief regenerates on every login. Both flags fire AT MOST ONCE
+  // per route→'app' transition so we never feedback-loop.
+  React.useEffect(() => {
+    if (route !== 'app' || !window.__pulseToken) return;
+    if (syncFiredRef.current) return;
+    syncFiredRef.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await api('/sync', { method: 'POST' });
+        if (cancelled) return;
+        if (r?.ran) refreshBrief();
+      } catch { /* silent — background work */ }
+    })();
+    return () => { cancelled = true; };
+  }, [route, refreshBrief]);
+
+  // External refresh trigger — SettingsScreen fires this CustomEvent on
+  // pulse:refresh-brief when the post-connect backfill completes, so the
+  // dashboard picks up the new data without the user navigating.
+  React.useEffect(() => {
+    const onRefresh = () => refreshBrief();
+    window.addEventListener('pulse:refresh-brief', onRefresh);
+    return () => window.removeEventListener('pulse:refresh-brief', onRefresh);
+  }, [refreshBrief]);
+
+  // Agency-tier brief regen — gated to fire at most once per session, and
+  // only after briefData has hydrated so we know the tier without polling.
+  React.useEffect(() => {
+    if (route !== 'app' || !briefData) return;
+    if (agencyRegenFiredRef.current) return;
+    const isAgency = (briefData?.tier?.key || briefData?.workspace?.tier || '').toLowerCase() === 'agency';
+    if (!isAgency) return;
+    agencyRegenFiredRef.current = true;
+    let cancelled = false;
+    // ?source=auto — this session-start regen is system-initiated and
+    // shouldn't burn a user-quota slot. Records as 'intelligence_auto'.
+    api('/intelligence/generate?source=auto', { method: 'POST' })
+      .then(() => { if (!cancelled) refreshBrief(); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [route, briefData, refreshBrief]);
+
+  // First-brief auto-generation. New users land on the dashboard with
+  // accounts connected and posts synced, but no verdict yet — without
+  // this they'd stare at the "Your first brief is generating" placeholder
+  // until tomorrow's 6 AM cron. Fire generate ONCE per session when:
+  //   • verdict is null
+  //   • at least one account is connected
+  //   • there are posts to reason about (otherwise generate skips anyway)
+  //   • not an agency (the effect above already covers them)
+  const firstBriefFiredRef = React.useRef(false);
+  const [briefGenerating, setBriefGenerating] = React.useState(false);
+  const [briefPartial, setBriefPartial] = React.useState({ title: '', body: '' });
+  React.useEffect(() => {
+    if (route !== 'app' || !briefData) return;
+    if (firstBriefFiredRef.current) return;
+    const hasVerdict = !!briefData?.verdict;
+    if (hasVerdict) return;
+    const hasAccounts = (briefData?.accounts || []).length > 0
+                     || Object.keys(briefData?.accountSummary || {}).length > 0;
+    const hasPosts = (briefData?.posts || []).length > 0;
+    if (!hasAccounts || !hasPosts) return;
+    const isAgency = (briefData?.tier?.key || briefData?.workspace?.tier || '').toLowerCase() === 'agency';
+    if (isAgency) return; // covered by the agency effect above
+    firstBriefFiredRef.current = true;
+    setBriefGenerating(true);
+    setBriefPartial({ title: '', body: '' });
+    let cancelled = false;
+
+    // Stream the brief over SSE so the verdict title appears in ~1s instead
+    // of waiting for the full 5-10s Gemini round-trip. We accumulate the raw
+    // JSON text and regex-extract verdict.title/body as they materialise —
+    // the model emits keys in a stable order under responseMimeType=json,
+    // so partial extraction is reliable in practice. After `done` we call
+    // refreshBrief() to swap in the fully-parsed verdict + actions + signals.
+    (async () => {
+      try {
+        const token = window.__pulseToken;
+        const wsId = (() => { try { return localStorage.getItem('pulse:workspaceId') || null; } catch { return null; } })();
+        // First-brief bootstrap is system-initiated — tag ?source=auto so
+        // it records as 'intelligence_auto' and is excluded from the
+        // workspace's monthly user-initiated quota counter.
+        const res = await fetch(`${API_BASE}/api/intelligence/stream?source=auto`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+            ...(wsId ? { 'x-workspace-id': wsId } : {}),
+          },
+        });
+        if (!res.ok || !res.body) {
+          // Fallback to non-streaming endpoint if stream isn't available
+          const r = await api('/intelligence/generate?source=auto', { method: 'POST' });
+          if (!cancelled && r?.ok) refreshBrief();
+          return;
+        }
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let acc = '';
+        while (!cancelled) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          let idx;
+          while ((idx = buffer.indexOf('\n\n')) !== -1) {
+            const msg = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 2);
+            for (const line of msg.split('\n')) {
+              if (!line.startsWith('data:')) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              let ev = null;
+              try { ev = JSON.parse(payload); } catch { continue; }
+              if (ev.chunk) {
+                acc += ev.chunk;
+                const tMatch = acc.match(/"title"\s*:\s*"((?:[^"\\]|\\.)*?)(?:"|$)/);
+                const bMatch = acc.match(/"body"\s*:\s*"((?:[^"\\]|\\.)*?)(?:"|$)/);
+                const unescape = (s) => s.replace(/\\"/g, '"').replace(/\\n/g, ' ').replace(/\\\\/g, '\\');
+                if (!cancelled) {
+                  setBriefPartial({
+                    title: tMatch ? unescape(tMatch[1]) : '',
+                    body:  bMatch ? unescape(bMatch[1]) : '',
+                  });
+                }
+              } else if (ev.done) {
+                if (!cancelled) refreshBrief();
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Silent — generating state clears in finally
+      } finally {
+        if (!cancelled) setBriefGenerating(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [route, briefData, refreshBrief]);
+
+  // Expose generating state + partial verdict via window so screens that
+  // render before briefData hydrates can read them without prop-drilling.
+  React.useEffect(() => { window.__pulseBriefGenerating = briefGenerating; }, [briefGenerating]);
+  React.useEffect(() => { window.__pulseBriefPartial = briefPartial; }, [briefPartial]);
+
+  // Dismiss the initial splash once we have something real to show.
+  // "Ready" means: the user is past the loading state AND either we have
+  // brief data, OR /api/brief returned an error (we show an error fallback
+  // instead of spinning), OR we're on a non-app route (landing/signin/
+  // onboarding need no brief), OR we're on Settings (renders without
+  // brief data). Hard 4-second timeout guarantees the splash never lingers
+  // if a fetch hangs entirely.
+  React.useEffect(() => {
+    if (route === 'loading') return;
+    const onAppRoute = route === 'app';
+    const briefReady = onAppRoute
+      ? (briefData !== null || briefError !== null || tab === 'Settings')
+      : true;
+    if (!briefReady) {
+      const t = setTimeout(() => {
+        document.documentElement.setAttribute('data-ready', '1');
+      }, 4000);
+      return () => clearTimeout(t);
+    }
+    document.documentElement.setAttribute('data-ready', '1');
+  }, [route, briefData, briefError, tab]);
+
+  // Scroll-to-top on every tab + route change. Window scroll is the common
+  // case; on layouts where overflow lives on documentElement/body or a main
+  // wrapper, we reset those too. behavior:'instant' is correct here —
+  // smooth scroll on every nav feels sluggish.
+  React.useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+      if (document.documentElement) document.documentElement.scrollTop = 0;
+      if (document.body) document.body.scrollTop = 0;
+      const main = document.querySelector('main') || document.querySelector('[data-scroll]');
+      if (main) main.scrollTop = 0;
+    } catch { /* SSR / non-DOM contexts */ }
+  }, [tab, route]);
+
+  React.useEffect(() => {
+    document.documentElement.classList.toggle('dark', t.theme === 'dark');
+    // Persist for the pre-React script in <head> to read on next reload —
+    // keeps the splash matching the user's theme on first paint.
+    try { localStorage.setItem('pulse_theme', t.theme); } catch {}
+  }, [t.theme]);
+
+  React.useEffect(() => {
+    document.body.classList.toggle('density-compact', t.density === 'compact');
+  }, [t.density]);
+
+  React.useEffect(() => {
+    D.user.plan = t.persona === 'agency' ? 'Agency' : t.persona === 'brand' ? 'Brand' : 'Creator';
+  }, [t.persona]);
+
+  // Auth init.
+  // Returning users were already routed to 'app' synchronously above using
+  // the localStorage session. Here we:
+  //   1. Process a magic-link hash if present (still needs async exchange).
+  //   2. Validate the cached token in the background. If validation fails
+  //      (token expired and refresh failed), drop back to landing.
+  // The user sees the app immediately and only gets redirected on hard fail
+  // — which is better UX than a spinner on every cold start.
+  React.useEffect(() => {
+    const routeFor = (sess) => {
+      const createdAt = sess?.user?.created_at;
+      const isNew = createdAt && (Date.now() - new Date(createdAt).getTime()) < 60_000;
+      return isNew ? 'onboarding' : 'app';
+    };
+
+    const init = async () => {
+      if (window.location.hash.includes('access_token')) {
+        const handled = await checkMagicLinkHash((sess) => {
+          setSession(sess);
+          setRoute(routeFor(sess));
+        });
+        if (handled) return;
+        // hash present but exchange failed — clear and show landing
+        setRoute('landing');
+        return;
+      }
+      // For non-magic-link entry, the synchronous init either already routed
+      // us to 'app' (cached session) or to 'landing' (no session). Validate
+      // the cached token in the background:
+      //   • Valid token: restoreSession does NOT fire either callback →
+      //     ZERO re-renders. This is critical to avoid the post-paint blink.
+      //   • Refreshed token: onAuthed fires once with new tokens.
+      //   • Hard failure: onInvalidated fires once → route back to landing.
+      const restored = restoreSession(
+        (sess) => { setSession(sess); },
+        () => { setRoute('landing'); }
+      );
+      if (!restored && route === 'app') {
+        // We optimistically routed to 'app' but there's no usable session.
+        setRoute('landing');
+      }
+    };
+    init();
+    // Intentionally empty deps — auth init runs exactly once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode')   setShowTweaks(true);
+      if (e.data?.type === '__deactivate_edit_mode') setShowTweaks(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  const handleAuthed = (sess) => {
+    setSession(sess);
+    const isNew = sess?.user?.created_at &&
+      (Date.now() - new Date(sess.user.created_at).getTime()) < 60000;
+    setRoute(isNew ? 'onboarding' : 'app');
+  };
+
+  // Auto-accept a stored team invitation once we're authenticated and
+  // in-app. Fires exactly once per stored token — the helper clears
+  // localStorage on success or terminal failure so a refresh doesn't
+  // re-attempt indefinitely.
+  React.useEffect(() => {
+    if (route !== 'app' || !session?.access_token) return;
+    const token = readStoredInviteToken();
+    if (!token) return;
+    (async () => {
+      try {
+        const r = await api('/team/accept', {
+          method: 'POST',
+          body: JSON.stringify({ token }),
+        });
+        clearStoredInviteToken();
+        if (r?.workspace_id) {
+          // Switch to the newly joined workspace so the user sees what
+          // they were invited to — the brief refetch picks it up.
+          try { localStorage.setItem('pulse:workspaceId', r.workspace_id); } catch {}
+          window.dispatchEvent(new CustomEvent('pulse:refresh-brief'));
+          // Soft toast hook — most screens listen to this for inline
+          // feedback. Format mirrors other success events in the SPA.
+          window.dispatchEvent(new CustomEvent('pulse:toast', {
+            detail: { msg: `Joined ${r.workspace_name || 'workspace'} as ${r.role}`, type: 'ok' },
+          }));
+        }
+      } catch (e) {
+        // 410 expired / 403 wrong email / 404 not found — all terminal.
+        // Clear the token so the user isn't trapped re-attempting.
+        clearStoredInviteToken();
+        window.dispatchEvent(new CustomEvent('pulse:toast', {
+          detail: { msg: e.message || 'Invitation could not be accepted.', type: 'err' },
+        }));
+      }
+    })();
+  }, [route, session?.access_token]);
+
+  const handleSignOut = () => {
+    sbAuth.clearSession();
+    setSession(null);
+    setRoute('landing');
+  };
+
+  const screens = {
+    Brief:    <BriefScreen activePlatform={activePlatform} setTab={setTab} />,
+    Stats:    <OverviewScreen activePlatform={activePlatform} />,
+    Ads:      <AdsScreen activePlatform={activePlatform} />,
+    Growth:   <GrowthScreen activePlatform={activePlatform} />,
+    Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
+    Intel:    <IntelScreen activePlatform={activePlatform} />,
+    Actions:  <ActionsScreen activePlatform={activePlatform} />,
+    Reports:  <ReportsScreen />,
+    Targets:  <TargetsScreen />,
+    Settings: <SettingsScreen scrollAnchor={settingsAnchor} onAnchorConsumed={() => setSettingsAnchor(null)} />
+  };
+
+  if (route === 'loading') {
+    return (
+      <div className="min-h-screen bg-paper dark:bg-ink flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <MashalLogo className="h-8 opacity-60" />
+          <div className="w-5 h-5 border-2 border-ink/20 dark:border-paper/20 border-t-ink dark:border-t-paper rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PlatformIcons />
+
+      {route === 'landing' && (
+        <Landing
+          heroVariant={t.heroVariant}
+          activePlan={t.activePlan}
+          theme={t.theme}
+          toggleTheme={() => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark')}
+          onSignIn={() => setRoute('signin')}
+          onSignUp={() => setRoute('signup')}
+        />
+      )}
+
+      {(route === 'signin' || route === 'signup') && (
+        <Auth
+          mode={route}
+          onAuthed={handleAuthed}
+          onBack={() => setRoute('landing')}
+        />
+      )}
+
+      {route === 'onboarding' && (
+        <Onboarding onDone={() => {
+          setTab('Settings');
+          setRoute('app');
+        }} />
+      )}
+
+      {/* Upgrade dialog — mounted at App root so it overlays everything
+          else. Triggered by pulse:openUpgrade events from the trial
+          banner, paywall, Ads tab, and any other locked-feature card.
+          trialDays is set when the referral-unlock CTA triggers checkout
+          (Stripe-side 30-day trial instead of immediate paid conversion). */}
+      <UpgradeDialog
+        open={upgradeOpen}
+        onClose={() => { setUpgradeOpen(false); setUpgradeTrialDays(null); }}
+        intentTier={briefData?.trial?.intent_tier || briefData?.tier?.key}
+        trial={briefData?.trial}
+        trialDays={upgradeTrialDays}
+      />
+
+      {/* Trial paywall — full-screen takeover. Bypasses TopBar/Account
+          bar/screens entirely so locked workspaces see nothing but the
+          upgrade path. */}
+      {route === 'app' && briefData?.trial?.locked && (
+        <TrialLockedPaywall
+          trial={briefData.trial}
+          intentTier={briefData.trial?.intent_tier || briefData.tier?.key}
+          onUpgrade={() => setUpgradeOpen(true)}
+        />
+      )}
+
+      {route === 'app' && !briefData?.trial?.locked && (
+        <div className="min-h-screen bg-paper dark:bg-ink text-ink dark:text-paper">
+          {/* Trial banner sits above TopBar so it's the first thing the
+              user sees on every screen. Hidden once trial converts. */}
+          <TrialBanner
+            trial={briefData?.trial}
+            intentTier={briefData?.trial?.intent_tier || briefData?.tier?.key}
+            referralUnlockAvailable={!!briefData?.referral_unlock_available}
+            onUpgrade={() => { setUpgradeTrialDays(null); setUpgradeOpen(true); }}
+            onReferralUnlock={() => { setUpgradeTrialDays(30); setUpgradeOpen(true); }}
+          />
+          {/* Subscription state banner — past_due / canceled / cancel-pending.
+              Mutually exclusive with TrialBanner in practice (only one of
+              trial.active vs stripe_subscription_status will be set). */}
+          <SubscriptionBanner
+            workspace={briefData?.workspace}
+            onUpgrade={() => setUpgradeOpen(true)}
+            onPortal={async () => {
+              try {
+                const r = await api('/stripe?action=portal', { method: 'POST' });
+                if (r?.url) window.location.href = r.url;
+              } catch (e) {
+                console.error('portal redirect failed', e);
+              }
+            }}
+          />
+          <TopBar
+            active={tab}
+            setActive={setTab}
+            navigateToSettings={(anchor) => { setSettingsAnchor(anchor || null); setTab('Settings'); }}
+            theme={t.theme}
+            toggleTheme={() => setTweak('theme', t.theme === 'dark' ? 'light' : 'dark')}
+            onSignOut={handleSignOut}
+            userEmail={session?.user?.email}
+          />
+          <AccountBar
+            activePlatform={activePlatform}
+            setActivePlatform={setActivePlatform}
+            activeBrand={activeBrand}
+            setActiveBrand={setActiveBrand}
+            connectedPlatforms={briefData?.state?.hasAccounts ? Object.keys(briefData.accountSummary || {}) : []}
+            onGoConnect={() => setTab('Settings')}
+          />
+          {/* No key here — React handles unmount/remount naturally when
+              the tab's component identity changes. Forcing a key={tab}
+              cascaded a fade-up animation re-fire across the entire tree
+              every time the user clicked a sidebar tab, which read as a
+              visible page-level blink. The brief tab-fade below replaces
+              that visual cue without re-mounting the whole subtree. */}
+          <div className={cls('transition-opacity duration-150', tabAnimating ? 'opacity-0' : 'opacity-100')}>
+            {(() => {
+              // Settings always renders (it's how you connect accounts in the first place)
+              if (tab === 'Settings') return screens.Settings;
+              // Brief errored — show an actionable fallback so the user
+              // doesn't sit on a spinner forever.
+              if (briefError && !briefData) return (
+                <div className="max-w-md mx-auto px-5 py-24 text-center">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-magenta/15 text-magenta flex items-center justify-center mb-4">
+                    <Icon name="x" className="w-5 h-5" />
+                  </div>
+                  <h2 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Couldn't load your brief</h2>
+                  <p className="text-[13px] text-mute dark:text-muteDark mb-5">
+                    {briefError.message || 'Something went wrong fetching your data.'}
+                    {briefError.status ? <span className="block mt-1 font-mono text-[11px] opacity-70">HTTP {briefError.status}</span> : null}
+                  </p>
+                  <div className="flex flex-col gap-2 items-center">
+                    <Btn variant="ink" size="sm" onClick={() => { setBriefError(null); refreshBrief(); }}>
+                      <Icon name="refresh" className="w-3.5 h-3.5" /> Try again
+                    </Btn>
+                    <Btn variant="outline" size="sm" onClick={() => setTab('Settings')}>
+                      Open Settings
+                    </Btn>
+                    <button
+                      onClick={() => {
+                        try {
+                          localStorage.removeItem('pulse:workspaceId');
+                          localStorage.removeItem('pulse_session');
+                        } catch {}
+                        window.location.reload();
+                      }}
+                      className="text-[12px] text-mute dark:text-muteDark hover:text-magenta transition mt-2"
+                    >
+                      Reset session & reload
+                    </button>
+                  </div>
+                </div>
+              );
+              // Brief still loading
+              if (!briefData) return (
+                <div className="max-w-2xl mx-auto px-5 py-24 text-center">
+                  <div className="w-8 h-8 mx-auto border-2 border-ink/20 dark:border-paper/20 border-t-ink dark:border-t-paper rounded-full animate-spin" />
+                </div>
+              );
+              // No accounts connected yet
+              if (!briefData.state?.hasAccounts) {
+                return <EmptyDashboardCTA onGoToSettings={() => setTab('Settings')} />;
+              }
+              // Accounts connected, first refresh still cooking
+              if (!briefData.state?.hasPosts) {
+                return <BriefGenerating onGoToSettings={() => setTab('Settings')} />;
+              }
+              return screens[tab];
+            })()}
+          </div>
+          <MobileNav active={tab} setActive={setTab} />
+        </div>
+      )}
+
+      {showTweaks && (
+        <TweaksPanel title="Tweaks" onClose={() => setShowTweaks(false)}>
+          <TweakSection title="Theme">
+            <TweakRadio label="Mode" value={t.theme} onChange={v => setTweak('theme', v)}
+              options={[{ value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }]} />
+            <TweakRadio label="Density" value={t.density} onChange={v => setTweak('density', v)}
+              options={[{ value: 'comfortable', label: 'Comfortable' }, { value: 'compact', label: 'Compact' }]} />
+          </TweakSection>
+          <TweakSection title="Landing page">
+            <TweakSelect label="Hero variant" value={t.heroVariant} onChange={v => setTweak('heroVariant', v)} options={[
+              { value: 'gradient', label: 'Gradient — bold AI feel' },
+              { value: 'editorial', label: 'Editorial — restrained' },
+              { value: 'split', label: 'Split — product preview right' }
+            ]} />
+            <TweakSelect label="Featured plan" value={t.activePlan} onChange={v => setTweak('activePlan', v)} options={[
+              { value: 'creator', label: 'Creator — $15' },
+              { value: 'brand', label: 'Brand — $99' },
+              { value: 'agency', label: 'Agency — $449' }
+            ]} />
+          </TweakSection>
+          <TweakSection title="App persona">
+            <TweakRadio label="Plan view" value={t.persona} onChange={v => setTweak('persona', v)} options={[
+              { value: 'creator', label: 'Creator' },
+              { value: 'brand', label: 'Brand' },
+              { value: 'agency', label: 'Agency' }
+            ]} />
+          </TweakSection>
+          <TweakSection title="Navigation">
+            <TweakButton label="Go to Landing"    onClick={() => setRoute('landing')} />
+            <TweakButton label="Go to Sign in"    onClick={() => setRoute('signin')} />
+            <TweakButton label="Go to Onboarding" onClick={() => setRoute('onboarding')} />
+            <TweakButton label="Go to App"        onClick={() => setRoute('app')} />
+          </TweakSection>
+        </TweaksPanel>
+      )}
+    </>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+
+/* === SPA-BUNDLE-PUBLISH === */
+// Push every top-level export of this module onto window so the rest
+// of the SPA (other modules + any string-eval call sites) can keep
+// using bare-name references exactly as it did under the script-tag
+// concatenation model.
+Object.assign(window, {
+  Auth,
+  Onboarding,
+  TopBar,
+  AccountBar,
+  MobileNav,
+  ScreenHeader,
+  greetingFor,
+  BriefScreen,
+  SignalRow,
+  formatCount,
+  InlineSpark,
+  PLATFORM_BRAND,
+  ReachCard,
+  EngagementCard,
+  SignalsCard,
+  RichFollowerCard,
+  OverviewScreen,
+  COUNTRY_NAME,
+  LANGUAGE_NAME,
+  audienceBucketLabel,
+  AudienceDimensionCard,
+  AudienceAccountBlock,
+  AudienceSection,
+  PerfChart,
+  AdsKpi,
+  AdsScreen,
+  AdsPreviewCard,
+  PLATFORM_COLOR,
+  PLATFORM_LABEL,
+  TrajectoryChart,
+  VELOCITY_TONE,
+  GrowthScreen,
+  ReachGapBars,
+  PLATFORM_LABEL_FULL,
+  SIGNAL_TONE,
+  BenchmarkRow,
+  ContentScreen,
+  CompetitorTopContent,
+  IntelScreen,
+  ContentFormulaCard,
+  WhatsWorkingMissingCard,
+  StrategicRewriteCard,
+  ChannelPriorityMatrix,
+  AllPlatformsScorecard,
+  MarketContextCard,
+  CompetitorAdsCard,
+  ActionsScreen,
+  ReportsScreen,
+  TargetsScreen,
+  PLATFORMS,
+  PlatformCard,
+  UsageMeter,
+  TONE_META,
+  ToneSwitcher,
+  SettingsScreen,
+  EmptyDashboardCTA,
+  BriefGenerating,
+  TrialBanner,
+  TrialLockedPaywall,
+  TrialLockedCard,
+  DEFAULTS,
+  REF_STORAGE_KEY,
+  REF_TTL_MS,
+  captureRefFromUrl,
+  readStoredRefCode,
+  INVITE_STORAGE_KEY,
+  INVITE_TTL_MS,
+  captureInviteFromUrl,
+  readStoredInviteToken,
+  clearStoredInviteToken,
+  App,
+  root,
+});

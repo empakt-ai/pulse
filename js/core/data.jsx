@@ -1,3 +1,5 @@
+import React from 'react';
+
 // ═════════════════════════════════════════════════════════════════════════
 // Mashal Data Layer — the global D object + hydrateD().
 //
