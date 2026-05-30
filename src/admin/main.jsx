@@ -1,0 +1,2980 @@
+// ═════════════════════════════════════════════════════════════════════════
+// src/admin/main.jsx — Mashal Admin Console SPA entry.
+//
+// Extracted from the single inline <script type="text/babel"> block
+// that lived in admin.html lines 56-3015 before the
+// Vite migration. Pure 1:1 lift; the React + ReactDOM imports below
+// replace the unpkg CDN script tags that used to load them.
+//
+// Independent of the main Mashal SPA — own React tree, own auth helpers,
+// own Tailwind config (via src/styles/admin.css).
+// ═════════════════════════════════════════════════════════════════════════
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+
+// Expose globally so any string-eval / console debugging keeps working
+// the way it did under the CDN-loaded React.
+window.React = React;
+window.ReactDOM = ReactDOM;
+
+import '../styles/admin.css';
+
+// ═════════════════════════════════════════════════════════════════════════
+// Mashal Admin Console — standalone SPA. Independent React tree, own auth,
+// own state. Only shared concept with Mashal is the Supabase session in
+// localStorage ('pulse_session') — if you're already signed in to Mashal
+// in this browser, admin picks up the session automatically.
+// ═════════════════════════════════════════════════════════════════════════
+
+const SUPABASE_URL  = 'https://gyiiccstlrgzfbwgtuww.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aWljY3N0bHJnemZid2d0dXd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTcyOTEsImV4cCI6MjA5NDA5MzI5MX0.mC7iQ73NhSsER1c22zT63ntRXwsVLwq6Pv-oRv15kDA';
+
+const sbHeaders = () => ({
+  'Content-Type':  'application/json',
+  'apikey':        SUPABASE_ANON,
+  'Authorization': `Bearer ${SUPABASE_ANON}`,
+});
+
+const sbAuth = {
+  signInWithOtp: async (email) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/otp`, {
+      method: 'POST',
+      headers: sbHeaders(),
+      body: JSON.stringify({ email, create_user: false, options: { emailRedirectTo: window.location.origin + '/admin' } }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Could not send link');
+    return data;
+  },
+  refresh: async (refreshToken) => {
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: sbHeaders(),
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error_description || data.msg || 'Token refresh failed');
+    return data;
+  },
+  getSession: () => {
+    try { return JSON.parse(localStorage.getItem('pulse_session') || 'null'); }
+    catch { return null; }
+  },
+  saveSession: (s) => { localStorage.setItem('pulse_session', JSON.stringify(s)); },
+  clearSession: () => { localStorage.removeItem('pulse_session'); },
+};
+
+// Magic-link callback handler — drops access_token + refresh_token into
+// the URL hash. We persist the session, strip the hash, and let the
+// normal session-check path render the console.
+const consumeMagicLinkHash = () => {
+  const hash = window.location.hash || '';
+  if (!hash.includes('access_token')) return null;
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const access_token  = params.get('access_token');
+  const refresh_token = params.get('refresh_token');
+  if (!access_token) return null;
+  const session = { access_token, refresh_token, persisted_at: Date.now() };
+  sbAuth.saveSession(session);
+  history.replaceState({}, '', window.location.pathname + window.location.search);
+  return session;
+};
+
+// ── API wrapper ─────────────────────────────────────────────────────────
+const api = async (path, opts = {}) => {
+  const session = sbAuth.getSession();
+  const token = session?.access_token;
+  const res = await fetch(`/api${path}`, {
+    ...opts,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      ...(opts.headers || {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    err.body = data;
+    throw err;
+  }
+  return data;
+};
+
+// ── Common UI atoms ─────────────────────────────────────────────────────
+const cls = (...parts) => parts.filter(Boolean).join(' ');
+
+const Card = ({ title, sub, right, children }) => (
+  <section className="rounded-2xl border border-lineDark bg-inksoft p-6 mb-5">
+    {(title || right) && (
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          {title && <h2 className="font-display text-[20px] font-semibold tracking-tight">{title}</h2>}
+          {sub && <p className="text-[13px] text-muteDark mt-1">{sub}</p>}
+        </div>
+        {right}
+      </div>
+    )}
+    {children}
+  </section>
+);
+
+const Pill = ({ active, children, onClick, disabled }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cls(
+      'h-9 px-4 rounded-lg text-[13px] font-medium border transition',
+      active ? 'bg-paper text-ink border-paper' : 'bg-inksoft border-lineDark hover:border-paper/30',
+      disabled && 'opacity-50 cursor-not-allowed',
+    )}
+  >
+    {children}
+  </button>
+);
+
+const TextInput = (props) => (
+  <input
+    {...props}
+    className={cls(
+      'h-9 px-3 rounded-lg border border-lineDark bg-ink text-[13px] focus:outline-none focus:border-paper/50',
+      props.className,
+    )}
+  />
+);
+
+const ReasonField = ({ value, onChange, placeholder = 'Why are you making this change?' }) => (
+  <div className="mb-3">
+    <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">
+      Reason (required)
+    </label>
+    <TextInput
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full"
+    />
+  </div>
+);
+
+const Stat = ({ label, value, tone }) => (
+  <div className={cls(
+    'rounded-xl border px-4 py-3',
+    tone === 'warn'  ? 'border-magenta/40 bg-magenta/5'
+    : tone === 'good' ? 'border-lime/40 bg-lime/5'
+    : 'border-lineDark bg-ink',
+  )}>
+    <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark">{label}</div>
+    <div className="font-display text-[22px] font-semibold mt-1">{value}</div>
+  </div>
+);
+
+const Btn = ({ children, onClick, disabled, variant = 'primary', size = 'md' }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={cls(
+      'rounded-lg font-medium transition border',
+      size === 'sm' ? 'h-8 px-3 text-[12px]' : 'h-9 px-4 text-[13px]',
+      variant === 'primary' ? 'bg-paper text-ink border-paper hover:opacity-90'
+      : variant === 'danger'  ? 'bg-magenta/10 text-magenta border-magenta/40 hover:bg-magenta/20'
+      : 'bg-inksoft text-paper border-lineDark hover:border-paper/30',
+      disabled && 'opacity-50 cursor-not-allowed',
+    )}
+  >
+    {children}
+  </button>
+);
+
+const Toast = ({ message, tone, onDone }) => {
+  React.useEffect(() => {
+    if (!message) return;
+    const t = setTimeout(onDone, 3500);
+    return () => clearTimeout(t);
+  }, [message]);
+  if (!message) return null;
+  return (
+    <div className={cls(
+      'fixed bottom-6 right-6 z-50 rounded-xl px-4 py-3 text-[13px] shadow-2xl border',
+      tone === 'err' ? 'bg-magenta/10 border-magenta/40 text-magenta'
+                     : 'bg-lime/10 border-lime/40 text-lime',
+    )}>
+      {message}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sign-in card. Magic-link only — keeps the admin login surface narrow.
+// ═════════════════════════════════════════════════════════════════════════
+const SignIn = ({ onSent }) => {
+  const [email, setEmail]     = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent]       = React.useState(false);
+  const [error, setError]     = React.useState(null);
+
+  const submit = async (e) => {
+    e?.preventDefault();
+    if (!email.includes('@')) { setError('Enter a valid email.'); return; }
+    setSending(true); setError(null);
+    try {
+      await sbAuth.signInWithOtp(email.trim());
+      setSent(true);
+      onSent?.();
+    } catch (err) {
+      setError(err.message || 'Could not send sign-in link.');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div className="inline-block px-2 py-1 rounded-full bg-magenta/15 text-magenta text-[10px] font-mono uppercase tracking-[0.18em] mb-3">Admin Console</div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">Mashal Admin</h1>
+          <p className="text-[13px] text-muteDark mt-2">
+            Magic-link sign-in. Only profiles flagged <code className="font-mono">is_admin</code> in Supabase can proceed past this screen.
+          </p>
+        </div>
+
+        {sent ? (
+          <div className="rounded-2xl border border-lime/40 bg-lime/5 p-5 text-[13px] text-lime">
+            Check your inbox for a sign-in link. After clicking, you'll be returned here.
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <TextInput
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full"
+              autoFocus
+            />
+            {error && <div className="text-[12px] text-magenta">{error}</div>}
+            <Btn onClick={submit} disabled={sending || !email}>
+              {sending ? 'Sending…' : 'Send sign-in link'}
+            </Btn>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Phase 0 screens. Settings, Flags, Audit log are wired to live endpoints.
+// The other modules render a "coming soon" stub so the navigation tree is
+// in place from day one and screens get fleshed out in subsequent phases.
+// ═════════════════════════════════════════════════════════════════════════
+
+const Stub = ({ title, plannedIn, sub }) => (
+  <div className="max-w-[1000px] mx-auto">
+    <div className="mb-6">
+      <h1 className="font-display text-[32px] font-semibold tracking-tight">{title}</h1>
+      {sub && <p className="text-[14px] text-muteDark mt-1">{sub}</p>}
+    </div>
+    <Card>
+      <div className="text-center py-12">
+        <div className="inline-block px-3 py-1 rounded-full bg-lineDark text-muteDark text-[11px] font-mono uppercase tracking-[0.14em]">
+          Planned for {plannedIn}
+        </div>
+        <p className="text-[13px] text-muteDark mt-4 max-w-md mx-auto">
+          The endpoint and UI for this screen will land in a future commit. Phase 0 shipped only the auth shell, navigation, and the modules whose actions feed the audit story (settings, flags, audit log).
+        </p>
+      </div>
+    </Card>
+  </div>
+);
+
+// ── Settings screen ─────────────────────────────────────────────────────
+const SettingsScreen = ({ setToast, currentUserId }) => {
+  const [settings, setSettings] = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [saving, setSaving]     = React.useState(false);
+  const [reason, setReason]     = React.useState('');
+  const [draftProvider, setDraftProvider] = React.useState(null);
+
+  // Personal tier_override state lives on the admin's profile row.
+  const [tierOverride, setTierOverride]       = React.useState(null);   // current persisted value
+  const [draftTier, setDraftTier]             = React.useState('');     // staged value
+  const [tierReason, setTierReason]           = React.useState('');
+  const [savingTier, setSavingTier]           = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const [s, me] = await Promise.all([
+        api('/admin?action=settings'),
+        currentUserId ? api(`/admin?action=user-detail&id=${encodeURIComponent(currentUserId)}`).catch(() => null) : Promise.resolve(null),
+      ]);
+      setSettings(s.settings || {});
+      setDraftProvider(s.settings?.ai_provider || 'gemini');
+      const current = me?.profile?.tier_override || null;
+      setTierOverride(current);
+      setDraftTier(current || '');
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [currentUserId]);
+
+  const saveProvider = async (provider) => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required before saving.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await api('/admin?action=settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ ai_provider: provider, reason: reason.trim() }),
+      });
+      setSettings(r.settings || {});
+      setDraftProvider(r.settings?.ai_provider || provider);
+      setReason('');
+      setToast({ message: `AI provider set to ${provider}.`, tone: 'ok' });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-muteDark text-[14px]">Loading settings…</div>;
+
+  const provider = settings?.ai_provider || 'gemini';
+  return (
+    <div className="max-w-[1000px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Platform settings</h1>
+        <p className="text-[14px] text-muteDark mt-1">Global runtime configuration. Reads are cached for 60s per Vercel instance — propagation is near-immediate.</p>
+      </div>
+
+      <Card title="AI provider" sub="Active provider for brief generation. Toggle persists immediately; the next brief call picks it up.">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Pill active={draftProvider === 'gemini'}    onClick={() => setDraftProvider('gemini')}    disabled={saving}>Gemini · 2.5 Flash</Pill>
+          <Pill active={draftProvider === 'anthropic'} onClick={() => setDraftProvider('anthropic')} disabled={saving}>Anthropic · Claude Sonnet 4.6</Pill>
+          <span className="ml-auto text-[12px] font-mono text-muteDark">Active: {provider}</span>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. switching to Anthropic for tone comparison" />
+        <div className="flex justify-end">
+          <Btn
+            onClick={() => saveProvider(draftProvider)}
+            disabled={saving || draftProvider === provider}
+          >
+            {saving ? 'Saving…' : draftProvider === provider ? 'No change' : `Switch to ${draftProvider}`}
+          </Btn>
+        </div>
+      </Card>
+
+      <Card title="Prompt version" sub="Tag every brief generation with a version string so the AI Brief Monitor can group by prompt.">
+        <div className="text-[12px] font-mono text-muteDark">Current: {settings?.brief_prompt_version || 'v1'}</div>
+        <p className="text-[12px] text-muteDark mt-2">Edit endpoint exists; UI editor lands with the AI Brief Monitor in Phase 2.</p>
+      </Card>
+
+      <Card title="Caps" sub="Global safety knobs (rate limits, cost budgets). Empty by default.">
+        <pre className="diff text-muteDark bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(settings?.caps || {}, null, 2)}</pre>
+        <p className="text-[12px] text-muteDark mt-2">Editor lands in Phase 2 alongside the Sync & Sources panel.</p>
+      </Card>
+
+      <Card
+        title="Your view-as tier"
+        sub="Run as a different tier to preview the gated experience. Persists on your profile row. Only honored when your is_admin flag is true."
+      >
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <Pill active={draftTier === ''}         onClick={() => setDraftTier('')}>None (real tier)</Pill>
+          <Pill active={draftTier === 'creator'}  onClick={() => setDraftTier('creator')}>Creator</Pill>
+          <Pill active={draftTier === 'brand'}    onClick={() => setDraftTier('brand')}>Brand</Pill>
+          <Pill active={draftTier === 'agency'}   onClick={() => setDraftTier('agency')}>Agency</Pill>
+          <span className="ml-auto text-[12px] font-mono text-muteDark">
+            Current: {tierOverride || 'none'}
+          </span>
+        </div>
+        <ReasonField value={tierReason} onChange={setTierReason} placeholder="e.g. testing the Brand tier upgrade flow" />
+        <div className="flex justify-end">
+          <Btn
+            onClick={async () => {
+              if (!tierReason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+              setSavingTier(true);
+              try {
+                const next = draftTier || null;
+                const r = await api('/admin?action=self-tier-override', {
+                  method: 'POST',
+                  body: JSON.stringify({ tier_override: next, reason: tierReason.trim() }),
+                });
+                setTierOverride(r.tier_override || null);
+                setTierReason('');
+                setToast({ message: `View-as set to ${r.tier_override || 'none'}. Reload Mashal to see the change.`, tone: 'ok' });
+              } catch (e) {
+                setToast({ message: e.message, tone: 'err' });
+              } finally {
+                setSavingTier(false);
+              }
+            }}
+            disabled={savingTier || (draftTier || null) === tierOverride}
+          >
+            {savingTier ? 'Saving…' : (draftTier || null) === tierOverride ? 'No change' : 'Save view-as tier'}
+          </Btn>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── Feature flags screen ───────────────────────────────────────────────
+const FlagsScreen = ({ setToast }) => {
+  const [flags, setFlags]   = React.useState({});
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason] = React.useState('');
+  const [newKey, setNewKey] = React.useState('');
+  const [saving, setSaving] = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=flags');
+      setFlags(r.flags || {});
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const save = async (next) => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required before saving.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const r = await api('/admin?action=flags', {
+        method: 'PATCH',
+        body: JSON.stringify({ flags: next, reason: reason.trim() }),
+      });
+      setFlags(r.flags || {});
+      setReason('');
+      setToast({ message: 'Feature flags saved.', tone: 'ok' });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-muteDark text-[14px]">Loading flags…</div>;
+
+  const entries = Object.entries(flags);
+  return (
+    <div className="max-w-[1000px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Feature flags</h1>
+        <p className="text-[14px] text-muteDark mt-1">Boolean gates on unreleased features. Mashal reads <code className="font-mono">D.flags[key]</code> after Phase 3.</p>
+      </div>
+
+      <Card title="Flags" sub="Edit the list, then capture a reason before saving. One audit row per save, regardless of how many flags changed.">
+        {entries.length === 0 && (
+          <div className="text-[13px] text-muteDark mb-3">No flags defined. Add one below.</div>
+        )}
+        <div className="space-y-2 mb-4">
+          {entries.map(([key, value]) => (
+            <div key={key} className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+              <div>
+                <div className="font-mono text-[13px]">{key}</div>
+                <div className="text-[11px] text-muteDark">{value ? 'enabled' : 'disabled'}</div>
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-[12px] text-muteDark">
+                  <input
+                    type="checkbox"
+                    checked={!!value}
+                    onChange={(e) => setFlags(prev => ({ ...prev, [key]: e.target.checked }))}
+                    className="h-4 w-4"
+                  />
+                  toggle
+                </label>
+                <button
+                  onClick={() => {
+                    const next = { ...flags };
+                    delete next[key];
+                    setFlags(next);
+                  }}
+                  className="text-[11px] text-muteDark hover:text-magenta"
+                  title="Remove flag from draft (save to apply)"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 mb-5">
+          <TextInput
+            type="text"
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+            placeholder="flag_key_snake_case"
+            className="flex-1"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && newKey.trim()) {
+                setFlags(prev => ({ ...prev, [newKey.trim()]: false }));
+                setNewKey('');
+              }
+            }}
+          />
+          <Btn
+            variant="secondary"
+            onClick={() => {
+              const k = newKey.trim();
+              if (!k) return;
+              setFlags(prev => ({ ...prev, [k]: false }));
+              setNewKey('');
+            }}
+          >Add</Btn>
+        </div>
+
+        <div className="border-t border-lineDark pt-4">
+          <ReasonField value={reason} onChange={setReason} placeholder="e.g. enabling growth_v2 for internal review" />
+          <div className="flex justify-end">
+            <Btn onClick={() => save(flags)} disabled={saving}>
+              {saving ? 'Saving…' : 'Save flags'}
+            </Btn>
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── Audit log screen ───────────────────────────────────────────────────
+const AuditScreen = ({ setToast }) => {
+  const [entries, setEntries] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+  const [filter, setFilter]   = React.useState({ target_type: '', action_name: '' });
+  const [open, setOpen]       = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (filter.target_type) q.set('target_type', filter.target_type);
+      if (filter.action_name) q.set('action_name', filter.action_name);
+      q.set('limit', '200');
+      const r = await api(`/admin?action=audit-log&${q.toString()}`);
+      setEntries(r.entries || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [filter.target_type, filter.action_name]);
+
+  return (
+    <div className="max-w-[1100px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Audit log</h1>
+        <p className="text-[14px] text-muteDark mt-1">Every admin write, with actor, before/after diff, and reason.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={filter.target_type}
+            onChange={(e) => setFilter({ ...filter, target_type: e.target.value })}
+            className="h-9 px-3 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All target types</option>
+            <option value="platform_settings">platform_settings</option>
+            <option value="workspace">workspace</option>
+            <option value="user">user</option>
+            <option value="handle">handle</option>
+            <option value="subscription">subscription</option>
+            <option value="report">report</option>
+          </select>
+          <TextInput
+            type="text"
+            value={filter.action_name}
+            onChange={(e) => setFilter({ ...filter, action_name: e.target.value })}
+            placeholder="action name (e.g. settings.ai_provider.update)"
+            className="flex-1 min-w-[260px]"
+          />
+          <Btn variant="secondary" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+        </div>
+
+        {entries.length === 0 && !loading ? (
+          <div className="text-center py-10 text-[13px] text-muteDark">
+            No audit entries match this filter yet.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Actor</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Action</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Target</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Reason</th>
+                  <th className="py-2 pr-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map(e => (
+                  <React.Fragment key={e.id}>
+                    <tr className="border-b border-lineDark/60 hover:bg-ink/40">
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</td>
+                      <td className="py-2 pr-3 font-mono whitespace-nowrap">{shortId(e.actor_user_id)}</td>
+                      <td className="py-2 pr-3 font-mono">{e.action}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark">{e.target_type}{e.target_id ? ` · ${shortId(e.target_id)}` : ''}</td>
+                      <td className="py-2 pr-3 max-w-[280px] truncate" title={e.reason}>{e.reason}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <button
+                          onClick={() => setOpen(open === e.id ? null : e.id)}
+                          className="text-[11px] text-muteDark hover:text-paper"
+                        >
+                          {open === e.id ? 'Hide' : 'Diff'}
+                        </button>
+                      </td>
+                    </tr>
+                    {open === e.id && (
+                      <tr className="bg-ink/30">
+                        <td colSpan={6} className="p-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1">Before</div>
+                              <pre className="diff text-magenta bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(e.before, null, 2)}</pre>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1">After</div>
+                              <pre className="diff text-lime bg-ink rounded-lg p-3 overflow-x-auto">{JSON.stringify(e.after, null, 2)}</pre>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+const fmtTs = (s) => {
+  if (!s) return '';
+  const d = new Date(s);
+  return d.toLocaleString();
+};
+const shortId = (id) => id ? String(id).slice(0, 8) : '—';
+
+// Compact pill-style label for trial state. Shared across Workspaces and
+// Trials screens so colour assignment stays consistent.
+const TrialBadge = ({ state, daysLeft }) => {
+  const map = {
+    active:    { cls: 'bg-lime/10 text-lime border-lime/30',           label: `Trial · ${daysLeft ?? '?'}d` },
+    locked:    { cls: 'bg-magenta/10 text-magenta border-magenta/30',  label: 'Locked' },
+    converted: { cls: 'bg-paper/10 text-paper border-paper/30',        label: 'Converted' },
+    none:      { cls: 'bg-ink text-muteDark border-lineDark',          label: '—' },
+  };
+  const cfg = map[state] || map.none;
+  return (
+    <span className={cls('inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border', cfg.cls)}>
+      {cfg.label}
+    </span>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Workspaces screen — list + drill-down to a single workspace detail.
+// State machine: when `selectedId` is null we render the list; otherwise
+// the WorkspaceDetail view, with a back button.
+// ═════════════════════════════════════════════════════════════════════════
+const WorkspacesScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [query, setQuery]       = React.useState('');
+  const [tierF, setTierF]       = React.useState('');
+  const [stateF, setStateF]     = React.useState('');
+  const [selectedId, setSelectedId] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=workspaces');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selectedId) {
+    return <WorkspaceDetail id={selectedId} onBack={() => setSelectedId(null)} setToast={setToast} onMutated={load} />;
+  }
+
+  const q = query.trim().toLowerCase();
+  const filtered = (rows || []).filter(w => {
+    if (q && !`${w.name || ''} ${w.owner_email || ''}`.toLowerCase().includes(q)) return false;
+    if (tierF  && w.tier !== tierF) return false;
+    if (stateF && w.trial_state !== stateF) return false;
+    return true;
+  });
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Workspaces</h1>
+        <p className="text-[14px] text-muteDark mt-1">Search, drill in, trigger trial controls. Read-first — actions live on each detail view.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <TextInput
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by workspace name or owner email"
+            className="flex-1 min-w-[260px]"
+          />
+          <select
+            value={tierF}
+            onChange={(e) => setTierF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All tiers</option>
+            <option value="creator">Creator</option>
+            <option value="brand">Brand</option>
+            <option value="agency">Agency</option>
+          </select>
+          <select
+            value={stateF}
+            onChange={(e) => setStateF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All trial states</option>
+            <option value="active">Trial active</option>
+            <option value="locked">Trial locked</option>
+            <option value="converted">Converted</option>
+            <option value="none">No trial state</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {loading && !rows ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading workspaces…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">
+            No workspaces match these filters.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Name</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tier</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Trial</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Accounts</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Competitors</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(w => (
+                  <tr
+                    key={w.id}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                    onClick={() => setSelectedId(w.id)}
+                  >
+                    <td className="py-2 pr-3">
+                      <div className="font-medium">{w.name || 'Untitled'}</div>
+                      <div className="text-muteDark text-[10px] font-mono">{shortId(w.id)}</div>
+                    </td>
+                    <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                    <td className="py-2 pr-3 uppercase font-mono text-[10px] tracking-[0.14em] text-muteDark">{w.tier}</td>
+                    <td className="py-2 pr-3"><TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} /></td>
+                    <td className="py-2 pr-3 font-mono">{w.accounts_count}</td>
+                    <td className="py-2 pr-3 font-mono">{w.competitors_count}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// Workspace detail — one workspace, every angle, plus the trial-action
+// surface. Calls /api/admin?action=workspace-detail on mount + on demand.
+const WorkspaceDetail = ({ id, onBack, setToast, onMutated }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [trialOp, setTrialOp] = React.useState('extend');
+  const [days, setDays]       = React.useState(7);
+  const [reason, setReason]   = React.useState('');
+  const [saving, setSaving]   = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=workspace-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const applyTrial = async () => {
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=trial-set', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: id, op: trialOp, days, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: `Trial ${trialOp} applied.`, tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to workspaces</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const w = data.workspace;
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to workspaces</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{w.name || 'Untitled'}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{w.id}</div>
+          <div className="text-[13px] text-muteDark mt-2">
+            Owner: {data.owner?.email || '—'}
+            {data.owner?.id && <span className="ml-2 font-mono text-[11px]">({shortId(data.owner.id)})</span>}
+          </div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-2">
+          <TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} />
+          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-muteDark">{w.tier} tier</div>
+        </div>
+      </div>
+
+      <Card title="Tier & usage">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Plan" value={data.tier.label || data.tier.key} />
+          <Stat label="Accounts" value={`${data.usage.accounts_active} / ${data.tier.accounts_total ?? '—'}`} />
+          <Stat label="Competitors" value={`${data.usage.competitors} / ${data.tier.competitors_limit}`} />
+          <Stat label="Runs/mo cap" value={data.tier.runs_per_month === -1 ? '∞' : data.tier.runs_per_month} />
+        </div>
+      </Card>
+
+      <Card
+        title="Trial controls"
+        sub="Audit-logged. Reason required. Tier-conversion via Stripe happens elsewhere — 'Convert' here just stamps trial_converted_at so the gate releases."
+      >
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 mb-3">
+          <select
+            value={trialOp}
+            onChange={(e) => setTrialOp(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] md:col-span-2"
+          >
+            <option value="extend">Extend</option>
+            <option value="end">End now</option>
+            <option value="convert">Convert</option>
+            <option value="reset">Reset</option>
+          </select>
+          <TextInput
+            type="number"
+            min="1"
+            max="60"
+            value={days}
+            onChange={(e) => setDays(+e.target.value)}
+            placeholder="days"
+          />
+          <div className="text-[11px] text-muteDark flex items-center">days for extend/reset</div>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. extending trial 7 days while support investigates" />
+        <div className="flex justify-end">
+          <Btn onClick={applyTrial} disabled={saving}>{saving ? 'Saving…' : 'Apply trial action'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="Connected accounts" sub={`${data.accounts.length} total · ${data.usage.accounts_active} active`}>
+        {data.accounts.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No accounts connected.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Handle</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Followers</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last sync</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.map(a => (
+                  <tr key={a.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono">{a.platform}</td>
+                    <td className="py-2 pr-3 font-mono">{a.platform_username || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{a.followers ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(a.last_synced_at)}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        a.is_active ? 'bg-lime/10 text-lime border-lime/30' : 'bg-magenta/10 text-magenta border-magenta/30',
+                      )}>{a.is_active ? 'Active' : 'Inactive'}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Recent briefs" sub="Last 10 verdict generations.">
+        {data.briefs.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No briefs generated yet.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Model</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Latency</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tokens</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Title</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.briefs.map(b => (
+                  <tr key={b.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(b.generated_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{b.model_used || b.metadata?.model || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{b.latency_ms ? `${b.latency_ms}ms` : '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{b.tokens_used ?? '—'}</td>
+                    <td className="py-2 pr-3 max-w-[400px] truncate" title={b.title}>{b.title}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Recent sync runs" sub="Last 20 entries from usage_log.">
+        {data.sync_runs.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No sync activity recorded.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Type</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Records</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sync_runs.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.run_at || r.created_at || r.logged_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.run_type || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.platform || '—'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        r.status === 'completed' ? 'bg-lime/10 text-lime border-lime/30'
+                        : r.status === 'failed'  ? 'bg-magenta/10 text-magenta border-magenta/30'
+                        : 'bg-paper/10 text-paper border-paper/30',
+                      )}>{r.status || '—'}</span>
+                    </td>
+                    <td className="py-2 pr-3 font-mono">{r.records_fetched ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.cost_cents != null ? `${(r.cost_cents / 100).toFixed(2)}¢` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Audit log (this workspace)" sub="Last 50 admin actions scoped to this workspace.">
+        {data.audit_log.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions recorded for this workspace yet.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.audit_log.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Trials screen — command center. Same trial-set endpoint as the
+// per-workspace detail, but workflow-focused: pick a workspace, choose
+// an op, capture a reason, fire. Useful when you know the workspace by
+// name (e.g. from support) and want to act in one place.
+// ═════════════════════════════════════════════════════════════════════════
+const TrialsScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [stateF, setStateF]     = React.useState('');
+  const [selected, setSelected] = React.useState('');
+  const [op, setOp]             = React.useState('extend');
+  const [days, setDays]         = React.useState(7);
+  const [reason, setReason]     = React.useState('');
+  const [saving, setSaving]     = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=workspaces');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const filtered = rows.filter(w => !stateF || w.trial_state === stateF);
+  const counts = {
+    active:    rows.filter(w => w.trial_state === 'active').length,
+    locked:    rows.filter(w => w.trial_state === 'locked').length,
+    converted: rows.filter(w => w.trial_state === 'converted').length,
+    expiring:  rows.filter(w => w.trial_state === 'active' && (w.trial_days_left ?? 99) <= 1).length,
+  };
+
+  const apply = async () => {
+    if (!selected) {
+      setToast({ message: 'Pick a workspace first.', tone: 'err' });
+      return;
+    }
+    if (!reason.trim()) {
+      setToast({ message: 'Reason is required.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=trial-set', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: selected, op, days, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: `Trial ${op} applied.`, tone: 'ok' });
+      await load();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Trial command</h1>
+        <p className="text-[14px] text-muteDark mt-1">Extend, end, convert, or reset trials. Stripe is not touched — billing changes happen separately.</p>
+      </div>
+
+      <Card title="Snapshot">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat label="Trial active"      value={counts.active} />
+          <Stat label="Expiring ≤ 1 day"  value={counts.expiring} tone={counts.expiring > 0 ? 'warn' : 'normal'} />
+          <Stat label="Trial locked"      value={counts.locked}  tone={counts.locked > 0 ? 'warn' : 'normal'} />
+          <Stat label="Converted"         value={counts.converted} tone="good" />
+        </div>
+      </Card>
+
+      <Card title="Apply a trial action" sub="Audit-logged. Reason captured on every save.">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Workspace</label>
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] w-full"
+            >
+              <option value="">— pick a workspace —</option>
+              {rows.map(w => (
+                <option key={w.id} value={w.id}>
+                  {w.name || 'Untitled'} · {w.owner_email || 'no email'} · {w.trial_state}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Action</label>
+            <div className="flex gap-2">
+              <select
+                value={op}
+                onChange={(e) => setOp(e.target.value)}
+                className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] flex-1"
+              >
+                <option value="extend">Extend</option>
+                <option value="end">End now</option>
+                <option value="convert">Convert</option>
+                <option value="reset">Reset</option>
+              </select>
+              <TextInput
+                type="number"
+                min="1"
+                max="60"
+                value={days}
+                onChange={(e) => setDays(+e.target.value)}
+                placeholder="days"
+                className="w-24"
+              />
+            </div>
+            <div className="text-[10px] text-muteDark mt-1.5">days input applies only to extend / reset</div>
+          </div>
+        </div>
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. extending trial after onboarding call delay" />
+        <div className="flex justify-end">
+          <Btn onClick={apply} disabled={saving || !selected}>{saving ? 'Saving…' : 'Apply'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="All workspaces (trial view)">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {['', 'active', 'locked', 'converted', 'none'].map(s => (
+            <Pill key={s || 'all'} active={stateF === s} onClick={() => setStateF(s)}>
+              {s ? s : 'All'}
+            </Pill>
+          ))}
+        </div>
+        {loading ? (
+          <div className="text-muteDark text-[13px] py-4">Loading…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-4">None match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Trial</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Ends</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Intent</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Promo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(w => (
+                  <tr
+                    key={w.id}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                    onClick={() => setSelected(w.id)}
+                  >
+                    <td className="py-2 pr-3">{w.name || 'Untitled'}</td>
+                    <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                    <td className="py-2 pr-3"><TrialBadge state={w.trial_state} daysLeft={w.trial_days_left} /></td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.trial_ends_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{w.trial_intent_tier || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{w.trial_promo_code || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Handles screen — global registry view + release / reassign actions.
+// Releases and reassigns both go through audit logging; reassign also
+// requires a target workspace_id.
+// ═════════════════════════════════════════════════════════════════════════
+const HandlesScreen = ({ setToast }) => {
+  const [handles, setHandles]   = React.useState([]);
+  const [workspaces, setWorkspaces] = React.useState([]);
+  const [loading, setLoading]   = React.useState(true);
+  const [platform, setPlatform] = React.useState('');
+  const [state, setState]       = React.useState('');
+  const [acting, setActing]     = React.useState(null);   // handle id we're acting on
+  const [actType, setActType]   = React.useState('release');
+  const [permanent, setPermanent] = React.useState(false);
+  const [reassignTo, setReassignTo] = React.useState('');
+  const [reason, setReason]     = React.useState('');
+  const [saving, setSaving]     = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (platform) q.set('platform', platform);
+      if (state)    q.set('state', state);
+      const [h, w] = await Promise.all([
+        api(`/admin?action=handles${q.toString() ? `&${q.toString()}` : ''}`),
+        api('/admin?action=workspaces'),
+      ]);
+      setHandles(h.handles || []);
+      setWorkspaces(w.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [platform, state]);
+
+  const wsById = new Map(workspaces.map(w => [w.id, w]));
+
+  const openAction = (handle, type) => {
+    setActing(handle);
+    setActType(type);
+    setPermanent(false);
+    setReassignTo('');
+    setReason('');
+  };
+
+  const submit = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    setSaving(true);
+    try {
+      if (actType === 'release') {
+        await api('/admin?action=handle-release', {
+          method: 'POST',
+          body: JSON.stringify({
+            platform: acting.platform,
+            handle:   acting.handle,
+            permanent,
+            reason: reason.trim(),
+          }),
+        });
+        setToast({ message: `Released ${acting.platform}/${acting.handle}.`, tone: 'ok' });
+      } else if (actType === 'reassign') {
+        if (!reassignTo) {
+          setToast({ message: 'Pick a target workspace.', tone: 'err' });
+          setSaving(false);
+          return;
+        }
+        await api('/admin?action=handle-reassign', {
+          method: 'POST',
+          body: JSON.stringify({
+            platform: acting.platform,
+            handle:   acting.handle,
+            workspace_id: reassignTo,
+            reason: reason.trim(),
+          }),
+        });
+        setToast({ message: `Reassigned to ${wsById.get(reassignTo)?.name || reassignTo}.`, tone: 'ok' });
+      }
+      setActing(null);
+      await load();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Handle registry</h1>
+        <p className="text-[14px] text-muteDark mt-1">Global (platform, handle) bindings. Use this when the anti-abuse layer needs a manual override.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={platform}
+            onChange={(e) => setPlatform(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All platforms</option>
+            {['instagram', 'tiktok', 'youtube', 'facebook', 'linkedin', 'x', 'snapchat'].map(p =>
+              <option key={p} value={p}>{p}</option>
+            )}
+          </select>
+          <select
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All states</option>
+            <option value="bound">Bound</option>
+            <option value="released">Released</option>
+            <option value="trial_locked">Trial-locked</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {handles.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No handles match this filter.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Platform</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Handle</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tier</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Bound</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Released</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {handles.map(h => {
+                  const ws = h.workspace_id ? wsById.get(h.workspace_id) : null;
+                  return (
+                    <tr key={h.id} className="border-b border-lineDark/60">
+                      <td className="py-2 pr-3 font-mono">{h.platform}</td>
+                      <td className="py-2 pr-3 font-mono">{h.handle}</td>
+                      <td className="py-2 pr-3 font-mono">
+                        {ws ? ws.name : (h.workspace_id ? <span className="text-muteDark">{shortId(h.workspace_id)}</span> : '—')}
+                      </td>
+                      <td className="py-2 pr-3 font-mono">{h.tier || '—'}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(h.last_bound_at)}</td>
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(h.released_at)}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => openAction(h, 'release')} className="text-[11px] text-muteDark hover:text-magenta">Release</button>
+                          <button onClick={() => openAction(h, 'reassign')} className="text-[11px] text-muteDark hover:text-paper">Reassign</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {acting && (
+        <Card
+          title={actType === 'release' ? `Release ${acting.platform}/${acting.handle}` : `Reassign ${acting.platform}/${acting.handle}`}
+          right={<button onClick={() => setActing(null)} className="text-[11px] text-muteDark hover:text-paper">Cancel</button>}
+        >
+          {actType === 'release' && (
+            <label className="flex items-center gap-2 text-[13px] mb-3">
+              <input
+                type="checkbox"
+                checked={permanent}
+                onChange={(e) => setPermanent(e.target.checked)}
+                className="h-4 w-4"
+              />
+              Permanent (null workspace binding — anyone can re-claim)
+            </label>
+          )}
+          {actType === 'reassign' && (
+            <div className="mb-3">
+              <label className="block text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-1.5">Target workspace</label>
+              <select
+                value={reassignTo}
+                onChange={(e) => setReassignTo(e.target.value)}
+                className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px] w-full"
+              >
+                <option value="">— pick a workspace —</option>
+                {workspaces.map(w => (
+                  <option key={w.id} value={w.id}>
+                    {w.name || 'Untitled'} · {w.owner_email || 'no email'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <ReasonField value={reason} onChange={setReason} placeholder={actType === 'release' ? 'why are you releasing this handle?' : 'why are you reassigning?'} />
+          <div className="flex justify-end gap-2">
+            <Btn variant="secondary" onClick={() => setActing(null)} disabled={saving}>Cancel</Btn>
+            <Btn onClick={submit} disabled={saving}>
+              {saving ? 'Saving…' : (actType === 'release' ? 'Release handle' : 'Reassign handle')}
+            </Btn>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Users screen + detail. Same drill-down pattern as Workspaces. Detail
+// holds the toggles for is_admin / is_disabled with reason capture.
+// ═════════════════════════════════════════════════════════════════════════
+const UsersScreen = ({ setToast, currentUserId }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [query, setQuery]       = React.useState('');
+  const [statusF, setStatusF]   = React.useState('');
+  const [selected, setSelected] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=users');
+      setRows(r.users || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selected) {
+    return <UserDetail id={selected} onBack={() => setSelected(null)} setToast={setToast} onMutated={load} currentUserId={currentUserId} />;
+  }
+
+  const q = query.trim().toLowerCase();
+  const filtered = (rows || []).filter(u => {
+    if (q && !(u.email || '').toLowerCase().includes(q)) return false;
+    if (statusF === 'admin'    && !u.is_admin)     return false;
+    if (statusF === 'disabled' && !u.is_disabled)  return false;
+    if (statusF === 'no_workspace' && u.workspace_count !== 0) return false;
+    return true;
+  });
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">Users</h1>
+        <p className="text-[14px] text-muteDark mt-1">All authenticated accounts with workspace + sign-in stats. Click a row to drill in.</p>
+      </div>
+
+      <Card>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <TextInput
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by email"
+            className="flex-1 min-w-[260px]"
+          />
+          <select
+            value={statusF}
+            onChange={(e) => setStatusF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All users</option>
+            <option value="admin">Admins only</option>
+            <option value="disabled">Disabled only</option>
+            <option value="no_workspace">No workspace</option>
+          </select>
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+            {loading ? 'Loading…' : 'Refresh'}
+          </Btn>
+        </div>
+
+        {loading && !rows ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading users…</div>
+        ) : filtered.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No users match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Email</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Joined</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last sign-in</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Sign-ins</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspaces</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Flags</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(u => (
+                  <tr
+                    key={u.id}
+                    onClick={() => setSelected(u.id)}
+                    className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                  >
+                    <td className="py-2 pr-3 font-mono">{u.email || '—'}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(u.created_at)}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(u.last_sign_in_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{u.sign_in_count}</td>
+                    <td className="py-2 pr-3 font-mono">{u.workspace_count}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-1">
+                        {u.is_admin && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-magenta/10 text-magenta border border-magenta/30 text-[10px] font-mono uppercase tracking-[0.14em]">Admin</span>
+                        )}
+                        {u.is_disabled && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[10px] font-mono uppercase tracking-[0.14em]">Disabled</span>
+                        )}
+                        {u.tier_override && (
+                          <span className="inline-flex items-center px-2 h-5 rounded-full bg-paper/10 text-paper border border-paper/30 text-[10px] font-mono uppercase tracking-[0.14em]" title="View-as override">
+                            as {u.tier_override}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+const UserDetail = ({ id, onBack, setToast, onMutated, currentUserId }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason]   = React.useState('');
+  const [saving, setSaving]   = React.useState(false);
+  const [draft, setDraft]     = React.useState({ is_admin: null, is_disabled: null });
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=user-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+      setDraft({ is_admin: !!r.profile?.is_admin, is_disabled: !!r.profile?.is_disabled });
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const apply = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    const patch = { user_id: id, reason: reason.trim() };
+    if (draft.is_admin    !== !!data.profile?.is_admin)    patch.is_admin = draft.is_admin;
+    if (draft.is_disabled !== !!data.profile?.is_disabled) patch.is_disabled = draft.is_disabled;
+    if (!('is_admin' in patch) && !('is_disabled' in patch)) {
+      setToast({ message: 'No changes staged.', tone: 'err' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await api('/admin?action=user-set', {
+        method: 'POST',
+        body: JSON.stringify(patch),
+      });
+      setReason('');
+      setToast({ message: 'Profile updated.', tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to users</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const isSelf = id === currentUserId;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to users</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{data.user.email}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{data.user.id}</div>
+          <div className="text-[13px] text-muteDark mt-2">
+            Joined {fmtTs(data.user.created_at)} · Last sign-in {fmtTs(data.user.last_sign_in_at)}
+          </div>
+        </div>
+        <div className="text-right flex flex-col items-end gap-1.5">
+          {data.profile?.is_admin && (
+            <span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/10 text-magenta border border-magenta/30 text-[11px] font-mono uppercase tracking-[0.14em]">Admin</span>
+          )}
+          {data.profile?.is_disabled && (
+            <span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[11px] font-mono uppercase tracking-[0.14em]">Disabled</span>
+          )}
+          {isSelf && (
+            <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark">this is you</span>
+          )}
+        </div>
+      </div>
+
+      <Card title="Profile flags" sub="Toggle then save with a reason. Self-protection: you cannot revoke your own admin flag or disable your own account.">
+        <div className="space-y-3 mb-4">
+          <label className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+            <div>
+              <div className="font-mono text-[13px]">is_admin</div>
+              <div className="text-[11px] text-muteDark">Grants access to /admin.</div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!draft.is_admin}
+              disabled={isSelf && data.profile?.is_admin}
+              onChange={(e) => setDraft(d => ({ ...d, is_admin: e.target.checked }))}
+              className="h-4 w-4"
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 py-2 px-3 rounded-lg border border-lineDark">
+            <div>
+              <div className="font-mono text-[13px]">is_disabled</div>
+              <div className="text-[11px] text-muteDark">
+                {data.profile?.disabled_reason ? `Previously: "${data.profile.disabled_reason}"` : 'Blocks API access (enforced once Phase 3 lands).'}
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={!!draft.is_disabled}
+              disabled={isSelf}
+              onChange={(e) => setDraft(d => ({ ...d, is_disabled: e.target.checked }))}
+              className="h-4 w-4"
+            />
+          </label>
+        </div>
+
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. promoting CTO to admin / disabling abuser account" />
+        <div className="flex justify-end">
+          <Btn onClick={apply} disabled={saving}>{saving ? 'Saving…' : 'Save flags'}</Btn>
+        </div>
+      </Card>
+
+      <Card title="Owned workspaces" sub={`${data.workspaces.length} workspace${data.workspaces.length === 1 ? '' : 's'}`}>
+        {data.workspaces.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No workspaces owned.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[13px]">
+            {data.workspaces.map(w => (
+              <li key={w.id} className="flex items-center justify-between py-1.5 border-b border-lineDark/40 last:border-b-0">
+                <div>
+                  <span className="font-medium">{w.name || 'Untitled'}</span>
+                  <span className="ml-2 text-[11px] font-mono text-muteDark">{shortId(w.id)}</span>
+                </div>
+                <div className="flex items-center gap-2 text-[11px] font-mono">
+                  <span className="text-muteDark uppercase tracking-[0.14em]">{w.tier}</span>
+                  <TrialBadge state={w.trial_state} daysLeft={null} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+
+      <Card title="Sign-in history" sub={`${data.sign_ins.length} recorded sign-in event${data.sign_ins.length === 1 ? '' : 's'}`}>
+        {data.sign_ins.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No recorded sign-ins yet. /api/auth-log records events the first time a user signs in after Phase 0 deploy — older sign-ins predate the log.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Method</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">IP</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">User Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sign_ins.map(s => (
+                  <tr key={s.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(s.signed_in_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{s.method || '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{s.ip || '—'}</td>
+                    <td className="py-2 pr-3 max-w-[400px] truncate text-muteDark" title={s.user_agent}>{s.user_agent || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Audit log (admin actions on this user)" sub="Last 50.">
+        {data.audit_log.length === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions recorded for this user.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.audit_log.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Briefs screen — read-only diagnostic. Filters: model, workspace_id.
+// Click a row to expand metadata (prompt version, score factors).
+// ═════════════════════════════════════════════════════════════════════════
+const BriefsScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [modelF, setModelF]   = React.useState('');
+  const [wsF, setWsF]         = React.useState('');
+  const [open, setOpen]       = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (modelF) q.set('model', modelF);
+      if (wsF)    q.set('workspace_id', wsF);
+      const r = await api(`/admin?action=briefs${q.toString() ? `&${q.toString()}` : ''}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [modelF, wsF]);
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6">
+        <h1 className="font-display text-[32px] font-semibold tracking-tight">AI brief monitor</h1>
+        <p className="text-[14px] text-muteDark mt-1">Brief generations across every workspace. Read-only — re-run buttons land later.</p>
+      </div>
+
+      <Card>
+        {data && (
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+            <Stat label="Verdicts in window"   value={data.totals?.verdicts ?? 0} />
+            <Stat label="Intelligence runs"    value={data.totals?.total_runs ?? 0} />
+            <Stat label="Failed runs" value={data.totals?.failed_runs ?? 0} tone={(data.totals?.failed_runs ?? 0) > 0 ? 'warn' : 'good'} />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={modelF}
+            onChange={(e) => setModelF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All models</option>
+            <option value="gemini">Gemini</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+          <TextInput
+            type="text"
+            value={wsF}
+            onChange={(e) => setWsF(e.target.value)}
+            placeholder="workspace_id (paste from Workspaces)"
+            className="flex-1 min-w-[260px] font-mono"
+          />
+          <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+        </div>
+
+        {loading && !data ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading briefs…</div>
+        ) : (data?.briefs?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No briefs match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Model</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Prompt</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Latency</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Tokens</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Title</th>
+                  <th className="py-2 pr-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.briefs.map(b => (
+                  <React.Fragment key={b.id}>
+                    <tr className="border-b border-lineDark/60">
+                      <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(b.generated_at)}</td>
+                      <td className="py-2 pr-3 font-mono">{b.workspace_name || shortId(b.workspace_id)}</td>
+                      <td className="py-2 pr-3 font-mono">{b.model_used || '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.prompt_version || '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.latency_ms != null ? `${b.latency_ms}ms` : '—'}</td>
+                      <td className="py-2 pr-3 font-mono">{b.tokens_used ?? '—'}</td>
+                      <td className="py-2 pr-3 max-w-[280px] truncate" title={b.title}>{b.title}</td>
+                      <td className="py-2 pr-3 text-right">
+                        <button
+                          onClick={() => setOpen(open === b.id ? null : b.id)}
+                          className="text-[11px] text-muteDark hover:text-paper"
+                        >
+                          {open === b.id ? 'Hide' : 'More'}
+                        </button>
+                      </td>
+                    </tr>
+                    {open === b.id && (
+                      <tr className="bg-ink/30">
+                        <td colSpan={8} className="p-3">
+                          <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">Score factors</div>
+                          {(b.score_factors || []).length === 0 ? (
+                            <div className="text-[12px] text-muteDark">—</div>
+                          ) : (
+                            <ul className="space-y-1 text-[12px]">
+                              {b.score_factors.map((f, i) => <li key={i} className="font-mono">{f}</li>)}
+                            </ul>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {data?.failed_runs?.length > 0 && (
+        <Card title="Recent failed runs" sub="Intelligence runs with status='failed' in the window.">
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">When</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Records</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cost</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.failed_runs.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.run_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.workspace_name || shortId(r.workspace_id)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.records_fetched ?? '—'}</td>
+                    <td className="py-2 pr-3 font-mono">{r.cost_cents != null ? `${(r.cost_cents / 100).toFixed(2)}¢` : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sources screen — sync source health aggregates. Read-only diagnostic.
+// ═════════════════════════════════════════════════════════════════════════
+const SourcesScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=sources');
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  const rate = (b) => b.total ? Math.round((b.failed / b.total) * 1000) / 10 : 0;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Sync & sources</h1>
+          <p className="text-[14px] text-muteDark mt-1">Aggregated from usage_log. Three time windows: last hour, last 24 hours, last 7 days.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      {loading && !data ? (
+        <div className="text-muteDark text-[13px] py-6 text-center">Loading source health…</div>
+      ) : (
+        <>
+          <Card title="Run types" sub="Counts and failure rates per source. Failure rate is a fast signal — if anything jumps past ~5% you've probably got a real problem.">
+            {(data?.sources?.length || 0) === 0 ? (
+              <div className="text-muteDark text-[13px]">No usage_log entries in the last 7 days.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="text-left text-muteDark border-b border-lineDark">
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Type</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">1h total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">24h total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">7d total / failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">7d cost</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.sources.map(s => (
+                      <tr key={s.run_type} className="border-b border-lineDark/60">
+                        <td className="py-2 pr-3 font-mono">{s.run_type}</td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_1h.total} / <span className={s.window_1h.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_1h.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_1h)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_24h.total} / <span className={s.window_24h.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_24h.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_24h)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">
+                          {s.window_7d.total} / <span className={s.window_7d.failed ? 'text-magenta' : 'text-muteDark'}>{s.window_7d.failed}</span>
+                          <span className="ml-1.5 text-[10px] text-muteDark">({rate(s.window_7d)}%)</span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">{(s.cost_cents_7d / 100).toFixed(2)}¢</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          <Card title="Workspaces with failures (24h)" sub="Intelligence runs that failed in the last day, sorted by failure count.">
+            {(data?.per_workspace_fallbacks?.length || 0) === 0 ? (
+              <div className="text-muteDark text-[13px]">No workspace-level failures in the last 24 hours.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-[12.5px]">
+                  <thead>
+                    <tr className="text-left text-muteDark border-b border-lineDark">
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Total</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Failed</th>
+                      <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.per_workspace_fallbacks.map(w => (
+                      <tr key={w.workspace_id} className="border-b border-lineDark/60">
+                        <td className="py-2 pr-3 font-mono">{w.workspace_name}</td>
+                        <td className="py-2 pr-3 font-mono">{w.total}</td>
+                        <td className="py-2 pr-3 font-mono text-magenta">{w.failed}</td>
+                        <td className="py-2 pr-3 font-mono">{w.total ? Math.round((w.failed / w.total) * 1000) / 10 : 0}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Reports screen — read-only queue view. Mutating actions (retry,
+// cancel) land in a follow-up; the current /api/reports endpoint
+// generates new rows rather than retrying, so retry needs a small
+// dedicated path.
+// ═════════════════════════════════════════════════════════════════════════
+const ReportsScreen = ({ setToast }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [statusF, setStatusF] = React.useState('');
+  const [kindF, setKindF]     = React.useState('');
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const q = new URLSearchParams();
+      if (statusF) q.set('status', statusF);
+      if (kindF)   q.set('kind', kindF);
+      const r = await api(`/admin?action=reports${q.toString() ? `&${q.toString()}` : ''}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [statusF, kindF]);
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Reports queue</h1>
+          <p className="text-[14px] text-muteDark mt-1">Every report across every workspace. Read-only for now.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      <Card>
+        {data && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Stat label="Total"     value={data.totals?.total ?? 0} />
+            <Stat label="Rendering" value={data.totals?.rendering ?? 0} />
+            <Stat label="Ready"     value={data.totals?.ready ?? 0} tone="good" />
+            <Stat label="Failed"    value={data.totals?.failed ?? 0} tone={(data.totals?.failed ?? 0) > 0 ? 'warn' : 'normal'} />
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <select
+            value={statusF}
+            onChange={(e) => setStatusF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All statuses</option>
+            <option value="rendering">Rendering</option>
+            <option value="ready">Ready</option>
+            <option value="failed">Failed</option>
+          </select>
+          <select
+            value={kindF}
+            onChange={(e) => setKindF(e.target.value)}
+            className="h-9 px-2 rounded-lg border border-lineDark bg-ink text-[12.5px]"
+          >
+            <option value="">All kinds</option>
+            <option value="weekly">Weekly</option>
+            <option value="on_demand">On-demand</option>
+          </select>
+        </div>
+
+        {loading && !data ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading reports…</div>
+        ) : (data?.reports?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No reports match.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Generated</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Kind</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Period</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Emailed</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Error</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.reports.map(r => (
+                  <tr key={r.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.generated_at)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.workspace_name || shortId(r.workspace_id)}</td>
+                    <td className="py-2 pr-3 font-mono">{r.kind}</td>
+                    <td className="py-2 pr-3 font-mono">{r.period || '—'}</td>
+                    <td className="py-2 pr-3">
+                      <span className={cls(
+                        'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                        r.status === 'ready'    ? 'bg-lime/10 text-lime border-lime/30'
+                        : r.status === 'failed' ? 'bg-magenta/10 text-magenta border-magenta/30'
+                        : 'bg-paper/10 text-paper border-paper/30',
+                      )}>{r.status}</span>
+                    </td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(r.emailed_at)}</td>
+                    <td className="py-2 pr-3 max-w-[280px] truncate text-magenta" title={r.error}>{r.error || ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Billing screen — list of workspaces with Stripe state, drill into one
+// to see invoices and force-refresh from Stripe. Read-mostly; the only
+// write is force-refresh (audit-logged with reason).
+// ═════════════════════════════════════════════════════════════════════════
+const BillingScreen = ({ setToast }) => {
+  const [rows, setRows]         = React.useState(null);
+  const [loading, setLoading]   = React.useState(true);
+  const [statusF, setStatusF]   = React.useState('');
+  const [selectedId, setSelectedId] = React.useState(null);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=billing');
+      setRows(r.workspaces || []);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (selectedId) {
+    return <BillingDetail id={selectedId} onBack={() => setSelectedId(null)} setToast={setToast} onMutated={load} />;
+  }
+
+  const filtered = (rows || []).filter(w => {
+    if (statusF === 'unsubscribed') return !w.stripe_subscription_id;
+    if (statusF === 'active')       return w.stripe_subscription_status === 'active';
+    if (statusF === 'trialing')     return w.stripe_subscription_status === 'trialing';
+    if (statusF === 'past_due')     return w.stripe_subscription_status === 'past_due';
+    if (statusF === 'canceled')     return w.stripe_subscription_status === 'canceled';
+    if (statusF === 'expiring_30d') {
+      if (!w.stripe_current_period_end) return false;
+      const days = (new Date(w.stripe_current_period_end).getTime() - Date.now()) / 86400000;
+      return days >= 0 && days <= 30;
+    }
+    return true;
+  });
+
+  const counts = {
+    active:    (rows || []).filter(w => w.stripe_subscription_status === 'active').length,
+    past_due:  (rows || []).filter(w => w.stripe_subscription_status === 'past_due').length,
+    canceled:  (rows || []).filter(w => w.stripe_subscription_status === 'canceled').length,
+    unsubscribed: (rows || []).filter(w => !w.stripe_subscription_id).length,
+  };
+
+  return (
+    <div className="max-w-[1300px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Billing</h1>
+          <p className="text-[14px] text-muteDark mt-1">Subscription state mirrored from Stripe via webhook. Click a row to see invoices + force-refresh.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</Btn>
+      </div>
+
+      {rows && (
+        <Card>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <Stat label="Active"     value={counts.active}  tone="good" />
+            <Stat label="Past due"   value={counts.past_due} tone={counts.past_due > 0 ? 'warn' : 'normal'} />
+            <Stat label="Canceled"   value={counts.canceled} />
+            <Stat label="Never paid" value={counts.unsubscribed} />
+          </div>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {['', 'active', 'trialing', 'past_due', 'canceled', 'unsubscribed', 'expiring_30d'].map(s => (
+              <Pill key={s || 'all'} active={statusF === s} onClick={() => setStatusF(s)}>
+                {s ? s.replace('_', ' ') : 'All'}
+              </Pill>
+            ))}
+          </div>
+
+          {loading && !rows ? (
+            <div className="text-muteDark text-[13px] py-6 text-center">Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="text-muteDark text-[13px] py-6 text-center">No workspaces match.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-left text-muteDark border-b border-lineDark">
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Workspace</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Owner</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Plan</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Subscription</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Renews</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Cancel?</th>
+                    <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Last invoice</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(w => {
+                    const drift = w.tier_from_price && w.tier_from_price !== w.tier;
+                    return (
+                      <tr
+                        key={w.id}
+                        onClick={() => setSelectedId(w.id)}
+                        className="border-b border-lineDark/60 hover:bg-ink/40 cursor-pointer"
+                      >
+                        <td className="py-2 pr-3">
+                          <div className="font-medium">{w.name || 'Untitled'}</div>
+                          <div className="text-muteDark text-[10px] font-mono">{shortId(w.id)}</div>
+                        </td>
+                        <td className="py-2 pr-3 font-mono">{w.owner_email || '—'}</td>
+                        <td className="py-2 pr-3">
+                          <div className="font-mono uppercase tracking-[0.14em] text-[10px] text-muteDark">{w.tier}</div>
+                          {drift && (
+                            <div className="text-[10px] text-magenta font-mono" title={`Stripe says ${w.tier_from_price}`}>
+                              drift ↔ {w.tier_from_price}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={cls(
+                            'inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.14em] border',
+                            w.stripe_subscription_status === 'active'    ? 'bg-lime/10 text-lime border-lime/30'
+                            : w.stripe_subscription_status === 'trialing' ? 'bg-paper/10 text-paper border-paper/30'
+                            : w.stripe_subscription_status === 'past_due' ? 'bg-magenta/10 text-magenta border-magenta/40'
+                            : w.stripe_subscription_status === 'canceled' ? 'bg-ink text-muteDark border-lineDark'
+                            : 'bg-ink text-muteDark border-lineDark',
+                          )}>
+                            {w.stripe_subscription_status || 'none'}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(w.stripe_current_period_end)}</td>
+                        <td className="py-2 pr-3 font-mono">{w.stripe_cancel_at_period_end ? 'Yes' : '—'}</td>
+                        <td className="py-2 pr-3 font-mono">{w.stripe_last_invoice_status || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+    </div>
+  );
+};
+
+const BillingDetail = ({ id, onBack, setToast, onMutated }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [reason, setReason]   = React.useState('');
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api(`/admin?action=billing-detail&id=${encodeURIComponent(id)}`);
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, [id]);
+
+  const refresh = async () => {
+    if (!reason.trim()) { setToast({ message: 'Reason is required.', tone: 'err' }); return; }
+    setRefreshing(true);
+    try {
+      await api('/admin?action=billing-refresh', {
+        method: 'POST',
+        body: JSON.stringify({ workspace_id: id, reason: reason.trim() }),
+      });
+      setReason('');
+      setToast({ message: 'Refreshed from Stripe.', tone: 'ok' });
+      await load();
+      onMutated?.();
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="max-w-[1200px] mx-auto">
+        <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to billing</button>
+        <div className="text-muteDark text-[13px]">Loading…</div>
+      </div>
+    );
+  }
+
+  const w = data.workspace;
+  const customerId = data.profile?.stripe_customer_id;
+  const stripeDashboard = customerId
+    ? `https://dashboard.stripe.com/customers/${customerId}`
+    : null;
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <button onClick={onBack} className="text-[12px] text-muteDark hover:text-paper mb-3">← Back to billing</button>
+
+      <div className="mb-6 flex items-end justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-semibold tracking-tight">{w.name || 'Untitled'}</h1>
+          <div className="text-[12px] font-mono text-muteDark mt-1">{w.id}</div>
+        </div>
+        {stripeDashboard && (
+          <a href={stripeDashboard} target="_blank" rel="noopener noreferrer" className="text-[12px] text-muteDark hover:text-paper">Open in Stripe Dashboard →</a>
+        )}
+      </div>
+
+      <Card title="Subscription">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <Stat label="Status"      value={w.stripe_subscription_status || 'none'} />
+          <Stat label="Tier"        value={w.tier} />
+          <Stat label="Renews"      value={w.stripe_current_period_end ? fmtTs(w.stripe_current_period_end) : '—'} />
+          <Stat label="Cancel pending" value={w.stripe_cancel_at_period_end ? 'Yes' : 'No'} tone={w.stripe_cancel_at_period_end ? 'warn' : 'normal'} />
+        </div>
+        <div className="grid grid-cols-2 gap-3 text-[12.5px] font-mono">
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Subscription ID</div>
+            <div className="break-all">{w.stripe_subscription_id || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Customer ID</div>
+            <div className="break-all">{customerId || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Price ID</div>
+            <div className="break-all">{w.stripe_price_id || '—'}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-[0.14em] text-muteDark">Last webhook</div>
+            <div>{fmtTs(w.stripe_last_event_at)}</div>
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        title="Force-refresh from Stripe"
+        sub="Re-pulls the subscription state. Use when you suspect drift (e.g. a webhook was lost or processed in error)."
+      >
+        <ReasonField value={reason} onChange={setReason} placeholder="e.g. webhook drift suspected after Stripe API outage" />
+        <div className="flex justify-end">
+          <Btn onClick={refresh} disabled={refreshing || !w.stripe_subscription_id}>
+            {refreshing ? 'Refreshing…' : 'Refresh from Stripe'}
+          </Btn>
+        </div>
+        {!w.stripe_subscription_id && (
+          <div className="text-[12px] text-muteDark mt-2">No subscription_id on file. Refresh is only meaningful after a checkout has completed.</div>
+        )}
+      </Card>
+
+      <Card title="Recent invoices" sub="Latest 20 invoices from Stripe.">
+        {(data.invoices || []).length === 0 ? (
+          <div className="text-muteDark text-[13px]">No invoices yet.</div>
+        ) : data.invoices[0]?.error ? (
+          <div className="text-magenta text-[13px]">Stripe error: {data.invoices[0].error}</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-muteDark border-b border-lineDark">
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Number</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Created</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Status</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Amount</th>
+                  <th className="py-2 pr-3 font-mono text-[10px] uppercase tracking-[0.14em]">Link</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.invoices.map(inv => (
+                  <tr key={inv.id} className="border-b border-lineDark/60">
+                    <td className="py-2 pr-3 font-mono">{inv.number || shortId(inv.id)}</td>
+                    <td className="py-2 pr-3 font-mono text-muteDark whitespace-nowrap">{fmtTs(inv.created)}</td>
+                    <td className="py-2 pr-3 font-mono">{inv.status}</td>
+                    <td className="py-2 pr-3 font-mono">
+                      {((inv.amount_paid || inv.amount_due || 0) / 100).toFixed(2)} {(inv.currency || 'usd').toUpperCase()}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {inv.hosted_invoice_url && <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muteDark hover:text-paper">Stripe page →</a>}
+                      {' '}
+                      {inv.invoice_pdf && <a href={inv.invoice_pdf} target="_blank" rel="noopener noreferrer" className="text-[11px] text-muteDark hover:text-paper">PDF</a>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Overview screen — landing dashboard. Cross-module roll-up backed by
+// /api/admin?action=overview. Stat grids + recent admin activity feed.
+// Click-through hooks let the user jump straight to the relevant detail
+// module from any tile.
+// ═════════════════════════════════════════════════════════════════════════
+const OverviewScreen = ({ setToast, onNavigate }) => {
+  const [data, setData]       = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const r = await api('/admin?action=overview');
+      setData(r);
+    } catch (e) {
+      setToast({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(); }, []);
+
+  if (loading && !data) return <div className="max-w-[1200px] mx-auto p-8 text-muteDark text-[13px]">Loading overview…</div>;
+  if (!data) return null;
+
+  // Deep-link helper. The sidebar's setActive lives in the App shell —
+  // we pass a navigator down so tiles can become click-targets.
+  const Linkable = ({ to, children }) => (
+    <button onClick={() => onNavigate?.(to)} className="text-left w-full">
+      {children}
+    </button>
+  );
+
+  return (
+    <div className="max-w-[1200px] mx-auto">
+      <div className="mb-6 flex items-end justify-between">
+        <div>
+          <h1 className="font-display text-[32px] font-semibold tracking-tight">Overview</h1>
+          <p className="text-[14px] text-muteDark mt-1">Cross-module snapshot. Click any tile to drill into the source.</p>
+        </div>
+        <Btn variant="secondary" size="sm" onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </Btn>
+      </div>
+
+      {/* Needs attention — only renders when there's something to do.
+          Each tile is a deep-link to the screen where the admin acts on
+          it. Counts are computed on every fetch, so a reload is always
+          authoritative. */}
+      {(() => {
+        const n = data.needs_attention || {};
+        const total = (n.trials_ending_24h || 0)
+                    + (n.subs_renewing_24h || 0)
+                    + (n.subs_past_due || 0)
+                    + (n.subs_canceling_soon || 0);
+        if (total === 0) {
+          return (
+            <Card title="Needs attention" sub="Nothing's on fire — no expiring trials, renewing subscriptions, past-due payments, or pending cancellations.">
+              <div className="py-4 text-center text-[13px] text-lime font-mono">All clear.</div>
+            </Card>
+          );
+        }
+        return (
+          <Card
+            title="Needs attention"
+            sub="Items that may require admin action within the next day. Each tile takes you to the relevant module."
+            right={<span className="inline-flex items-center px-2 h-6 rounded-full bg-magenta/15 text-magenta border border-magenta/40 text-[11px] font-mono uppercase tracking-[0.14em]">{total} open</span>}
+          >
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              <Linkable to="trials">
+                <Stat
+                  label="Trials ending ≤ 24h"
+                  value={n.trials_ending_24h ?? 0}
+                  tone={(n.trials_ending_24h ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Renewing ≤ 24h"
+                  value={n.subs_renewing_24h ?? 0}
+                  tone={(n.subs_renewing_24h ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Past-due payments"
+                  value={n.subs_past_due ?? 0}
+                  tone={(n.subs_past_due ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+              <Linkable to="billing">
+                <Stat
+                  label="Cancelling ≤ 7 days"
+                  value={n.subs_canceling_soon ?? 0}
+                  tone={(n.subs_canceling_soon ?? 0) > 0 ? 'warn' : 'normal'}
+                />
+              </Linkable>
+            </div>
+          </Card>
+        );
+      })()}
+
+      <Card title="Platform settings" sub="Active provider + flag count. Edit on Platform Settings.">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Linkable to="settings"><Stat label="AI provider"    value={data.settings.ai_provider} /></Linkable>
+          <Linkable to="flags">   <Stat label="Feature flags"  value={data.settings.flag_count} /></Linkable>
+          <Linkable to="settings"><Stat label="Prompt version" value={data.settings.prompt_version} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Workspaces" sub={`${data.workspaces.total} total · grouped by trial state and tier.`}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <Linkable to="trials"><Stat label="Trial active" value={data.workspaces.trial_active} /></Linkable>
+          <Linkable to="trials"><Stat label="Trial locked" value={data.workspaces.trial_locked} tone={data.workspaces.trial_locked > 0 ? 'warn' : 'normal'} /></Linkable>
+          <Linkable to="trials"><Stat label="Converted"    value={data.workspaces.converted} tone="good" /></Linkable>
+          <Linkable to="workspaces"><Stat label="No trial state" value={data.workspaces.none} /></Linkable>
+        </div>
+        <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">By tier</div>
+        <div className="flex flex-wrap gap-2">
+          {['creator', 'brand', 'agency'].map(t => (
+            <span key={t} className="inline-flex items-center gap-2 px-3 h-7 rounded-full border border-lineDark bg-ink text-[11.5px] font-mono">
+              <span className="uppercase tracking-[0.14em] text-muteDark">{t}</span>
+              <span>{data.workspaces.by_tier[t] || 0}</span>
+            </span>
+          ))}
+        </div>
+      </Card>
+
+      <Card title="Handles" sub="Global registry binding state.">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <Linkable to="handles"><Stat label="Total"    value={data.handles.total} /></Linkable>
+          <Linkable to="handles"><Stat label="Bound"    value={data.handles.bound} /></Linkable>
+          <Linkable to="handles"><Stat label="Released" value={data.handles.released} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Runs (last 24h)" sub="usage_log activity in the last day.">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Linkable to="sync">  <Stat label="Total runs" value={data.runs.last_24h} /></Linkable>
+          <Linkable to="briefs"><Stat label="Briefs"     value={data.runs.briefs_24h} /></Linkable>
+          <Linkable to="sync">  <Stat label="Failed"     value={data.runs.failed_24h} tone={data.runs.failed_24h > 0 ? 'warn' : 'good'} /></Linkable>
+          <Linkable to="sync">  <Stat label="Cost"       value={`${(data.runs.cost_cents_24h / 100).toFixed(2)}¢`} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Reports queue" sub="All-time totals across all workspaces.">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Linkable to="reports"><Stat label="Total"     value={data.reports.total} /></Linkable>
+          <Linkable to="reports"><Stat label="Rendering" value={data.reports.rendering} /></Linkable>
+          <Linkable to="reports"><Stat label="Ready"     value={data.reports.ready} tone="good" /></Linkable>
+          <Linkable to="reports"><Stat label="Failed"    value={data.reports.failed} tone={data.reports.failed > 0 ? 'warn' : 'normal'} /></Linkable>
+        </div>
+      </Card>
+
+      <Card title="Recent admin activity" right={<button onClick={() => onNavigate?.('audit')} className="text-[11px] text-muteDark hover:text-paper">View full audit log →</button>}>
+        {(data.recent_audit?.length || 0) === 0 ? (
+          <div className="text-muteDark text-[13px]">No admin actions yet.</div>
+        ) : (
+          <ul className="space-y-1.5 text-[12.5px] font-mono">
+            {data.recent_audit.map(e => (
+              <li key={e.id} className="flex gap-3 py-1 border-b border-lineDark/40 last:border-b-0">
+                <span className="text-muteDark whitespace-nowrap">{fmtTs(e.created_at)}</span>
+                <span>{e.action}</span>
+                <span className="text-muteDark">· {e.target_type}{e.target_id ? `/${shortId(e.target_id)}` : ''}</span>
+                <span className="text-muteDark truncate" title={e.reason}>· {e.reason}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Tickets — support submissions from Settings → Suggestions in the SPA.
+// Each row is editable inline: pick a new status, optionally attach a
+// founder note, click Save. Notify emails to the submitter fire from
+// the backend automatically when status moves to a notify-worthy state.
+// ═════════════════════════════════════════════════════════════════════════
+const TICKET_STATUSES = ['open','in_review','accepted','in_progress','resolved','declined'];
+const TICKET_STATUS_TONE = {
+  open:        'bg-paper/10 text-paper',
+  in_review:   'bg-amber/15 text-amber',
+  accepted:    'bg-ultra/15 text-ultra',
+  in_progress: 'bg-ultra/15 text-ultra',
+  resolved:    'bg-lime/20 text-lime',
+  declined:    'bg-magenta/15 text-magenta',
+};
+
+const TicketsScreen = ({ setToast }) => {
+  const [tickets, setTickets]   = React.useState([]);
+  const [filter,  setFilter]    = React.useState('open');
+  const [loading, setLoading]   = React.useState(true);
+  const [drafts,  setDrafts]    = React.useState({});   // ticket_id → { status, note }
+  const [savingId, setSavingId] = React.useState(null);
+
+  const load = async (statusFilter = filter) => {
+    setLoading(true);
+    try {
+      const q = statusFilter === 'all' ? '' : `&status=${encodeURIComponent(statusFilter)}`;
+      const r = await api(`/admin?action=tickets${q}`);
+      setTickets(r.tickets || []);
+      // Seed drafts from current values so changes are tracked per-row.
+      const seeded = {};
+      for (const t of r.tickets || []) seeded[t.id] = { status: t.status, note: t.founder_note || '' };
+      setDrafts(seeded);
+    } catch (e) {
+      setToast?.({ message: e.message, tone: 'err' });
+    } finally {
+      setLoading(false);
+    }
+  };
+  React.useEffect(() => { load(filter); /* eslint-disable-next-line */ }, [filter]);
+
+  const save = async (t) => {
+    const draft = drafts[t.id] || {};
+    const reason = prompt(`Reason for ${draft.status} (audit log requires it):`, '');
+    if (!reason || !reason.trim()) return;
+    setSavingId(t.id);
+    try {
+      const r = await api('/admin?action=ticket-set', {
+        method: 'POST',
+        body: JSON.stringify({
+          ticket_id:    t.id,
+          status:       draft.status,
+          founder_note: draft.note || null,
+          reason:       reason.trim(),
+        }),
+      });
+      setToast?.({
+        message: r.email_status === 'sent'
+          ? `Ticket updated and notification sent.`
+          : r.email_status === 'failed'
+            ? `Ticket updated, but the user email failed to send.`
+            : `Ticket updated.`,
+        tone: r.email_status === 'failed' ? 'warn' : 'ok',
+      });
+      load(filter);
+    } catch (e) {
+      setToast?.({ message: e.message, tone: 'err' });
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-[960px]">
+      <Card title="Tickets" sub="Suggestions, bug reports, and questions submitted from Settings → Suggestions. Use the filter to triage; status changes fire an email to the submitter.">
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <span className="text-[11px] font-mono uppercase tracking-[0.14em] text-muteDark mr-1">Filter</span>
+          {['open','in_review','accepted','in_progress','resolved','declined','all'].map(s => (
+            <button
+              key={s}
+              onClick={() => setFilter(s)}
+              className={cls(
+                'px-2.5 h-7 rounded-full text-[11.5px] font-mono uppercase tracking-[0.1em] border transition',
+                filter === s
+                  ? 'bg-paper text-ink border-paper'
+                  : 'border-lineDark text-muteDark hover:text-paper hover:border-paper/30'
+              )}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">Loading tickets…</div>
+        ) : tickets.length === 0 ? (
+          <div className="text-muteDark text-[13px] py-6 text-center">No tickets in this view.</div>
+        ) : (
+          <div className="space-y-3">
+            {tickets.map(t => {
+              const draft = drafts[t.id] || { status: t.status, note: t.founder_note || '' };
+              const dirty = draft.status !== t.status || (draft.note || '') !== (t.founder_note || '');
+              return (
+                <div key={t.id} className="rounded-xl border border-lineDark p-4 bg-coalsoft/40">
+                  <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[14px] font-medium">{t.subject}</div>
+                      <div className="text-[11px] font-mono uppercase tracking-[0.1em] text-muteDark mt-0.5">
+                        {t.type} · {t.user_email || t.user_id} · {fmtTs(t.created_at)}
+                      </div>
+                    </div>
+                    <span className={cls('inline-flex items-center px-2 h-5 rounded-full text-[10px] font-mono uppercase tracking-[0.12em] flex-shrink-0', TICKET_STATUS_TONE[t.status] || 'bg-paper/10 text-paper')}>
+                      {t.status}
+                    </span>
+                  </div>
+                  <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-paper/85 mb-3">{t.body}</pre>
+
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muteDark">Set status</span>
+                    <select
+                      value={draft.status}
+                      onChange={e => setDrafts(d => ({ ...d, [t.id]: { ...d[t.id], status: e.target.value } }))}
+                      className="h-7 px-2 rounded-md border border-lineDark bg-coalsoft text-[12px] text-paper focus:outline-none focus:border-paper"
+                    >
+                      {TICKET_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
+                  <textarea
+                    value={draft.note || ''}
+                    onChange={e => setDrafts(d => ({ ...d, [t.id]: { ...d[t.id], note: e.target.value } }))}
+                    placeholder="Optional note that emails the user with the status change…"
+                    rows={2}
+                    className="w-full px-3 py-2 rounded-md border border-lineDark bg-coalsoft text-[12.5px] text-paper focus:outline-none focus:border-paper resize-y"
+                  />
+                  <div className="flex justify-end mt-2">
+                    <button
+                      onClick={() => save(t)}
+                      disabled={!dirty || savingId === t.id}
+                      className={cls(
+                        'h-8 px-3 rounded-md text-[12px] font-medium transition',
+                        dirty && savingId !== t.id
+                          ? 'bg-paper text-ink hover:opacity-90'
+                          : 'bg-paper/10 text-muteDark cursor-not-allowed'
+                      )}
+                    >
+                      {savingId === t.id ? 'Saving…' : 'Save & notify'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// Sidebar + shell
+// ═════════════════════════════════════════════════════════════════════════
+const NAV = [
+  { id: 'overview',     label: 'Overview',         section: 'monitoring',  phase: 0 },
+  { id: 'tickets',      label: 'Tickets',          section: 'monitoring',  phase: 0 },
+  { id: 'workspaces',   label: 'Workspaces',       section: 'control',     phase: 0 },
+  { id: 'users',        label: 'Users',            section: 'control',     phase: 0 },
+  { id: 'trials',       label: 'Trial command',    section: 'control',     phase: 0 },
+  { id: 'briefs',       label: 'AI brief monitor', section: 'operations',  phase: 0 },
+  { id: 'sync',         label: 'Sync & sources',   section: 'operations',  phase: 0 },
+  { id: 'reports',      label: 'Reports queue',    section: 'operations',  phase: 0 },
+  { id: 'handles',      label: 'Handle registry',  section: 'control',     phase: 0 },
+  { id: 'billing',      label: 'Billing (Stripe)', section: 'operations',  phase: 0 },
+  { id: 'flags',        label: 'Feature flags',    section: 'config',      phase: 0 },
+  { id: 'settings',     label: 'Platform settings',section: 'config',      phase: 0 },
+  { id: 'audit',        label: 'Audit log',        section: 'audit',       phase: 0 },
+];
+const SECTION_LABEL = {
+  monitoring: 'Monitoring',
+  control:    'Control',
+  operations: 'Operations',
+  config:     'Config',
+  audit:      'Audit',
+};
+
+const Sidebar = ({ active, setActive, onSignOut, identity }) => {
+  const grouped = {};
+  for (const n of NAV) (grouped[n.section] ||= []).push(n);
+  return (
+    <aside className="w-[240px] shrink-0 border-r border-lineDark bg-inksoft min-h-screen p-4 flex flex-col">
+      <div className="mb-6 px-2">
+        <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-magenta mb-1">Admin Console</div>
+        <div className="font-display text-[18px] font-semibold tracking-tight">Mashal</div>
+      </div>
+      <nav className="flex-1 overflow-y-auto">
+        {Object.entries(grouped).map(([section, items]) => (
+          <div key={section} className="mb-5">
+            <div className="px-2 text-[10px] font-mono uppercase tracking-[0.14em] text-muteDark mb-2">
+              {SECTION_LABEL[section] || section}
+            </div>
+            <ul className="space-y-0.5">
+              {items.map(n => (
+                <li key={n.id}>
+                  <button
+                    onClick={() => setActive(n.id)}
+                    className={cls(
+                      'w-full text-left px-2.5 py-1.5 rounded-md text-[13px] flex items-center justify-between gap-2 transition',
+                      active === n.id ? 'bg-paper/10 text-paper' : 'text-muteDark hover:text-paper hover:bg-paper/5',
+                    )}
+                  >
+                    <span>{n.label}</span>
+                    {n.phase > 0 && (
+                      <span className="text-[9px] font-mono uppercase tracking-[0.12em] text-muteDark/70">
+                        P{n.phase}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
+      <div className="border-t border-lineDark pt-3 mt-3 px-2">
+        <div className="text-[10px] font-mono text-muteDark mb-1">Signed in as</div>
+        <div className="text-[12.5px] truncate" title={identity?.user?.email}>{identity?.user?.email || '—'}</div>
+        <button
+          onClick={onSignOut}
+          className="mt-2 text-[12px] text-magenta hover:underline"
+        >Sign out</button>
+      </div>
+    </aside>
+  );
+};
+
+// ═════════════════════════════════════════════════════════════════════════
+// App root
+// ═════════════════════════════════════════════════════════════════════════
+const App = () => {
+  const [state, setState] = React.useState({ route: 'loading', identity: null, error: null });
+  const [active, setActive] = React.useState('overview');
+  const [toast, setToast] = React.useState(null);
+
+  const bootstrap = async () => {
+    // 1. Drain any magic-link hash before anything else.
+    consumeMagicLinkHash();
+
+    // 2. If no session at all, go to sign-in.
+    const session = sbAuth.getSession();
+    if (!session?.access_token) {
+      setState({ route: 'signin', identity: null, error: null });
+      return;
+    }
+
+    // 3. Ask the backend who we are and whether we're admin.
+    try {
+      const me = await api('/admin?action=me');
+      if (!me.is_admin) {
+        setState({
+          route: 'denied',
+          identity: me,
+          error: 'Your account is not flagged is_admin in profiles.',
+        });
+        return;
+      }
+
+      // 4. Log this sign-in for the user history table. Best-effort.
+      const sessionKey = (session.access_token || '').slice(0, 32);
+      fetch('/api/auth-log', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ method: 'restored', session_id: sessionKey }),
+      }).catch(() => {});
+
+      setState({ route: 'app', identity: me, error: null });
+    } catch (e) {
+      // 401 → token expired. Try refresh once. Anything else → sign out
+      // so the user gets a clear screen instead of a stuck spinner.
+      if (e.status === 401 && session.refresh_token) {
+        try {
+          const refreshed = await sbAuth.refresh(session.refresh_token);
+          sbAuth.saveSession({
+            ...session,
+            access_token: refreshed.access_token,
+            refresh_token: refreshed.refresh_token,
+          });
+          return bootstrap();
+        } catch {
+          sbAuth.clearSession();
+          setState({ route: 'signin', identity: null, error: null });
+          return;
+        }
+      }
+      setState({ route: 'signin', identity: null, error: e.message });
+    }
+  };
+
+  React.useEffect(() => { bootstrap(); }, []);
+
+  const onSignOut = () => {
+    sbAuth.clearSession();
+    setState({ route: 'signin', identity: null, error: null });
+  };
+
+  if (state.route === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muteDark text-[13px] font-mono">Loading admin console…</div>
+      </div>
+    );
+  }
+  if (state.route === 'signin') return <SignIn />;
+  if (state.route === 'denied') {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center">
+          <div className="inline-block px-2 py-1 rounded-full bg-magenta/15 text-magenta text-[10px] font-mono uppercase tracking-[0.18em] mb-3">Access denied</div>
+          <h1 className="font-display text-[24px] font-semibold tracking-tight mb-2">Not an admin account</h1>
+          <p className="text-[13px] text-muteDark mb-5">
+            Signed in as <span className="font-mono">{state.identity?.user?.email || 'unknown'}</span>, but the <code className="font-mono">profiles.is_admin</code> flag isn't set on this user. Have an existing admin flip it in Supabase, or sign out and try a different account.
+          </p>
+          <Btn onClick={onSignOut} variant="secondary">Sign out</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  const screen = (() => {
+    switch (active) {
+      case 'settings':   return <SettingsScreen setToast={setToast} currentUserId={state.identity?.user?.id} />;
+      case 'flags':      return <FlagsScreen setToast={setToast} />;
+      case 'audit':      return <AuditScreen setToast={setToast} />;
+      case 'workspaces': return <WorkspacesScreen setToast={setToast} />;
+      case 'trials':     return <TrialsScreen setToast={setToast} />;
+      case 'handles':    return <HandlesScreen setToast={setToast} />;
+      case 'users':      return <UsersScreen setToast={setToast} currentUserId={state.identity?.user?.id} />;
+      case 'briefs':     return <BriefsScreen setToast={setToast} />;
+      case 'sync':       return <SourcesScreen setToast={setToast} />;
+      case 'reports':    return <ReportsScreen setToast={setToast} />;
+      case 'overview':   return <OverviewScreen setToast={setToast} onNavigate={setActive} />;
+      case 'billing':    return <BillingScreen setToast={setToast} />;
+      case 'tickets':    return <TicketsScreen setToast={setToast} />;
+      default:           return <Stub title="Coming soon" plannedIn="future phase" />;
+    }
+  })();
+
+  return (
+    <div className="flex min-h-screen">
+      <Sidebar active={active} setActive={setActive} onSignOut={onSignOut} identity={state.identity} />
+      <main className="flex-1 p-8 overflow-x-hidden">{screen}</main>
+      <Toast
+        message={toast?.message}
+        tone={toast?.tone}
+        onDone={() => setToast(null)}
+      />
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);

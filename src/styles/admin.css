@@ -1,0 +1,9 @@
+/* Tailwind layer for the admin console. The `@config` directive tells
+   PostCSS to resolve utilities against tailwind.admin.config.js instead
+   of the project default — that's how admin keeps its own palette
+   (different magenta, solid line color, narrower font roster) without
+   leaking those overrides into the main SPA's stylesheet. */
+@config "../../tailwind.admin.config.js";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

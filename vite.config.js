@@ -1,13 +1,26 @@
 import { defineConfig } from 'vite';
+import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 
-// Minimal Vite scaffold for step 1 of the build-pipeline migration.
-// Multi-entry wiring (index.html SPA + admin.html SPA + the marketing
-// CSS pipeline) lands in steps 3/4/5 — this file just confirms the
-// toolchain is installed and React + JSX transforms work.
+// Two HTML entries, each its own SPA:
+//   - index.html  → /src/spa/main.jsx     (Mashal customer app + marketing)
+//   - admin.html  → /src/admin/main.jsx   (internal admin console)
 //
-// Output goes to dist/ (Vite default), which is already in .gitignore
-// and lines up with the outputDirectory we'll set in vercel.json (step 6).
+// Each entry imports its own stylesheet (src/styles/app.css for the main
+// SPA, src/styles/admin.css for admin) and resolves Tailwind utilities
+// against its own config — admin.css uses the @config directive to point
+// at tailwind.admin.config.js so its drifted palette (different magenta,
+// solid line color, narrower font roster) stays isolated.
+//
+// Output lands in dist/, the default. vercel.json wires this in step 6.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      input: {
+        main:  resolve(__dirname, 'index.html'),
+        admin: resolve(__dirname, 'admin.html'),
+      },
+    },
+  },
 });

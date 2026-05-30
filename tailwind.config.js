@@ -18,10 +18,18 @@
 export default {
   darkMode: 'class',
   content: [
+    // Every public-facing HTML page, including index.html and the
+    // marketing/compare hub. admin.html is intentionally excluded —
+    // it owns its own Tailwind config (tailwind.admin.config.js) so
+    // utilities there resolve to admin's drifted palette, not the
+    // main brand palette.
     './*.html',
+    '!./admin.html',
     './compare/*.html',
     './js/**/*.{js,jsx}',
-    './src/**/*.{js,jsx,ts,tsx}',
+    // Match every src/ tree EXCEPT src/admin/ (handled separately).
+    './src/spa/**/*.{js,jsx,ts,tsx}',
+    './src/styles/app.css',
   ],
   theme: {
     extend: {
