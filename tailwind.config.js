@@ -29,6 +29,7 @@ export default {
     './js/**/*.{js,jsx}',
     // Match every src/ tree EXCEPT src/admin/ (handled separately).
     './src/spa/**/*.{js,jsx,ts,tsx}',
+    './src/demo/**/*.{js,jsx,ts,tsx}',
     './src/styles/app.css',
   ],
   theme: {

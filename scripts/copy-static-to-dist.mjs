@@ -30,7 +30,7 @@ const distDir   = path.join(repoRoot, 'dist');
 
 // Vite-owned HTML entries — already produced by `vite build`, must not
 // be overwritten by the copy pass.
-const VITE_OWNED_HTML = new Set(['index.html', 'admin.html']);
+const VITE_OWNED_HTML = new Set(['index.html', 'admin.html', 'demo.html']);
 
 function copyFile(srcAbs, destAbs) {
   fs.mkdirSync(path.dirname(destAbs), { recursive: true });
