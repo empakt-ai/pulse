@@ -1142,7 +1142,10 @@ const BriefScreen = ({ activePlatform, setTab }) => {
                 {window.__pulseBriefGenerating ? 'Generating · usually under 30s' : 'AI Verdict · pending first sync'}
               </Pill>
             )}
-            <h2 className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl">
+            <h2
+              dir={D.verdict?.rtl ? 'rtl' : undefined}
+              className="font-display text-[28px] sm:text-[40px] leading-[1.02] font-semibold tracking-tightest mt-4 mb-3 max-w-2xl"
+              style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.3 } : undefined}>
               {D.verdict?.title
                 || (window.__pulseBriefGenerating
                       ? (window.__pulseBriefPartial?.title || 'Drafting your first brief…')
@@ -1163,7 +1166,10 @@ const BriefScreen = ({ activePlatform, setTab }) => {
                 ))}
               </div>
             )}
-            <p className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed">{D.verdict?.body
+            <p
+              dir={D.verdict?.rtl ? 'rtl' : undefined}
+              className="text-[14px] sm:text-[15px] text-paper/70 max-w-xl mb-6 leading-relaxed"
+              style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.7 } : undefined}>{D.verdict?.body
               || (window.__pulseBriefGenerating && window.__pulseBriefPartial?.body)
               || 'Mashal will analyze the last 30 days of activity across your connected accounts and surface the highest-leverage moves. Refresh in ~60 seconds.'}</p>
             {(D.todayActions || []).length > 0 && (
@@ -2555,8 +2561,8 @@ const GrowthScreen = ({ activePlatform }) => {
             <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
               <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-ultra/30 blur-2xl" />
               <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Authority verdict</Pill>
-              <h3 className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
-              <p className="text-[13.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+              <h3 dir={D.verdict?.rtl ? 'rtl' : undefined} className="font-display text-[22px] font-semibold tracking-tighter leading-tight mt-4 mb-3" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.4 } : undefined}>{D.verdict.title}</h3>
+              <p dir={D.verdict?.rtl ? 'rtl' : undefined} className="text-[13.5px] text-paper/70 leading-relaxed" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.75 } : undefined}>{D.verdict.body}</p>
             </Card>
           )}
 
@@ -3067,8 +3073,8 @@ const ContentScreen = ({ activePlatform, activeBrand }) => {
               <Card className="bg-ink text-paper border-transparent relative overflow-hidden">
                 <div className="absolute -right-12 -top-12 w-40 h-40 rounded-full bg-magenta/30 blur-2xl" />
                 <Pill color="lime"><Icon name="brain" className="w-3 h-3" /> Workspace verdict</Pill>
-                <h3 className="font-display text-[18px] font-semibold tracking-tighter leading-tight mt-4 mb-3">{D.verdict.title}</h3>
-                <p className="text-[12.5px] text-paper/70 leading-relaxed">{D.verdict.body}</p>
+                <h3 dir={D.verdict?.rtl ? 'rtl' : undefined} className="font-display text-[18px] font-semibold tracking-tighter leading-tight mt-4 mb-3" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.4 } : undefined}>{D.verdict.title}</h3>
+                <p dir={D.verdict?.rtl ? 'rtl' : undefined} className="text-[12.5px] text-paper/70 leading-relaxed" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.75 } : undefined}>{D.verdict.body}</p>
               </Card>
             )}
           </div>
@@ -3271,8 +3277,8 @@ const IntelScreen = ({ activePlatform }) => {
                 {D.verdict && (
                   <Card>
                     <Pill color="lime"><Icon name="target" className="w-3 h-3" /> Workspace verdict</Pill>
-                    <h3 className="font-display text-[18px] font-semibold tracking-tighter mt-3 mb-2 leading-tight">{D.verdict.title}</h3>
-                    <p className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed">{D.verdict.body}</p>
+                    <h3 dir={D.verdict?.rtl ? 'rtl' : undefined} className="font-display text-[18px] font-semibold tracking-tighter mt-3 mb-2 leading-tight" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.4 } : undefined}>{D.verdict.title}</h3>
+                    <p dir={D.verdict?.rtl ? 'rtl' : undefined} className="text-[12.5px] text-mute dark:text-muteDark leading-relaxed" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.75 } : undefined}>{D.verdict.body}</p>
                   </Card>
                 )}
                 {typeof D.intelScore === 'number' && D.intelScore > 0 && (
@@ -4038,10 +4044,13 @@ const ActionsScreen = ({ activePlatform }) => {
           {D.verdict?.title && (
             <Card className="bg-ink text-paper border-transparent p-6 sm:p-8 mt-2">
               <Eyebrow color="text-lime">The goal</Eyebrow>
-              <h2 className="font-display text-[22px] sm:text-[26px] font-semibold tracking-tightest leading-tight mt-2 mb-2 text-paper">
+              <h2
+                dir={D.verdict?.rtl ? 'rtl' : undefined}
+                className="font-display text-[22px] sm:text-[26px] font-semibold tracking-tightest leading-tight mt-2 mb-2 text-paper"
+                style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.4 } : undefined}>
                 {D.verdict.title}
               </h2>
-              <p className="text-[13px] text-paper/70 leading-relaxed max-w-2xl">{D.verdict.body}</p>
+              <p dir={D.verdict?.rtl ? 'rtl' : undefined} className="text-[13px] text-paper/70 leading-relaxed max-w-2xl" style={D.verdict?.rtl ? { fontFamily: '"Geeza Pro","Segoe UI","Tahoma",system-ui,sans-serif', lineHeight: 1.75 } : undefined}>{D.verdict.body}</p>
             </Card>
           )}
         </div>

@@ -777,7 +777,12 @@ function personaToBrief(personaId, workspaceId, lang) {
       avgViews:      a.avgViews || Math.round((a.followers || 0) * 0.4),
       engRate30d:    a.er || 0,
       reach30d:      a.reach30d || Math.round((a.followers || 0) * 0.45),
-      followerHistory7d: a.spark || [],
+      // BriefScreen's RichFollowerCard does `arr.map(p => p.followers)` so
+      // the SPA expects an array of {followers: N} objects, not bare numbers.
+      // PERSONAS.spark is bare numbers — wrap each into the shape the SPA
+      // reads. Without this, InlineSpark normalises against undefined and
+      // emits "M0,NaN L16.7,NaN …" SVG paths.
+      followerHistory7d: (a.spark || []).map(n => ({ followers: n })),
       wowFollowers:  a.delta || 0,
     };
   }
