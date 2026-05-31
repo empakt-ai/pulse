@@ -1062,7 +1062,7 @@ const HeroGradient = ({ onSignUp }) => (
       <div className="max-w-5xl">
         <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full border border-line dark:border-lineDark bg-chalk/70 dark:bg-coalsoft/70 backdrop-blur mb-7">
           <MashalDot color="bg-magenta" />
-          <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark">Daily social intelligence · 6 AM, every weekday</span>
+          <span className="text-[12px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark whitespace-nowrap">Your daily brief at 6 AM</span>
         </div>
 
         <h1 className="font-display text-[44px] sm:text-[72px] lg:text-[88px] leading-[0.94] font-semibold tracking-tightest mb-7">
