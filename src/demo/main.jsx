@@ -17,6 +17,14 @@ import ReactDOM from 'react-dom/client';
 window.React = React;
 window.ReactDOM = ReactDOM;
 
+// Brings Tailwind utilities into demo's CSS bundle. demo's React tree
+// uses the same brand utility set as the main SPA (bg-ink, text-paper,
+// rounded-2xl, etc.) so we share app.css; tailwind.config.js's content
+// scan already covers src/demo/**. /css/marketing.css stays linked from
+// demo.html for the header/footer chrome — that's plain CSS, not
+// Tailwind, and it doesn't conflict.
+import '../styles/app.css';
+
 // ─────────────────────────────────────────────────────────────────────────
 // Extracted from demo.html lines 202-865
 // ─────────────────────────────────────────────────────────────────────────
