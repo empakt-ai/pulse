@@ -6173,6 +6173,22 @@ function App() {
   // fallback rather than spinning forever.
   const refreshBrief = React.useCallback(async () => {
     if (!window.__pulseToken) return;
+    // Demo mode short-circuit. demo-mode.jsx published a
+    // __demoGetActiveBrief() helper that returns the active persona's
+    // mapped brief without going to the network. Use it directly so
+    // App() never hits /api/brief in demo mode.
+    if (window.__MASHAL_DEMO_MODE && typeof window.__demoGetActiveBrief === 'function') {
+      try {
+        const data = window.__demoGetActiveBrief();
+        setBriefError(null);
+        hydrateD(data);
+        setBriefData(data);
+        setDataKey(k => k + 1);
+      } catch (e) {
+        setBriefError({ status: 0, message: e?.message || 'Demo data error' });
+      }
+      return;
+    }
     let wsId = null;
     try { wsId = localStorage.getItem('pulse:workspaceId') || null; } catch {}
     try {
@@ -6235,6 +6251,17 @@ function App() {
     if (tab === 'Settings') return;
     refreshBrief();
   }, [route, tab, refreshBrief]);
+
+  // Demo mode — the persona-switcher banner dispatches `demo:rehydrate`
+  // whenever the active persona / workspace / brief-language changes.
+  // refreshBrief picks up the new __demoGetActiveBrief() output and
+  // re-renders all the dashboard screens. No-op when not in demo mode.
+  React.useEffect(() => {
+    if (!window.__MASHAL_DEMO_MODE) return;
+    const onRehydrate = () => refreshBrief();
+    window.addEventListener('demo:rehydrate', onRehydrate);
+    return () => window.removeEventListener('demo:rehydrate', onRehydrate);
+  }, [refreshBrief]);
 
   // Track whether we've already kicked the on-entry sync for this session
   // so a subsequent briefData update doesn't retrigger it. (Bug fix: the
@@ -6456,6 +6483,13 @@ function App() {
   // The user sees the app immediately and only gets redirected on hard fail
   // — which is better UX than a spinner on every cold start.
   React.useEffect(() => {
+    // Demo mode bypass — demo-mode.jsx pre-seeded a fake pulse_session
+    // so the synchronous session initializer already returned valid +
+    // routed to 'app'. Calling restoreSession() here would round-trip
+    // to Supabase, fail validation on the fake token, and bounce the
+    // user back to 'landing'.
+    if (window.__MASHAL_DEMO_MODE) return;
+
     const routeFor = (sess) => {
       const createdAt = sess?.user?.created_at;
       const isNew = createdAt && (Date.now() - new Date(createdAt).getTime()) < 60_000;
@@ -6516,6 +6550,7 @@ function App() {
   // localStorage on success or terminal failure so a refresh doesn't
   // re-attempt indefinitely.
   React.useEffect(() => {
+    if (window.__MASHAL_DEMO_MODE) return;
     if (route !== 'app' || !session?.access_token) return;
     const token = readStoredInviteToken();
     if (!token) return;

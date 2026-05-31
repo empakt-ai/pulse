@@ -48,4 +48,15 @@ import '../../js/team/panel.jsx';
 import '../../js/support/panel.jsx';
 import '../../js/webhooks/panel.jsx';
 
+// Demo-mode bootstrap. Top-level code in this module is a no-op unless the
+// URL is /demo, in which case it:
+//   - Sets window.__MASHAL_DEMO_MODE so App() can branch
+//   - Pre-seeds a fake pulse_session so App()'s synchronous session
+//     hydration returns valid (route lands on 'app' on first paint)
+//   - Replaces window.api with an interceptor that maps /brief to the
+//     active demo persona's data and stubs every mutation endpoint
+// Order matters: this MUST run before screens.jsx (where App() reads the
+// session synchronously and starts its brief-fetch effect).
+import './demo-mode.jsx';
+
 import './screens.jsx';

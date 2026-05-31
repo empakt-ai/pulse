@@ -1,34 +1,28 @@
 // ═════════════════════════════════════════════════════════════════════════
-// src/demo/main.jsx — Mashal Demo Page SPA entry.
+// src/spa/demo-mode.jsx — runtime bootstrap that turns the main Mashal
+// SPA into a login-free walkthrough when the URL is /demo.
 //
-// Concatenated 1:1 from the 4 inline <script type="text/babel">
-// blocks that lived in demo.html before the Vite migration. Independent
-// of the main SPA and the admin SPA — own React tree, own mount, own
-// state. Theme persistence, /css/marketing.css link, and demo-specific
-// <style> rules stay inline in demo.html.
+// Imported BEFORE screens.jsx in src/spa/main.jsx so its top-level setup
+// runs while the SPA still has a chance to read a session and intercept
+// api() calls. When the URL isn't /demo this module is a no-op (top-level
+// guard short-circuits; PERSONAS data and personaToBrief() still load
+// but cost nothing until something invokes them).
 //
-// Provenance: scripts/extract-demo-blocks.mjs.
+// The four-tier PERSONAS catalogue below predates the SPA-integrated demo
+// — it was the standalone /demo SPA's data model. Verbatim. The shape
+// stays a "persona-flavoured nested config", NOT the /api/brief response
+// shape; personaToBrief() does the mapping from PERSONAS → /api/brief.
+//
+// Window globals this module sets (for App()'s detection + the persona-
+// switcher banner): __MASHAL_DEMO_MODE, __demoState, __demoSetPersona,
+// __demoSetWorkspace, __demoSetBriefLang, __demoGetActiveBrief.
 // ═════════════════════════════════════════════════════════════════════════
 
-import React from 'react';
-import ReactDOM from 'react-dom/client';
+const DEMO_MODE =
+  typeof window !== 'undefined' &&
+  (window.location.pathname.replace(/\/$/, '') === '/demo' ||
+   window.location.pathname.replace(/\/$/, '') === '/demo/index.html');
 
-// Expose globally for any string-eval / console-debug call sites.
-window.React = React;
-window.ReactDOM = ReactDOM;
-
-// Brings Tailwind utilities into demo's CSS bundle. demo's React tree
-// uses the same brand utility set as the main SPA (bg-ink, text-paper,
-// rounded-2xl, etc.) so we share app.css; tailwind.config.js's content
-// scan already covers src/demo/**. /css/marketing.css stays linked from
-// demo.html for the header/footer chrome — that's plain CSS, not
-// Tailwind, and it doesn't conflict.
-import '../styles/app.css';
-
-// ─────────────────────────────────────────────────────────────────────────
-// Extracted from demo.html lines 202-865
-// ─────────────────────────────────────────────────────────────────────────
-"use strict";
 
 const PERSONAS = {
 
@@ -741,757 +735,464 @@ const PERSONAS = {
 
 };
 
-window.PERSONAS = PERSONAS;
+// Module-shared mutable state. Populated in the DEMO_MODE branch below.
+let _activePersonaId  = 'creator';
+let _activeWorkspaceId = null;
+let _briefLang        = 'en';
 
-// ─────────────────────────────────────────────────────────────────────────
-// Extracted from demo.html lines 871-1082
-// ─────────────────────────────────────────────────────────────────────────
-"use strict";
+// ── personaToBrief — adapter: PERSONAS → /api/brief response shape ──
+// hydrateD() in js/core/data.jsx is the consumer. Anything it indexes
+// that we don't supply will fall back to D's empty-defaults in its
+// "loading-safe stub" initial value, so the SPA renders without crashes
+// even when the demo data is thin in a particular field.
+function personaToBrief(personaId, workspaceId, lang) {
+  const persona = PERSONAS[personaId] || PERSONAS.creator;
+  // Agency: workspace's own data wins; non-agency: the persona itself.
+  const ws = persona.workspaces && (
+    persona.workspaces.find(w => w.id === workspaceId) ||
+    persona.workspaces[0]
+  );
+  const source = ws || persona;
 
-const cls = (...a) => a.filter(Boolean).join(' ');
+  // Pick the right brief variant. Brand has briefs_ar for the EN/AR
+  // toggle; everything else uses briefs.
+  const briefs =
+    (personaId === 'brand' && lang === 'ar' && Array.isArray(source.briefs_ar))
+      ? source.briefs_ar
+      : (source.briefs || persona.briefs || []);
+  const firstBrief = briefs[0] || { verdict: '', actions: [] };
 
-// Formatters — same conventions as the SPA.
-const fmtN = (n) => {
-  const v = Number(n) || 0;
-  if (v >= 1_000_000) return (v / 1_000_000).toFixed(v >= 10_000_000 ? 0 : 1) + 'M';
-  if (v >= 10_000) return Math.round(v / 1000) + 'K';
-  if (v >= 1_000) return (v / 1000).toFixed(1) + 'K';
-  return v.toLocaleString();
-};
-const fmtDelta = (n) => (n > 0 ? '+' : '') + n.toLocaleString();
+  // Map plat-keyed array to {ig, tt, yt, li, fb} object — the shape
+  // hydrateD() reads. Anything missing falls through to empty().
+  const accountSummary = {};
+  for (const a of (source.accounts || persona.accounts || [])) {
+    const key = a.plat === 'sc' || a.plat === 'x' ? null : a.plat;
+    if (!key) continue; // hydrateD only knows ig/tt/yt/li/fb today
+    accountSummary[key] = {
+      handle:        a.handle || persona.person?.handle || '@demo',
+      followers:     a.followers || 0,
+      posts:         a.posts || 12,
+      totalViews4W:  a.totalViews4W || Math.round((a.followers || 0) * 0.6),
+      avgEngRate:    a.er || 0,
+      avgViews:      a.avgViews || Math.round((a.followers || 0) * 0.4),
+      engRate30d:    a.er || 0,
+      reach30d:      a.reach30d || Math.round((a.followers || 0) * 0.45),
+      followerHistory7d: a.spark || [],
+      wowFollowers:  a.delta || 0,
+    };
+  }
 
-// Platform icons — solid color blocks (Mashal brand-honest, no fake gradients).
-const PlatIcon = ({ plat, size = 'w-5 h-5' }) => {
-  const map = {
-    ig: { bg: 'bg-magenta', label: 'IG' },
-    tt: { bg: 'bg-ink',     label: 'TT' },
-    yt: { bg: 'bg-red-600', label: 'YT' },
-    fb: { bg: 'bg-blue-600',label: 'FB' },
-    li: { bg: 'bg-sky-700', label: 'LI' },
-    x:  { bg: 'bg-ink',     label: 'X'  },
-    sc: { bg: 'bg-yellow-400 text-ink', label: 'SC' },
+  // Tier metadata aligned with current Mashal pricing.
+  const TIER = {
+    creator:     { key: 'creator',     label: 'Creator' },
+    pro_creator: { key: 'pro_creator', label: 'Pro Creator' },
+    brand:       { key: 'brand',       label: 'Brand' },
+    agency:      { key: 'agency',      label: 'Agency' },
+  }[personaId] || { key: personaId, label: persona.name };
+
+  // Map signals to the shape SignalsCard / IntelScreen expects.
+  // `impact` is a string the SignalsCard pills classify via .includes() —
+  // missing it triggers TypeError on Brief screen render. Map color → tone.
+  const signalsOut = (source.signals || persona.signals || []).map((s, i) => ({
+    id: 'demo-signal-' + i,
+    type: s.type || 'general',
+    title: s.title,
+    body: s.body,
+    severity: s.color === 'magenta' ? 'high' : s.color === 'amber' ? 'medium' : 'low',
+    impact: s.color === 'magenta' ? 'High'
+          : s.color === 'amber'   ? 'Warning'
+          :                         'Insight',
+    kind: s.color === 'magenta' ? 'warning' : 'info',
+    platform: 'all',
+    createdAt: new Date().toISOString(),
+  }));
+
+  // Map competitors.
+  const competitorsOut = (source.competitors || persona.competitors || []).map((c, i) => ({
+    id: 'demo-comp-' + i,
+    handle: c.handle,
+    platform: c.plat,
+    followers: c.them,
+    yourFollowers: c.you,
+    pct: c.pct,
+  }));
+
+  // Actions — split into todayActions (first 3) + actionPlan (all 6).
+  const actionsOut = (firstBrief.actions || []).map((a, i) => ({
+    id: 'demo-action-' + i,
+    timeframe: a.when,
+    platform: a.plat,
+    text: a.text,
+    rtl: !!a.rtl,
+  }));
+
+  // First name shown in "Good morning, X." — agencies skip personal greeting.
+  const firstName =
+    personaId === 'agency'
+      ? (ws?.name || 'team')
+      : (persona.person?.firstName || persona.name || 'there');
+
+  return {
+    user: {
+      first_name: firstName,
+      name:       firstName,
+      email:      'demo@mashal.app',
+    },
+    workspace: {
+      id:             ws?.id || personaId,
+      name:           ws?.name || persona.name,
+      brief_language: lang === 'ar' ? 'ar' : 'en',
+    },
+    workspaces:
+      personaId === 'agency'
+        ? persona.workspaces.map(w => ({ id: w.id, name: w.name }))
+        : [{ id: personaId, name: persona.name }],
+    accountSummary,
+    posts:        [],
+    signals:      signalsOut,
+    competitors:  competitorsOut,
+    heatmap:      Array.from({ length: 6 }, (_, r) =>
+                    Array.from({ length: 7 }, (_, c) =>
+                      Math.max(0, Math.round(20 + 80 * Math.sin((r * c + r + c) * 0.7))))),
+    intelScore:   source.intel?.score ?? persona.intel?.score ?? null,
+    todayActions: actionsOut.slice(0, 3),
+    actionPlan:   actionsOut,
+    // verdict is { title, body, score_factors } in the SPA contract. The
+    // BriefScreen renders title in a big h2 and body as supporting prose
+    // underneath. The PERSONAS verdict is one paragraph — split at the
+    // first period to fill both slots so the layout stays balanced.
+    verdict: (() => {
+      const full = String(firstBrief.verdict || '').trim();
+      if (!full) return { title: '', body: '', score_factors: [] };
+      const periodIdx = full.indexOf('. ');
+      const title = periodIdx > 0 ? full.slice(0, periodIdx + 1) : full;
+      const body  = periodIdx > 0 ? full.slice(periodIdx + 2) : '';
+      return {
+        title,
+        body,
+        score_factors: [],
+        // Demo-only side-channel for RTL + EN translation (Brand-AR).
+        // SPA doesn't render these today; a follow-up could swap the
+        // <p> body for the translation block when rtl is true.
+        rtl: !!firstBrief.rtl,
+        translation: firstBrief.verdictTranslation || null,
+      };
+    })(),
+    formula:        null,
+    rewrite:        null,
+    marketContext:  persona.market || null,
+    briefMetrics:   null,
+    ads:            null,
+    ads_intel:      null,
+    adSettings:     null,
+    audience: {
+      allowed:      personaId !== 'creator',
+      locked:       false,
+      snapshotDate: new Date().toISOString(),
+      byAccount:    {},
+    },
+    competitor_ads: {
+      allowed:       personaId === 'brand' || personaId === 'agency',
+      locked:        false,
+      byCompetitor:  [],
+      totalAds:      0,
+    },
+    tier:  TIER,
+    trial: { active: false, locked: false },
+    is_admin: false,
+    as_tier:  null,
+    flags:    {},
+    role:     'owner',
+    referral_unlock_available: false,
+    lastSync: new Date().toISOString(),
+    // App() gates the Brief screen on these flags. Both true so the demo
+    // jumps straight into the rendered dashboard instead of the empty-
+    // state CTAs (EmptyDashboardCTA / BriefGenerating).
+    state: { hasAccounts: true, hasPosts: true },
   };
-  const m = map[plat] || { bg: 'bg-mute', label: '?' };
-  return (
-    <span className={cls('inline-flex items-center justify-center rounded-md font-mono text-[10px] font-bold text-white', m.bg, size)}>
-      {m.label}
-    </span>
-  );
-};
+}
 
-const MashalDot = ({ color = 'bg-magenta', size = 'w-2 h-2' }) => (
-  <span className={cls('relative inline-block rounded-full pulse-dot', size, color)} />
-);
-
-const Pill = ({ children, color = 'ink' }) => {
-  const colors = {
-    ink:      'bg-ink/8 text-ink dark:bg-paper/10 dark:text-paper',
-    lime:     'bg-lime text-ink',
-    magenta:  'bg-magenta text-white',
-    ultra:    'bg-ultra text-white',
-    ultraSoft:'bg-ultraSoft text-ultra dark:bg-ultra/20 dark:text-ultra',
-    amber:    'bg-amber/20 text-amber',
-    paper:    'bg-paper/10 text-paper',
-  };
-  return <span className={cls('inline-flex items-center gap-1.5 px-2.5 h-6 rounded-full text-[11px] font-medium tracking-tight whitespace-nowrap', colors[color])}>{children}</span>;
-};
-
-// Bar sparkline — same primitive as SPA's StatCard.
-const BarSpark = ({ data, color = '#6B5BFF', highlightIdx = -1, height = 28 }) => {
-  const max = Math.max(...data) || 1;
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  // Normalize to floor at ~20% so flat-ish stacks still read as bars.
-  return (
-    <div className="flex items-end gap-0.5" style={{ height }}>
-      {data.map((v, i) => (
-        <div key={i}
-          className="flex-1 rounded-sm transition-all"
-          style={{
-            height: `${20 + ((v - min) / range) * 80}%`,
-            background: i === highlightIdx ? color : `${color}55`,
-            minHeight: 3,
-          }} />
-      ))}
-    </div>
-  );
-};
-
-// ────────────────────────────────────────────────────────────────────────
-// Demo banner — pinned to the top of every screen, with a CTA. The CTA
-// goes straight to the signup route in the main SPA, not a marketing
-// page, so curious visitors can convert in one click.
-// ────────────────────────────────────────────────────────────────────────
-const DemoBanner = () => (
-  <div className="bg-ink text-paper dark:bg-coalsoft dark:border-b dark:border-lineDark">
-    <div className="wrap" style={{paddingTop: 14, paddingBottom: 14}}>
-      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
-        <MashalDot color="bg-lime" />
-        <span className="text-[13px] sm:text-[14px] leading-snug flex-1 min-w-0">
-          You're exploring a demo workspace with sample data. Switch personas above to see each plan in action.
-        </span>
-        <a href="/?route=signup" className="inline-flex items-center gap-2 h-9 px-4 rounded-full bg-lime text-ink text-[13px] font-medium hover:bg-limeDeep transition-colors">
-          Start free trial
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-        </a>
-      </div>
-    </div>
-  </div>
-);
-
-// ────────────────────────────────────────────────────────────────────────
-// Persona switcher — 4 tabs across the top. Selecting a persona swaps
-// every screen below. Selection is persisted in sessionStorage so a
-// share-link with ?persona=brand pre-selects the right tab.
-// ────────────────────────────────────────────────────────────────────────
-const PERSONA_TABS = [
-  { id: 'creator',     label: 'Creator',     price: '$15/mo'  },
-  { id: 'pro_creator', label: 'Pro Creator', price: '$29/mo'  },
-  { id: 'brand',       label: 'Brand',       price: '$99/mo'  },
-  { id: 'agency',      label: 'Agency',      price: '$449/mo' },
-];
-
-const PersonaSwitcher = ({ active, onChange }) => (
-  <div className="bg-chalk dark:bg-coal border-b border-line dark:border-lineDark sticky top-[64px] z-30 backdrop-blur">
-    <div className="wrap" style={{paddingTop: 0, paddingBottom: 0}}>
-      <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar" style={{minHeight: 56}}>
-        <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-[0.12em] text-mute dark:text-muteDark mr-3">Persona</span>
-        {PERSONA_TABS.map(t => {
-          const on = active === t.id;
-          return (
-            <button key={t.id}
-              type="button"
-              onClick={() => onChange(t.id)}
-              className={cls(
-                'inline-flex items-center gap-2 h-10 px-3 sm:px-4 rounded-full text-[13px] font-medium transition-all whitespace-nowrap',
-                on
-                  ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
-                  : 'bg-transparent text-mute hover:text-ink dark:text-muteDark dark:hover:text-paper border border-line dark:border-lineDark hover:border-ink/30 dark:hover:border-paper/30'
-              )}>
-              {t.label}
-              <span className={cls('font-mono text-[10px]', on ? 'opacity-60' : 'opacity-50')}>{t.price}</span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  </div>
-);
-
-// ────────────────────────────────────────────────────────────────────────
-// Screen switcher — Brief / Stats / Signals. Sticky below the persona row.
-// ────────────────────────────────────────────────────────────────────────
-const SCREEN_TABS = [
-  { id: 'brief',   label: 'Morning brief', icon: 'sparkle' },
-  { id: 'stats',   label: 'Stats',         icon: 'trend'   },
-  { id: 'signals', label: 'Signals',       icon: 'pulse'   },
-];
-
-const ScreenSwitcher = ({ active, onChange, rightSlot }) => (
-  <div className="wrap pt-6 sm:pt-8" style={{paddingBottom: 0}}>
-    <div className="flex flex-wrap items-center gap-3 mb-6 sm:mb-8">
-      <div className="inline-flex items-center gap-1 p-1 rounded-full bg-chalk dark:bg-coal border border-line dark:border-lineDark">
-        {SCREEN_TABS.map(t => {
-          const on = active === t.id;
-          return (
-            <button key={t.id}
-              type="button"
-              onClick={() => onChange(t.id)}
-              className={cls(
-                'inline-flex items-center h-9 px-4 rounded-full text-[13px] font-medium transition-all',
-                on ? 'bg-ink text-paper dark:bg-paper dark:text-ink' : 'text-mute hover:text-ink dark:text-muteDark dark:hover:text-paper'
-              )}>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-      {rightSlot}
-    </div>
-  </div>
-);
-
-// ────────────────────────────────────────────────────────────────────────
-// Agency workspace dropdown — only renders when persona === 'agency'.
-// ────────────────────────────────────────────────────────────────────────
-const WorkspaceSwitcher = ({ workspaces, active, onChange }) => (
-  <div className="wrap pt-6" style={{paddingBottom: 0}}>
-    <div className="rounded-2xl bg-chalk dark:bg-coal border border-line dark:border-lineDark p-4 sm:p-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2 mr-2">
-          <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-ultra/15 text-ultra">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-          </span>
-          <div>
-            <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-mute dark:text-muteDark">Workspace</div>
-            <div className="font-display text-[15px] font-semibold tracking-tight">Clover & Co · 4 active clients</div>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5 sm:ml-auto">
-          {workspaces.map(w => {
-            const on = active === w.id;
-            return (
-              <button key={w.id}
-                type="button"
-                onClick={() => onChange(w.id)}
-                className={cls(
-                  'inline-flex flex-col items-start h-auto py-2 px-3 rounded-xl text-[12px] font-medium transition-all border',
-                  on
-                    ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
-                    : 'bg-transparent text-ink dark:text-paper border-line dark:border-lineDark hover:border-ink/40 dark:hover:border-paper/40'
-                )}>
-                <span className="text-[13px] font-semibold tracking-tight">{w.name}</span>
-                <span className={cls('font-mono text-[10px] mt-0.5', on ? 'opacity-60' : 'opacity-50')}>{w.tone} · {w.language}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-window.cls = cls; window.fmtN = fmtN; window.fmtDelta = fmtDelta;
-window.PlatIcon = PlatIcon; window.MashalDot = MashalDot;
-window.Pill = Pill; window.BarSpark = BarSpark;
-window.DemoBanner = DemoBanner; window.PersonaSwitcher = PersonaSwitcher;
-window.ScreenSwitcher = ScreenSwitcher; window.WorkspaceSwitcher = WorkspaceSwitcher;
-
-// ─────────────────────────────────────────────────────────────────────────
-// Extracted from demo.html lines 1087-1438
-// ─────────────────────────────────────────────────────────────────────────
-"use strict";
-
-// ────────────────────────────────────────────────────────────────────────
-// BRIEF SCREEN
-// ────────────────────────────────────────────────────────────────────────
-const WHEN_COLORS = {
-  'Now':        'bg-magenta text-white',
-  'Today':      'bg-amber/25 text-amber',
-  'This week':  'bg-ultra/15 text-ultra dark:bg-ultra/25',
-  'This month': 'bg-mute/15 text-mute dark:bg-muteDark/25 dark:text-muteDark',
-};
-
-// Greeting — pulled from the SPA's pattern. Time-of-day aware.
-const greetingFor = (hour) => {
-  if (hour < 5)  return 'Good evening';
-  if (hour < 12) return 'Good morning';
-  if (hour < 17) return 'Good afternoon';
-  return 'Good evening';
-};
-
-const BriefScreen = ({ persona, workspace, briefLang, setBriefLang }) => {
-  // Source of truth: a workspace if we're in Agency mode, otherwise the persona itself.
-  const D = workspace || persona;
-  const [variantIdx, setVariantIdx] = React.useState(0);
-
-  // Reset to variant A whenever the source data changes (persona or workspace swap).
-  React.useEffect(() => { setVariantIdx(0); }, [D.id]);
-
-  // Pick the right brief set. The Brand persona ships native-Arabic
-  // variants under `briefs_ar`; everything else falls through to `briefs`.
-  // Toggle UI in the header surfaces this; the prop wiring stays harmless
-  // when the toggle isn't rendered.
-  const useArabic = persona.id === 'brand' && briefLang === 'ar' && Array.isArray(D.briefs_ar);
-  const briefs = useArabic ? D.briefs_ar : D.briefs;
-  const brief = briefs[variantIdx % briefs.length];
-  const firstName = persona.person?.firstName || D.name || 'there';
-  const greeting = `${greetingFor(new Date().getHours())}${firstName ? ', ' + firstName : ''}.`;
-  const aiLabel = persona.id === 'agency' ? (workspace?.ai || 'Claude') : (persona.person.ai_provider || 'Mashal');
-  const toneLabel = persona.id === 'agency' ? (workspace?.tone || '—') : (persona.person.brief_tone || '—');
-  const score = (workspace?.intel?.score) ?? persona.intel?.score;
-
-  const onRegenerate = () => setVariantIdx((variantIdx + 1) % briefs.length);
-
-  return (
-    <div className="wrap pb-16">
-      {/* Header row — eyebrow with date + tone + AI provider, big greeting */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8 fade-up">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-2">
-            Morning brief · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} · {toneLabel} · {aiLabel}
-            {score !== null && score !== undefined && <span> · Intel Score <span className="text-ink dark:text-paper font-semibold">{score}</span></span>}
-          </div>
-          <h1 className="font-display text-[32px] sm:text-[44px] leading-[1.05] font-semibold tracking-tightest">
-            {greeting}
-          </h1>
-          <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-1.5">
-            {D.signals?.length ?? 0} signals from your last 30 days · {briefs.length} brief variants in this demo.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {persona.id === 'brand' && Array.isArray(D.briefs_ar) && (
-            <div
-              role="group"
-              aria-label="Brief language"
-              className="inline-flex items-center rounded-full border border-line dark:border-lineDark p-0.5 bg-chalk dark:bg-coalsoft">
-              {[
-                { id: 'en', label: 'EN', title: 'English brief' },
-                { id: 'ar', label: 'AR', title: 'بريف بالعربية' },
-              ].map(opt => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  onClick={() => setBriefLang(opt.id)}
-                  aria-pressed={briefLang === opt.id}
-                  title={opt.title}
-                  className={cls(
-                    'h-7 px-3 rounded-full text-[11px] font-mono uppercase tracking-[0.1em] font-medium transition-colors',
-                    briefLang === opt.id
-                      ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
-                      : 'text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
-                  )}>
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          )}
-          <Pill color="ultraSoft">
-            <MashalDot color="bg-ultra" size="w-1.5 h-1.5" />
-            Variant {brief.variant}
-          </Pill>
-          <button type="button"
-            onClick={onRegenerate}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-full border border-line dark:border-lineDark text-[13px] font-medium text-ink dark:text-paper hover:border-ink/40 dark:hover:border-paper/40 transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
-            Regenerate
-          </button>
-        </div>
-      </div>
-
-      {/* Verdict block — the headline read */}
-      <div key={brief.variant} className="rounded-2xl bg-ink text-paper dark:bg-coalsoft border border-ink dark:border-lineDark p-6 sm:p-8 mb-6 sm:mb-8 fade-up">
-        <div className="flex items-center gap-2 mb-3">
-          <MashalDot color="bg-lime" size="w-1.5 h-1.5" />
-          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muteDark">Today's verdict</span>
-        </div>
-        <p
-          dir={brief.rtl ? 'rtl' : 'ltr'}
-          className={cls(
-            'tracking-tighter leading-snug',
-            // Latin verdict gets the display font + medium weight; Arabic
-            // falls back to the system Arabic stack (Geist doesn't ship
-            // Arabic glyphs) and keeps a comfortable line-height for it.
-            brief.rtl
-              ? 'text-[22px] sm:text-[26px] font-medium' + ' font-sans'
-              : 'text-[22px] sm:text-[28px] font-medium font-display'
-          )}
-          style={brief.rtl ? { fontFamily: '"Geeza Pro", "Segoe UI", "Tahoma", system-ui, sans-serif', lineHeight: 1.6 } : undefined}>
-          {brief.verdict}
-        </p>
-        {brief.verdictTranslation && (
-          <p className="text-[12.5px] text-muteDark mt-4 italic leading-relaxed">
-            EN: {brief.verdictTranslation}
-          </p>
-        )}
-      </div>
-
-      {/* Six prioritised actions */}
-      <div className="grid gap-3 sm:gap-4">
-        {brief.actions.map((a, i) => (
-          <div key={brief.variant + '-' + i}
-            className="rounded-xl bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark p-4 sm:p-5 fade-up"
-            style={{ animationDelay: `${i * 40}ms` }}>
-            <div className="flex items-start gap-3 sm:gap-4">
-              <span className="font-mono text-[11px] text-mute dark:text-muteDark mt-1 flex-shrink-0 hidden sm:block">{String(i + 1).padStart(2, '0')}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className={cls('inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-mono uppercase tracking-[0.08em] font-medium', WHEN_COLORS[a.when] || WHEN_COLORS['Today'])}>
-                    {a.when}
-                  </span>
-                  <span className="font-mono text-[10px] text-mute dark:text-muteDark uppercase tracking-[0.1em]">{a.plat}</span>
-                </div>
-                <p
-                  dir={a.rtl ? 'rtl' : 'ltr'}
-                  className="text-[14px] sm:text-[15px] leading-relaxed text-ink dark:text-paper"
-                  style={a.rtl ? { fontFamily: '"Geeza Pro", "Segoe UI", "Tahoma", system-ui, sans-serif', lineHeight: 1.75 } : undefined}>
-                  {a.text}
-                </p>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Footer note — demo-only nudge */}
-      <div className="mt-8 sm:mt-10 p-4 rounded-xl bg-ultraSoft/60 dark:bg-ultra/10 border border-ultra/20 text-[13px] text-mute dark:text-muteDark leading-relaxed">
-        <span className="text-ink dark:text-paper font-medium">Demo note:</span> the Regenerate button cycles through {briefs.length} pre-written brief variants for this persona. In the live product, Regenerate runs a fresh analysis on your connected accounts.
-        {persona.id === 'brand' && Array.isArray(D.briefs_ar) && (
-          <> The <span className="font-mono uppercase text-[11px] tracking-[0.1em]">EN</span> / <span className="font-mono uppercase text-[11px] tracking-[0.1em]">AR</span> toggle above swaps to natively-generated Arabic briefs — not translations. Khaleeji register, GCC-tuned recommendations.</>
-        )}{' '}
-        <a href="/?route=signup" className="text-ultra font-medium hover:underline">Start your free trial</a> to wire up your own data.
-      </div>
-    </div>
-  );
-};
-
-// ────────────────────────────────────────────────────────────────────────
-// STATS SCREEN
-// ────────────────────────────────────────────────────────────────────────
-const StatsScreen = ({ persona, workspace }) => {
-  const D = workspace || persona;
-  const score = workspace?.intel?.score ?? persona.intel?.score;
-  const breakdown = workspace?.intel?.breakdown ?? persona.intel?.breakdown ?? [];
-  const market = persona.market; // market context only on Pro Creator + Brand
-  const accounts = D.accounts || [];
-  const competitors = D.competitors || persona.competitors || [];
-
-  return (
-    <div className="wrap pb-16 fade-up">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-6 sm:mb-8">
-        <div>
-          <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-2">
-            Stats overview · last 7 days
-          </div>
-          <h1 className="font-display text-[32px] sm:text-[40px] leading-[1.05] font-semibold tracking-tightest">
-            {accounts.length} platform{accounts.length === 1 ? '' : 's'} connected.
-          </h1>
-          <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-1.5">
-            Last synced 2 hours ago. Sparklines show daily follower count over the past 7 days.
-          </p>
-        </div>
-        {score !== null && score !== undefined && (
-          <div className="rounded-2xl bg-ultra/10 border border-ultra/20 px-5 py-3 inline-flex items-center gap-3">
-            <div className="font-display text-[36px] leading-none font-semibold tracking-tightest text-ultra">{score}</div>
-            <div>
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute dark:text-muteDark">Intel score</div>
-              <div className="text-[12px] text-ink dark:text-paper">out of 100</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Platform cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10">
-        {accounts.map((a) => (
-          <div key={a.plat} className="rounded-2xl bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark p-5 hover:border-ink/20 dark:hover:border-paper/20 transition-all">
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <PlatIcon plat={a.plat} size="w-7 h-7" />
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-mute dark:text-muteDark">{a.label}</span>
-              </div>
-              <span className="font-mono text-[11px] text-emerald-600 dark:text-lime">
-                ↑ {fmtDelta(a.delta)}
-              </span>
-            </div>
-            <div className="font-display text-[28px] sm:text-[32px] leading-none font-semibold tracking-tightest mb-1">
-              {fmtN(a.followers)}
-            </div>
-            <div className="font-mono text-[10px] text-mute dark:text-muteDark mb-3">{a.er}% ER · 7d</div>
-            <BarSpark data={a.spark} color={a.color} highlightIdx={a.spark.length - 1} />
-          </div>
-        ))}
-      </div>
-
-      {/* Intel score breakdown */}
-      {breakdown.length > 0 && (
-        <div className="rounded-2xl bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark p-5 sm:p-6 mb-8">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tighter">Intel Score breakdown</h2>
-            <span className="font-mono text-[11px] text-mute dark:text-muteDark">{score} / 100</span>
-          </div>
-          <div className="space-y-3">
-            {breakdown.map((b, i) => {
-              const pct = (b.score / b.max) * 100;
-              return (
-                <div key={i}>
-                  <div className="flex items-baseline justify-between mb-1.5">
-                    <span className="text-[13px] font-medium text-ink dark:text-paper">{b.label}</span>
-                    <span className="font-mono text-[11px] text-mute dark:text-muteDark">{b.score} / {b.max}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden mb-1">
-                    <div className="h-full rounded-full bg-ultra transition-all duration-[1200ms] ease-out" style={{ width: `${pct}%` }} />
-                  </div>
-                  <p className="text-[12px] text-mute dark:text-muteDark">{b.note}</p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Market context block — Pro Creator + Brand only */}
-      {market && (
-        <div className="rounded-2xl bg-ink text-paper dark:bg-coalsoft border border-ink dark:border-lineDark p-5 sm:p-6 mb-8">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tighter text-paper">Market context</h2>
-            <Pill color="lime">{persona.name} feature</Pill>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-4 mb-5">
-            <div className="rounded-xl bg-white/5 border border-white/10 p-4">
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muteDark mb-1.5">Home market</div>
-              <div className="text-[15px] font-medium text-paper mb-1">{market.home.country}</div>
-              <div className="text-[12px] text-muteDark mb-2">{market.home.followers_band} followers</div>
-              <p className="text-[12.5px] text-muteDark leading-relaxed">{market.home.notes}</p>
-            </div>
-            {market.focus.map((f, i) => (
-              <div key={i} className="rounded-xl bg-white/5 border border-white/10 p-4">
-                <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-lime mb-1.5">Focus region</div>
-                <div className="text-[15px] font-medium text-paper mb-2">{f.country}</div>
-                <p className="text-[12.5px] text-muteDark leading-relaxed">{f.note}</p>
-              </div>
-            ))}
-          </div>
-          <div className="pt-4 border-t border-white/10">
-            <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-muteDark mb-2">Cultural calendar — next 90 days</div>
-            <div className="flex flex-wrap gap-2">
-              {market.calendar.map((c, i) => (
-                <span key={i} className="inline-flex items-center h-7 px-3 rounded-full bg-white/8 text-[12px] text-paper">{c}</span>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Competitor scorecard */}
-      {competitors.length > 0 && (
-        <div className="rounded-2xl bg-chalk dark:bg-coalsoft border border-line dark:border-lineDark p-5 sm:p-6">
-          <div className="flex items-baseline justify-between mb-4">
-            <h2 className="font-display text-[20px] sm:text-[22px] font-semibold tracking-tighter">Competitor scorecard</h2>
-            <span className="font-mono text-[11px] text-mute dark:text-muteDark">{competitors.length} tracked</span>
-          </div>
-          <div className="space-y-2.5">
-            {competitors.slice(0, 7).map((c, i) => {
-              const winning = c.pct > 100;
-              return (
-                <div key={i} className="flex items-center gap-3 sm:gap-4">
-                  <PlatIcon plat={c.plat} size="w-6 h-6" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline justify-between gap-2 mb-1">
-                      <span className="text-[13px] font-medium text-ink dark:text-paper truncate">{c.handle}</span>
-                      <span className="font-mono text-[11px] text-mute dark:text-muteDark whitespace-nowrap">
-                        {fmtN(c.them)} <span className="opacity-50">vs you {fmtN(c.you)}</span>
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-ink/8 dark:bg-paper/10 overflow-hidden">
-                      <div className={cls('h-full rounded-full transition-all duration-[1200ms] ease-out', winning ? 'bg-lime' : 'bg-ultra')}
-                           style={{ width: `${Math.min(c.pct, 100)}%` }} />
-                    </div>
-                  </div>
-                  <span className={cls('font-mono text-[11px] font-medium tabular-nums w-12 text-right', winning ? 'text-emerald-600 dark:text-lime' : 'text-mute dark:text-muteDark')}>
-                    {c.pct < 10 ? c.pct.toFixed(1) : Math.round(c.pct)}%
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// ────────────────────────────────────────────────────────────────────────
-// SIGNALS SCREEN
-// ────────────────────────────────────────────────────────────────────────
-const SIGNAL_TYPE = {
-  viral:        { label: '⚡ Viral peak',        bg: 'bg-amber/12 dark:bg-amber/15',     border: 'border-amber/30' },
-  gap:          { label: '📉 Content gap',       bg: 'bg-magenta/8 dark:bg-magenta/12', border: 'border-magenta/30' },
-  series:       { label: '🔄 Series arc',        bg: 'bg-ultra/8 dark:bg-ultra/12',     border: 'border-ultra/30' },
-  timing:       { label: '⏱ Timing anomaly',     bg: 'bg-lime/15 dark:bg-lime/15',      border: 'border-lime/30' },
-  cultural:     { label: '🌙 Cultural window',    bg: 'bg-ultra/8 dark:bg-ultra/12',     border: 'border-ultra/30' },
-  multilingual: { label: '🌐 Multilingual',       bg: 'bg-lime/15 dark:bg-lime/15',      border: 'border-lime/30' },
-  platform:     { label: '🔀 Cross-platform',     bg: 'bg-magenta/8 dark:bg-magenta/12', border: 'border-magenta/30' },
-  ad:           { label: '💸 Ad intelligence',    bg: 'bg-magenta/8 dark:bg-magenta/12', border: 'border-magenta/30' },
-  competitor:   { label: '📊 Competitor move',    bg: 'bg-amber/12 dark:bg-amber/15',    border: 'border-amber/30' },
-};
-
-const SignalsScreen = ({ persona, workspace }) => {
-  const D = workspace || persona;
-  const signals = D.signals || [];
-
-  return (
-    <div className="wrap pb-16 fade-up">
-      <div className="mb-6 sm:mb-8">
-        <div className="font-mono text-[11px] uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-2">
-          Signal stream · live · {signals.length} active
-        </div>
-        <h1 className="font-display text-[32px] sm:text-[40px] leading-[1.05] font-semibold tracking-tightest">
-          What changed overnight.
-        </h1>
-        <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-1.5 max-w-2xl">
-          Mashal detects 14 distinct signal kinds — viral peaks, content gaps, series arcs, cross-platform opportunities, ad inefficiencies, cultural windows, competitor moves. Only the ones that matter today appear here.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-        {signals.map((s, i) => {
-          const meta = SIGNAL_TYPE[s.type] || SIGNAL_TYPE.viral;
-          return (
-            <div key={i}
-              className={cls('rounded-2xl border p-5 sm:p-6 transition-all', meta.bg, meta.border)}
-              style={{ animationDelay: `${i * 60}ms` }}>
-              <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink/70 dark:text-paper/70 mb-2 font-medium">
-                {meta.label}
-              </div>
-              <h3 className="font-display text-[17px] sm:text-[19px] font-semibold tracking-tight leading-snug mb-2"
-                  dir={/[؀-ۿ]/.test(s.title) ? 'rtl' : 'ltr'}>
-                {s.title}
-              </h3>
-              <p className="text-[13.5px] text-mute dark:text-muteDark leading-relaxed">
-                {s.body}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="mt-8 sm:mt-10 p-4 rounded-xl bg-ultraSoft/60 dark:bg-ultra/10 border border-ultra/20 text-[13px] text-mute dark:text-muteDark leading-relaxed">
-        <span className="text-ink dark:text-paper font-medium">Demo note:</span> these signals are pre-computed for the demo. In the live product, signals refresh overnight as Mashal re-reads your connected accounts and competitor pool. <a href="/?route=signup" className="text-ultra font-medium hover:underline">Start your free trial</a> to see signals from your own data.
-      </div>
-    </div>
-  );
-};
-
-window.BriefScreen = BriefScreen;
-window.StatsScreen = StatsScreen;
-window.SignalsScreen = SignalsScreen;
-
-// ─────────────────────────────────────────────────────────────────────────
-// Extracted from demo.html lines 1443-1573
-// ─────────────────────────────────────────────────────────────────────────
-"use strict";
-
-// URL params let people share /demo?persona=brand&screen=signals deep links.
-const readParam = (k) => {
+// ── Setters — invoked by the persona-switcher banner. Each one updates
+//    the URL, persists the choice, and triggers a brief re-fetch via the
+//    custom event App() listens to.
+function syncDemoUrl() {
   try {
     const u = new URL(window.location.href);
-    return u.searchParams.get(k);
-  } catch { return null; }
-};
-
-const writeParams = (params) => {
-  try {
-    const u = new URL(window.location.href);
-    for (const [k, v] of Object.entries(params)) {
-      if (v) u.searchParams.set(k, v);
-      else u.searchParams.delete(k);
+    u.searchParams.set('persona', _activePersonaId);
+    if (_activePersonaId === 'agency' && _activeWorkspaceId) {
+      u.searchParams.set('workspace', _activeWorkspaceId);
+    } else {
+      u.searchParams.delete('workspace');
+    }
+    if (_activePersonaId === 'brand' && _briefLang !== 'en') {
+      u.searchParams.set('lang', _briefLang);
+    } else {
+      u.searchParams.delete('lang');
     }
     window.history.replaceState({}, '', u.toString());
   } catch {}
-};
+}
 
-const DemoApp = () => {
-  // Persona selection — URL first, then session, then default.
-  const initialPersona =
-    (readParam('persona') && PERSONAS[readParam('persona')]) ? readParam('persona')
-    : (() => { try { const s = sessionStorage.getItem('mashal_demo_persona'); return (s && PERSONAS[s]) ? s : 'creator'; } catch { return 'creator'; } })();
+function rehydrate() {
+  // App()'s brief-fetch effect listens for this event and re-runs api('/brief'),
+  // which our interceptor turns into a fresh personaToBrief() call against the
+  // updated module-level state.
+  window.dispatchEvent(new CustomEvent('demo:rehydrate'));
+}
 
-  const initialScreen = (() => {
-    const s = readParam('screen');
-    return ['brief','stats','signals'].includes(s) ? s : 'brief';
-  })();
+function setDemoPersona(id) {
+  if (!PERSONAS[id]) return;
+  _activePersonaId = id;
+  _activeWorkspaceId =
+    id === 'agency' ? PERSONAS.agency.workspaces[0].id : null;
+  // Lang toggle only meaningful for Brand — reset to EN otherwise.
+  if (id !== 'brand') _briefLang = 'en';
+  syncDemoUrl();
+  rehydrate();
+}
 
-  // Brand-only: which language the brief renders in. Persona-scoped only
-  // (other tiers don't have native-Arabic content), but the state lives at
-  // the app level so it survives screen swaps + URL navigation.
-  const initialBriefLang = (() => {
-    const l = readParam('lang');
-    if (['en', 'ar'].includes(l)) return l;
-    try {
-      const s = sessionStorage.getItem('mashal_demo_brief_lang');
-      return ['en', 'ar'].includes(s) ? s : 'en';
-    } catch { return 'en'; }
-  })();
+function setDemoWorkspace(wid) {
+  if (_activePersonaId !== 'agency') return;
+  if (!PERSONAS.agency.workspaces.find(w => w.id === wid)) return;
+  _activeWorkspaceId = wid;
+  syncDemoUrl();
+  rehydrate();
+}
 
-  const [personaId, setPersonaId] = React.useState(initialPersona);
-  const [screen, setScreen]       = React.useState(initialScreen);
-  const [briefLang, setBriefLang] = React.useState(initialBriefLang);
+function setDemoBriefLang(lang) {
+  if (!['en', 'ar'].includes(lang)) return;
+  _briefLang = lang;
+  syncDemoUrl();
+  rehydrate();
+}
 
-  // Agency: which workspace is currently active.
-  const initialWorkspace = (() => {
-    const w = readParam('workspace');
-    if (personaId === 'agency') {
-      const exists = PERSONAS.agency.workspaces.find(x => x.id === w);
-      return exists ? w : PERSONAS.agency.workspaces[0].id;
+function getActiveBrief() {
+  return personaToBrief(_activePersonaId, _activeWorkspaceId, _briefLang);
+}
+
+function getDemoState() {
+  return {
+    personaId:   _activePersonaId,
+    workspaceId: _activeWorkspaceId,
+    briefLang:   _briefLang,
+    personas:    PERSONAS,
+  };
+}
+
+// ── DEMO_MODE bootstrap (only runs when the URL is /demo) ──
+if (DEMO_MODE) {
+  window.__MASHAL_DEMO_MODE = true;
+
+  // Initial active persona / workspace / brief-language from URL params.
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get('persona');
+    if (p && PERSONAS[p]) _activePersonaId = p;
+    if (_activePersonaId === 'agency') {
+      const w = params.get('workspace');
+      const wsRow = PERSONAS.agency.workspaces.find(x => x.id === w);
+      _activeWorkspaceId = wsRow ? wsRow.id : PERSONAS.agency.workspaces[0].id;
     }
-    return null;
-  })();
-  const [workspaceId, setWorkspaceId] = React.useState(initialWorkspace);
-
-  const persona = PERSONAS[personaId];
-  const workspace = (personaId === 'agency')
-    ? persona.workspaces.find(w => w.id === workspaceId) || persona.workspaces[0]
-    : null;
-
-  // Persist + URL sync on every change.
-  React.useEffect(() => {
-    try { sessionStorage.setItem('mashal_demo_persona', personaId); } catch {}
-    try { sessionStorage.setItem('mashal_demo_brief_lang', briefLang); } catch {}
-    writeParams({
-      persona: personaId,
-      screen,
-      workspace: personaId === 'agency' ? (workspaceId || PERSONAS.agency.workspaces[0].id) : null,
-      // Only emit ?lang= when it's non-default AND meaningful (Brand-only).
-      lang: (personaId === 'brand' && briefLang !== 'en') ? briefLang : null,
-    });
-  }, [personaId, screen, workspaceId, briefLang]);
-
-  // Snap to the top of the active screen when persona, screen, or workspace
-  // changes — feels weird to land mid-page after a tab swap.
-  const screenRef = React.useRef(null);
-  React.useEffect(() => {
-    if (screenRef.current) {
-      try { screenRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch {}
+    if (params.get('lang') === 'ar' && _activePersonaId === 'brand') {
+      _briefLang = 'ar';
     }
-  }, [personaId, workspaceId, screen]);
+  } catch {}
 
-  const onPersonaChange = (id) => {
-    setPersonaId(id);
-    if (id === 'agency') {
-      setWorkspaceId(PERSONAS.agency.workspaces[0].id);
-    } else {
-      setWorkspaceId(null);
+  // Fake Supabase session — App()'s synchronous session initializer
+  // (screens.jsx ~line 6155) reads localStorage and treats anything with
+  // an access_token as a valid session. user.created_at is set far in the
+  // past so the "isNew → onboarding" routing branch doesn't fire.
+  try {
+    localStorage.setItem('pulse_session', JSON.stringify({
+      access_token:  'demo',
+      refresh_token: 'demo',
+      token_type:    'bearer',
+      expires_at:    Math.floor(Date.now() / 1000) + 7 * 86400,
+      user: {
+        id:         'demo-user',
+        email:      'demo@mashal.app',
+        created_at: '2024-01-01T00:00:00Z',
+      },
+    }));
+  } catch {}
+
+  // Token that api.jsx reads from window.__pulseToken — keeps Authorization
+  // header populated so the interceptor sees the same code path as a real
+  // session. Value doesn't matter; interceptor short-circuits before fetch.
+  window.__pulseToken = 'demo';
+
+  // Intercept window.api. js/core/api.jsx already ran by import order, so
+  // window.api exists; we wrap it.
+  const realApi = typeof window.api === 'function' ? window.api : null;
+  window.api = async (path, opts = {}) => {
+    const clean = String(path || '').split('?')[0];
+
+    // The big one — the SPA's brief fetch.
+    if (clean === '/brief') return getActiveBrief();
+
+    // Read-only endpoints — safe empty defaults.
+    if (clean === '/workspaces')         return { workspaces: getDemoState().personas[_activePersonaId].workspaces || [{ id: _activePersonaId, name: PERSONAS[_activePersonaId].name }] };
+    if (clean === '/team/members')       return { members: [{ id: 'demo-owner', email: 'demo@mashal.app', role: 'owner', accepted_at: new Date().toISOString() }], invitations: [] };
+    if (clean === '/workspace/webhooks') return { webhooks: [] };
+    if (clean === '/competitors')        return { competitors: getActiveBrief().competitors };
+    if (clean === '/referral')           return { code: 'DEMO', referrals: [], earnings: 0 };
+    if (clean === '/reports')            return { reports: [] };
+    if (clean === '/support')            return { tickets: [] };
+    if (clean === '/accounts')           return { accounts: [] };
+
+    // Mutations + on-demand jobs. Return ok=true so the UI proceeds, no
+    // actual server work happens.
+    if (clean === '/sync')                  return { ok: true, demo: true };
+    if (clean === '/accounts/backfill')     return { ok: true, demo: true };
+    if (clean === '/analytics/refresh')     return { ok: true, demo: true };
+    if (clean === '/intelligence/generate') return { ok: true, demo: true };
+    if (clean === '/team/invite')           return { ok: true, demo: true };
+    if (clean === '/team/accept')           return { ok: true, demo: true };
+
+    // Catch-all: empty object. Better to silently 200 than to crash a
+    // screen that's exploring an endpoint we didn't anticipate.
+    if (realApi) {
+      // Anything containing the substring '/login' or '/auth' should
+      // never hit the network in demo mode either.
+      if (clean.startsWith('/auth') || clean.includes('/login')) return {};
     }
+    return {};
   };
 
-  return (
-    <div>
-      <DemoBanner />
-      <PersonaSwitcher active={personaId} onChange={onPersonaChange} />
+  // Expose for the persona-switcher banner (or any other consumer).
+  window.__demoSetPersona     = setDemoPersona;
+  window.__demoSetWorkspace   = setDemoWorkspace;
+  window.__demoSetBriefLang   = setDemoBriefLang;
+  window.__demoGetState       = getDemoState;
+  window.__demoGetActiveBrief = getActiveBrief;
 
-      {personaId === 'agency' && (
-        <WorkspaceSwitcher
-          workspaces={persona.workspaces}
-          active={workspaceId}
-          onChange={setWorkspaceId}
-        />
-      )}
+  // ── Persona-switcher banner ─────────────────────────────────────────
+  // Vanilla-DOM control rendered OUTSIDE React's #root tree so it sits
+  // above the SPA chrome without any App() refactor. Self-rendering on
+  // demo:rehydrate so the active-state pill stays in sync when the user
+  // (or a URL deep-link) flips persona / workspace / language.
+  //
+  // Pure inline styles — this lives outside Tailwind's class output and
+  // app.css's marketing-chrome rules. Keeps the banner self-contained
+  // so it can't be visually clobbered by either system.
+  const mountDemoBanner = () => {
+    if (document.getElementById('mashal-demo-banner')) return; // idempotent
+    const banner = document.createElement('div');
+    banner.id = 'mashal-demo-banner';
+    banner.style.cssText = [
+      'position:fixed', 'top:0', 'left:0', 'right:0', 'z-index:60',
+      'background:#0A0A0B', 'color:#F5F1E8',
+      'border-bottom:1px solid rgba(245,241,232,0.08)',
+      'font-family:Geist,system-ui,sans-serif',
+      'padding:8px 16px',
+      'box-shadow:0 1px 0 rgba(0,0,0,0.4)',
+    ].join(';');
+    document.body.appendChild(banner);
 
-      <ScreenSwitcher
-        active={screen}
-        onChange={setScreen}
-        rightSlot={
-          <div className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-mute dark:text-muteDark">
-            {persona.name} · {persona.tagline}
-          </div>
-        }
-      />
+    // Offset every page section that the SPA top-bars itself with so the
+    // banner doesn't cover the AccountBar. The SPA's TopBar is position:
+    // sticky top-0; we add a sibling padding to the body so it slides down
+    // by exactly the banner height.
+    const ensureBodyOffset = () => {
+      const h = banner.offsetHeight || 48;
+      document.body.style.paddingTop = h + 'px';
+    };
 
-      <div ref={screenRef} />
+    const tiers = [
+      { id: 'creator',     label: 'Creator',     price: '$15' },
+      { id: 'pro_creator', label: 'Pro Creator', price: '$29' },
+      { id: 'brand',       label: 'Brand',       price: '$99' },
+      { id: 'agency',      label: 'Agency',      price: '$449' },
+    ];
 
-      {screen === 'brief'   && <BriefScreen   persona={persona} workspace={workspace} briefLang={briefLang} setBriefLang={setBriefLang} />}
-      {screen === 'stats'   && <StatsScreen   persona={persona} workspace={workspace} />}
-      {screen === 'signals' && <SignalsScreen persona={persona} workspace={workspace} />}
-    </div>
-  );
-};
+    const render = () => {
+      const s = getDemoState();
+      const wsRows = s.personaId === 'agency' ? PERSONAS.agency.workspaces : null;
+      const pillCss = (active) => [
+        'display:inline-flex','align-items:center','gap:6px',
+        'padding:5px 10px','border-radius:999px',
+        'font-size:11.5px','font-weight:500',
+        'border:1px solid', active ? 'border-color:#D6FF3E' : 'border-color:rgba(245,241,232,0.15)',
+        'background:' + (active ? '#D6FF3E' : 'transparent'),
+        'color:' + (active ? '#0A0A0B' : '#F5F1E8'),
+        'cursor:pointer','transition:background 0.1s,border-color 0.1s',
+        'font-family:inherit',
+      ].join(';');
+      const priceCss = (active) =>
+        'font-family:Geist Mono,monospace;font-size:10px;opacity:' + (active ? '0.7' : '0.5');
 
-// ────────────────────────────────────────────────────────────────────────
-// Mount + splash hand-off.
-// We wait for the next paint after the first render before flipping the
-// splash off so the demo content is actually visible before the blur
-// fades. Otherwise the splash dismisses while React is still painting
-// and the user sees a flash of empty layout.
-// ────────────────────────────────────────────────────────────────────────
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<DemoApp />);
-requestAnimationFrame(() => requestAnimationFrame(() => {
-  document.documentElement.setAttribute('data-demo-ready', '1');
-  // Remove the splash node after the fade-out finishes so it can't intercept
-  // pointer events from the demo UI underneath.
-  setTimeout(() => {
-    const s = document.getElementById('demo-splash');
-    if (s && s.parentNode) s.parentNode.removeChild(s);
-  }, 400);
-}));
+      const personaPills = tiers.map(t => (
+        '<button data-demo-action="persona" data-persona-id="' + t.id + '" ' +
+        'style="' + pillCss(s.personaId === t.id) + '">' +
+        t.label +
+        '<span style="' + priceCss(s.personaId === t.id) + '">' + t.price + '</span>' +
+        '</button>'
+      )).join('');
+
+      const langToggle = s.personaId === 'brand'
+        ? '<div style="display:inline-flex;border:1px solid rgba(245,241,232,0.15);border-radius:999px;padding:2px;margin-left:4px">' +
+            ['en','ar'].map(l => (
+              '<button data-demo-action="lang" data-lang-id="' + l + '" ' +
+              'style="padding:3px 9px;border-radius:999px;border:0;cursor:pointer;font-size:10px;' +
+              'font-family:Geist Mono,monospace;text-transform:uppercase;letter-spacing:0.1em;' +
+              (s.briefLang === l
+                ? 'background:#F5F1E8;color:#0A0A0B'
+                : 'background:transparent;color:rgba(245,241,232,0.6)') + '">' +
+              l + '</button>'
+            )).join('') +
+          '</div>'
+        : '';
+
+      const wsRow = wsRows
+        ? '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-left:8px;border-left:1px solid rgba(245,241,232,0.15);padding-left:12px">' +
+            wsRows.map(w => (
+              '<button data-demo-action="workspace" data-workspace-id="' + w.id + '" ' +
+              'style="padding:3px 9px;border-radius:6px;border:1px solid ' +
+              (s.workspaceId === w.id ? '#F5F1E8' : 'rgba(245,241,232,0.15)') + ';' +
+              'background:' + (s.workspaceId === w.id ? 'rgba(245,241,232,0.1)' : 'transparent') + ';' +
+              'color:#F5F1E8;cursor:pointer;font-size:11px;font-family:inherit">' +
+              w.name + '</button>'
+            )).join('') +
+          '</div>'
+        : '';
+
+      banner.innerHTML =
+        '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:1400px;margin:0 auto">' +
+          '<span style="font-family:Geist Mono,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:rgba(245,241,232,0.55);margin-right:4px">Demo</span>' +
+          personaPills +
+          langToggle +
+          wsRow +
+          '<a href="/" style="margin-left:auto;font-size:11.5px;color:rgba(245,241,232,0.6);text-decoration:none;font-family:inherit">← back to mashal.app</a>' +
+          '<a href="/?route=signup" style="display:inline-flex;align-items:center;padding:5px 12px;border-radius:999px;background:#D6FF3E;color:#0A0A0B;font-size:11.5px;font-weight:600;text-decoration:none;font-family:inherit">Start free trial →</a>' +
+        '</div>';
+
+      requestAnimationFrame(ensureBodyOffset);
+    };
+
+    // Event delegation — one click handler, dispatch by data-attribute.
+    banner.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-demo-action]');
+      if (!t) return;
+      const action = t.getAttribute('data-demo-action');
+      if (action === 'persona')   setDemoPersona(t.getAttribute('data-persona-id'));
+      if (action === 'workspace') setDemoWorkspace(t.getAttribute('data-workspace-id'));
+      if (action === 'lang')      setDemoBriefLang(t.getAttribute('data-lang-id'));
+    });
+
+    // Re-render when persona/workspace/lang state changes (any setter
+    // dispatches demo:rehydrate which the App() listens for too).
+    window.addEventListener('demo:rehydrate', render);
+    window.addEventListener('resize', ensureBodyOffset);
+    render();
+  };
+
+  // Mount the banner after DOM is ready. demo-mode.jsx imports run BEFORE
+  // screens.jsx mounts, so document.body exists but the splash sits in it.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mountDemoBanner);
+  } else {
+    mountDemoBanner();
+  }
+}
+
+export { PERSONAS, personaToBrief, setDemoPersona, setDemoWorkspace, setDemoBriefLang, getDemoState, getActiveBrief, DEMO_MODE };
