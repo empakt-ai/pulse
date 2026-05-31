@@ -967,7 +967,6 @@ const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => {
           <a href="/features"     className="hover:text-ink dark:hover:text-paper transition">Features</a>
           <a href="/integrations" className="hover:text-ink dark:hover:text-paper transition">Integrations</a>
           <a href="/pricing"      className="hover:text-ink dark:hover:text-paper transition">Pricing</a>
-          <a href="/demo"         className="hover:text-ink dark:hover:text-paper transition">Demo</a>
           <a href="/updates"      className="hover:text-ink dark:hover:text-paper transition">Updates</a>
           <a href="/about"        className="hover:text-ink dark:hover:text-paper transition">About</a>
         </nav>
@@ -1006,7 +1005,6 @@ const LandingNav = ({ onSignIn, onSignUp, theme, toggleTheme }) => {
             { t: 'Features',     u: '/features'     },
             { t: 'Integrations', u: '/integrations' },
             { t: 'Pricing',      u: '/pricing'      },
-            { t: 'Demo',         u: '/demo'         },
             { t: 'Updates',      u: '/updates'      },
             { t: 'About',        u: '/about'        },
             { t: 'Contact',      u: '/contact'      },
@@ -1081,15 +1079,6 @@ const HeroGradient = ({ onSignUp }) => (
             See your first brief by 6 AM
             <Icon name="arrowRight" className="w-4 h-4" />
           </Btn>
-          {/* Login-free alternative for hesitant visitors — clicks through to
-              the standalone /demo page which renders real-looking brief data
-              without any signup. */}
-          <a
-            href="/demo"
-            className="inline-flex items-center gap-1.5 h-12 px-4 rounded-full border border-line dark:border-lineDark text-[14px] font-medium text-ink dark:text-paper hover:border-ink/40 dark:hover:border-paper/40 transition-colors">
-            Try the demo
-            <Icon name="arrowRight" className="w-4 h-4" />
-          </a>
           <span className="text-[12px] text-mute dark:text-muteDark ml-2">No credit card · Cancel anytime</span>
         </div>
 
@@ -1677,7 +1666,7 @@ const Footer = () => (
           </nav>
         </div>
         {[
-          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Integrations', u: '/integrations' }, { t: 'Pricing', u: '/pricing' }, { t: 'Demo', u: '/demo' }, { t: 'Updates', u: '/updates' }, { t: 'In your stack', u: '/stack' }, { t: 'Compare', u: '/compare' }] },
+          { h: 'Product', l: [{ t: 'Features', u: '/features' }, { t: 'Integrations', u: '/integrations' }, { t: 'Pricing', u: '/pricing' }, { t: 'Updates', u: '/updates' }, { t: 'In your stack', u: '/stack' }, { t: 'Compare', u: '/compare' }] },
           { h: 'Company', l: [{ t: 'About',    u: '/about'    }, { t: 'Contact', u: '/contact' }] },
           { h: 'Legal',   l: [{ t: 'Privacy',  u: '/privacy'  }, { t: 'Terms',   u: '/terms'   }] },
         ].map((g, i) => (
