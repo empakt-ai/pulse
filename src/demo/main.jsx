@@ -313,6 +313,58 @@ const PERSONAS = {
       },
     ],
 
+    // Native-Arabic generation of the same three brief variants. NOT a
+    // translation — the AI prompt for these runs in Khaleeji Arabic from
+    // the start, so the phrasing/register/code-switching feels written,
+    // not machine-translated. Surfaced via the EN | AR toggle that the
+    // BriefScreen renders only on the Brand tier. verdictTranslation
+    // carries an English summary alongside so non-Arabic readers viewing
+    // the demo still grasp the insight.
+    briefs_ar: [
+      {
+        variant: 'A',
+        rtl: true,
+        verdict: "سلسلة ريلز Noor Home لإهداء العيد حققت 41% فوق المتوسط على Instagram وSnapchat خلال 5 أيام. منافسك Scenthaus نشر محتوى مشابه بعدك بـ3 أيام، أداؤه أقل بـ34%. الأسبوع هذا، انقل السلسلة إلى TikTok قبل ما تنتهي نافذة العيد — عندك ميزة المبادرة و18 يوم باقية.",
+        verdictTranslation: "Your Eid gifting reel series hit 41% above baseline on Instagram and Snapchat over 5 days. Scenthaus posted similar content 3 days after you and underperformed by 34%. Push the series to TikTok this week before the Eid window closes — first-mover advantage, 18 days remaining.",
+        actions: [
+          { when: 'Now',        plat: 'TikTok',            rtl: true, text: "انشر سلسلة ريلز إهداء العيد على TikTok اليوم. الـIG عند 3.8% ER، أعلى بـ41% من خط الأساس. جمهور TikTok ما شاف هذا المحتوى — انزل 2 من الـ3 ريلز اليوم، الثالث صباح بكرة." },
+          { when: 'Now',        plat: 'Ads — X → TikTok',  rtl: true, text: "إعلانات X عندك Spot Score 28 — أسفل ربع في فئة العطور المنزلية بالخليج. أوقف X وحوّل الميزانية إلى TikTok In-Feed لنافذة العيد. TikTok Spot Score 84 — الزخم العضوي هنا." },
+          { when: 'Today',      plat: 'Snapchat',          rtl: true, text: "Snapchat ER عندك 5.2% — الأعلى بين كل منصاتك. جمهور SC مركّز في الإمارات والسعودية حيث محتوى العيد عنده صدى مضاعف. زيد سناب يومي للأيام الـ4 الجاية مخصّص للجمهور الخليجي." },
+          { when: 'This week',  plat: 'TikTok',            rtl: true, text: "LuxWick سوّت حملة أول أسبوع من العيد، حققت 2.1M مشاهدة على TikTok. الفورمات كان UGC، تجارب شخصية مش لقطات منتج محترفة. آخر 3 منشورات TikTok عندك كانت محترفة — اختبر فيديو واحد بالموبايل الأسبوع هذا." },
+          { when: 'This week',  plat: 'LinkedIn',          rtl: true, text: "LinkedIn عندك أعلى ER هذا الأسبوع (4.2%). فرصة B2B: إهداء جملة للعملاء المؤسسين. منشور واحد يطرح شموعك كهدية عيد مؤسسية، مع CTA للاستفسار بالجملة، يفتح قناة إيراد ما تخدمها بقية المنصات." },
+          { when: 'This month', plat: 'Reports',           rtl: true, text: "أنشئ تقرير الأداء الشهري وشاركه مع شركاء الجملة. بيانات نافذة العيد أقوى حجة لشراكة إهداء سويتها في 6 شهور — ضغطة وحدة من Reports." },
+        ],
+      },
+      {
+        variant: 'B',
+        rtl: true,
+        verdict: "صرف الإعلانات على X (Spot Score 28) أكبر هدر للميزانية الأسبوع هذا. تحويل $480 شهرياً إلى TikTok (Spot Score 84) عند معيار الفئة، يرفع الانطباعات ~3.4 مرات بنفس الميزانية. سوّ هذا قبل ما تبلغ نافذة العيد ذروتها في 18 يوم.",
+        verdictTranslation: "Your X ad spend (Spot Score 28) is the largest single budget inefficiency this week. Reallocating $480/mo to TikTok (Spot Score 84) at category benchmark would lift impressions ~3.4× at the same spend. Do this before the Eid window peaks in 18 days.",
+        actions: [
+          { when: 'Now',        plat: 'Ads',               rtl: true, text: "أوقف حملات X. CTR عندك 0.6% مقابل معيار الفئة 1.24% للعطور المنزلية. حوّل كامل الـ$480 الشهرية إلى TikTok In-Feed حيث Spot Score 84." },
+          { when: 'Today',      plat: 'Ads',               rtl: true, text: "زيد Meta Reels كموضع في حملة إهداء العيد. CPM للـReels أقل من Feed بـ15-25% للوعي في فئتك. الحملة حالياً تستهدف Feed فقط." },
+          { when: 'Today',      plat: 'Snapchat',          rtl: true, text: "جدول 4 سنابات للأيام الـ4 الجاية. محتوى العيد للإمارات والسعودية. Snapchat audience عندك 5.2% ER، الأعلى." },
+          { when: 'This week',  plat: 'TikTok',            rtl: true, text: "انقل ريلز إهداء العيد (اللي تفوقت على IG) إلى TikTok. تكلفة إنتاج صفر، جمهور غير مستغل." },
+          { when: 'This week',  plat: 'Ads',               rtl: true, text: "زيد حملة Meta بهدف التحويل لنافذة العيد الـ18 يوم. الوعي + التحويل يشتغلون مع بعض خلال فترات النية العالية، يحسن ROAS بـ20-30% مقارنة بهدف واحد." },
+          { when: 'This month', plat: 'Integrations',      rtl: true, text: "اربط WhatsApp Business Catalog. للإمارات والسعودية، WhatsApp مسار رئيسي B2C — يتيح إعلانات click-to-WhatsApp على Meta عادة بـCPL أقل من lead-gen القياسي." },
+        ],
+      },
+      {
+        variant: 'C',
+        rtl: true,
+        verdict: "LuxWick حقق 8,400 متابع جديد على TikTok الأسبوع الماضي — أسرع أسبوع لهم هذا الربع. نشروا 6 فيديوهات، 4 منها UGC — تجارب شخصية، مش لقطات منتج محترفة. آخر 3 منشورات TikTok عندك كانت محترفة. الفئة تصوّت لـUGC — اختبر فيديو واحد بالموبايل الأسبوع هذا.",
+        verdictTranslation: "LuxWick gained 8,400 TikTok followers last week — their fastest week this quarter. They posted 6 videos, 4 of which were UGC-style testimonials. Your last 3 TikTok posts were polished product shots. The category is voting for UGC. Test one phone-recorded UGC video this week.",
+        actions: [
+          { when: 'Now',        plat: 'TikTok',            rtl: true, text: "صوّر فيديو UGC واحد بالموبايل اليوم: عميل أو المؤسس، 30 ثانية، لقطة وحدة، يتكلم عن شمعة واحدة. بدون إضاءة، بدون مونتاج. هذا الفورمات اللي LuxWick حقق فيه 8,400 متابع جديد الأسبوع الماضي." },
+          { when: 'Today',      plat: 'TikTok',            rtl: true, text: "انقل ريلز إهداء العيد من IG. وصول مجاني — جمهور TT ما شاف هذا." },
+          { when: 'Today',      plat: 'Snapchat',          rtl: true, text: "Snapchat ER 5.2% — أعلى منصاتك الأسبوع هذا. جدول 4 سنابات بثيم العيد للجمهور الإماراتي والسعودي." },
+          { when: 'This week',  plat: 'Ads',               rtl: true, text: "أوقف إعلانات X (Spot Score 28). انقل الميزانية إلى TikTok (Spot Score 84) لنافذة العيد." },
+          { when: 'This week',  plat: 'LinkedIn',          rtl: true, text: "انشر: 'ليش تجار التجزئة يستهينون بـSnapchat في الخليج' — جمهور LI عندك مشغلي علامات تجارية، النوع هذا من المحتوى التحليلي يصلهم. ER على LI عندك 4.2% (أعلى ER الأسبوع هذا)." },
+          { when: 'This month', plat: 'Reports',           rtl: true, text: "أنشئ تقرير الأداء الأسبوعي وشاركه مع شركاء الجملة. أداء نافذة العيد أقوى حجة لشراكة إهداء سويتها في 6 شهور." },
+        ],
+      },
+    ],
+
     signals: [
       { type: 'viral',     color: 'amber',   title: 'Eid gifting reel series at 41% above baseline', body: "3-reel Eid gifting series on Instagram and Snapchat — 41% above-baseline reach over 5 days. Scenthaus posted similar content 3 days later and underperformed by 34%. First-mover window open." },
       { type: 'ad',        color: 'magenta', title: 'X ad spend scoring 28/100 Spot Score',          body: "Your X CTR (0.6%) is 52% below the category benchmark (1.24%) for home fragrance in your region. $480/month is underperforming. Reallocate to TikTok where your score is 84." },
@@ -928,7 +980,7 @@ const greetingFor = (hour) => {
   return 'Good evening';
 };
 
-const BriefScreen = ({ persona, workspace }) => {
+const BriefScreen = ({ persona, workspace, briefLang, setBriefLang }) => {
   // Source of truth: a workspace if we're in Agency mode, otherwise the persona itself.
   const D = workspace || persona;
   const [variantIdx, setVariantIdx] = React.useState(0);
@@ -936,14 +988,20 @@ const BriefScreen = ({ persona, workspace }) => {
   // Reset to variant A whenever the source data changes (persona or workspace swap).
   React.useEffect(() => { setVariantIdx(0); }, [D.id]);
 
-  const brief = D.briefs[variantIdx % D.briefs.length];
+  // Pick the right brief set. The Brand persona ships native-Arabic
+  // variants under `briefs_ar`; everything else falls through to `briefs`.
+  // Toggle UI in the header surfaces this; the prop wiring stays harmless
+  // when the toggle isn't rendered.
+  const useArabic = persona.id === 'brand' && briefLang === 'ar' && Array.isArray(D.briefs_ar);
+  const briefs = useArabic ? D.briefs_ar : D.briefs;
+  const brief = briefs[variantIdx % briefs.length];
   const firstName = persona.person?.firstName || D.name || 'there';
   const greeting = `${greetingFor(new Date().getHours())}${firstName ? ', ' + firstName : ''}.`;
   const aiLabel = persona.id === 'agency' ? (workspace?.ai || 'Claude') : (persona.person.ai_provider || 'Mashal');
   const toneLabel = persona.id === 'agency' ? (workspace?.tone || '—') : (persona.person.brief_tone || '—');
   const score = (workspace?.intel?.score) ?? persona.intel?.score;
 
-  const onRegenerate = () => setVariantIdx((variantIdx + 1) % D.briefs.length);
+  const onRegenerate = () => setVariantIdx((variantIdx + 1) % briefs.length);
 
   return (
     <div className="wrap pb-16">
@@ -958,10 +1016,36 @@ const BriefScreen = ({ persona, workspace }) => {
             {greeting}
           </h1>
           <p className="text-[14px] sm:text-[15px] text-mute dark:text-muteDark mt-1.5">
-            {D.signals?.length ?? 0} signals from your last 30 days · {D.briefs.length} brief variants in this demo.
+            {D.signals?.length ?? 0} signals from your last 30 days · {briefs.length} brief variants in this demo.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {persona.id === 'brand' && Array.isArray(D.briefs_ar) && (
+            <div
+              role="group"
+              aria-label="Brief language"
+              className="inline-flex items-center rounded-full border border-line dark:border-lineDark p-0.5 bg-chalk dark:bg-coalsoft">
+              {[
+                { id: 'en', label: 'EN', title: 'English brief' },
+                { id: 'ar', label: 'AR', title: 'بريف بالعربية' },
+              ].map(opt => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setBriefLang(opt.id)}
+                  aria-pressed={briefLang === opt.id}
+                  title={opt.title}
+                  className={cls(
+                    'h-7 px-3 rounded-full text-[11px] font-mono uppercase tracking-[0.1em] font-medium transition-colors',
+                    briefLang === opt.id
+                      ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
+                      : 'text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper'
+                  )}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
           <Pill color="ultraSoft">
             <MashalDot color="bg-ultra" size="w-1.5 h-1.5" />
             Variant {brief.variant}
@@ -1031,7 +1115,11 @@ const BriefScreen = ({ persona, workspace }) => {
 
       {/* Footer note — demo-only nudge */}
       <div className="mt-8 sm:mt-10 p-4 rounded-xl bg-ultraSoft/60 dark:bg-ultra/10 border border-ultra/20 text-[13px] text-mute dark:text-muteDark leading-relaxed">
-        <span className="text-ink dark:text-paper font-medium">Demo note:</span> the Regenerate button cycles through {D.briefs.length} pre-written brief variants for this persona. In the live product, Regenerate runs a fresh analysis on your connected accounts. <a href="/?route=signup" className="text-ultra font-medium hover:underline">Start your free trial</a> to wire up your own data.
+        <span className="text-ink dark:text-paper font-medium">Demo note:</span> the Regenerate button cycles through {briefs.length} pre-written brief variants for this persona. In the live product, Regenerate runs a fresh analysis on your connected accounts.
+        {persona.id === 'brand' && Array.isArray(D.briefs_ar) && (
+          <> The <span className="font-mono uppercase text-[11px] tracking-[0.1em]">EN</span> / <span className="font-mono uppercase text-[11px] tracking-[0.1em]">AR</span> toggle above swaps to natively-generated Arabic briefs — not translations. Khaleeji register, GCC-tuned recommendations.</>
+        )}{' '}
+        <a href="/?route=signup" className="text-ultra font-medium hover:underline">Start your free trial</a> to wire up your own data.
       </div>
     </div>
   );
@@ -1294,8 +1382,21 @@ const DemoApp = () => {
     return ['brief','stats','signals'].includes(s) ? s : 'brief';
   })();
 
+  // Brand-only: which language the brief renders in. Persona-scoped only
+  // (other tiers don't have native-Arabic content), but the state lives at
+  // the app level so it survives screen swaps + URL navigation.
+  const initialBriefLang = (() => {
+    const l = readParam('lang');
+    if (['en', 'ar'].includes(l)) return l;
+    try {
+      const s = sessionStorage.getItem('mashal_demo_brief_lang');
+      return ['en', 'ar'].includes(s) ? s : 'en';
+    } catch { return 'en'; }
+  })();
+
   const [personaId, setPersonaId] = React.useState(initialPersona);
   const [screen, setScreen]       = React.useState(initialScreen);
+  const [briefLang, setBriefLang] = React.useState(initialBriefLang);
 
   // Agency: which workspace is currently active.
   const initialWorkspace = (() => {
@@ -1316,12 +1417,15 @@ const DemoApp = () => {
   // Persist + URL sync on every change.
   React.useEffect(() => {
     try { sessionStorage.setItem('mashal_demo_persona', personaId); } catch {}
+    try { sessionStorage.setItem('mashal_demo_brief_lang', briefLang); } catch {}
     writeParams({
       persona: personaId,
       screen,
       workspace: personaId === 'agency' ? (workspaceId || PERSONAS.agency.workspaces[0].id) : null,
+      // Only emit ?lang= when it's non-default AND meaningful (Brand-only).
+      lang: (personaId === 'brand' && briefLang !== 'en') ? briefLang : null,
     });
-  }, [personaId, screen, workspaceId]);
+  }, [personaId, screen, workspaceId, briefLang]);
 
   // Snap to the top of the active screen when persona, screen, or workspace
   // changes — feels weird to land mid-page after a tab swap.
@@ -1366,7 +1470,7 @@ const DemoApp = () => {
 
       <div ref={screenRef} />
 
-      {screen === 'brief'   && <BriefScreen   persona={persona} workspace={workspace} />}
+      {screen === 'brief'   && <BriefScreen   persona={persona} workspace={workspace} briefLang={briefLang} setBriefLang={setBriefLang} />}
       {screen === 'stats'   && <StatsScreen   persona={persona} workspace={workspace} />}
       {screen === 'signals' && <SignalsScreen persona={persona} workspace={workspace} />}
     </div>

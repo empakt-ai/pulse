@@ -62,11 +62,8 @@ try {
   // Screenshot each persona's brief view + the stats view for one tier
   // so we have visual evidence of what actually renders.
   const shots = [
-    { name: 'creator-brief',   q: '?persona=creator&screen=brief' },
-    { name: 'pro-brief',       q: '?persona=pro_creator&screen=brief' },
-    { name: 'brand-brief-rtl', q: '?persona=brand&screen=brief' },
-    { name: 'agency-brief',    q: '?persona=agency&screen=brief' },
-    { name: 'creator-stats',   q: '?persona=creator&screen=stats' },
+    { name: 'brand-brief-en', q: '?persona=brand&screen=brief' },
+    { name: 'brand-brief-ar', q: '?persona=brand&screen=brief&lang=ar' },
   ];
   for (const s of shots) {
     await page.goto(URL + s.q, { waitUntil: 'networkidle0', timeout: 15000 });
