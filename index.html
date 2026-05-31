@@ -322,10 +322,10 @@
     } catch (_) {}
   })();
 
-  // Pre-React fail-safe: if anything goes wrong with React / Babel / the
-  // network in a way that prevents the in-app dismiss effect from running,
-  // force the splash to dismiss after 6 seconds AND show whatever error
-  // info we have collected inside the splash itself so the user isn't
+  // Pre-React fail-safe: if the Vite bundle fails to parse, fails to
+  // fetch, or throws on mount, the in-app dismiss effect never runs.
+  // After 6 seconds with no mount we take over the splash, surface any
+  // errors window.onerror caught, and offer a reset, so the user isn't
   // staring at a blank screen wondering what happened.
   var __pulse_errors = [];
   window.addEventListener('error', function (e) {
@@ -345,17 +345,9 @@
     splash.style.pointerEvents = 'auto';
     document.documentElement.removeAttribute('data-ready');
 
-    // Build a load-state report so we know which CDN scripts made it.
-    var loadState = [
-      'React:    ' + (window.React ? '✓ loaded' : (window.__pulse_loaded_react ? '⚠ tag loaded but no global' : (window.__pulse_failed_react ? '✗ failed to load (' + window.__pulse_failed_react + ')' : '— never started'))),
-      'ReactDOM: ' + (window.ReactDOM ? '✓ loaded' : (window.__pulse_loaded_reactDom ? '⚠ tag loaded but no global' : (window.__pulse_failed_reactDom ? '✗ failed to load' : '— never started'))),
-      'Babel:    ' + (window.Babel ? '✓ loaded' : (window.__pulse_loaded_babel ? '⚠ tag loaded but no global' : (window.__pulse_failed_babel ? '✗ failed to load' : '— never started'))),
-      'UA:       ' + (navigator.userAgent || '').slice(0, 90),
-    ].join('\n');
-
-    var details = (__pulse_errors.length
-      ? __pulse_errors.slice(0, 5).map(function (s) { return s.slice(0, 200); }).join('\n') + '\n\n'
-      : '') + 'Load state:\n' + loadState;
+    var details = __pulse_errors.length
+      ? __pulse_errors.slice(0, 5).map(function (s) { return s.slice(0, 200); }).join('\n')
+      : 'No console errors captured. The SPA bundle may have failed to load — open DevTools › Network and reload.';
     var safeDetails = details.replace(/[<>&]/g, function (c) {
       return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
     });
