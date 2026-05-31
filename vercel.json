@@ -19,7 +19,8 @@
     { "source": "/terms",                 "destination": "/terms.html"               },
     { "source": "/stack",                 "destination": "/stack.html"               },
     { "source": "/admin",                 "destination": "/admin.html"               },
-    { "source": "/((?!api/|features|integrations|pricing|updates|about|contact|privacy|terms|stack|compare|admin).*)", "destination": "/index.html" }
+    { "source": "/demo",                  "destination": "/index.html"               },
+    { "source": "/((?!api/|features|integrations|pricing|updates|about|contact|privacy|terms|stack|compare|admin|demo).*)", "destination": "/index.html" }
   ],
   "crons": [
     { "path": "/api/cron/hourly", "schedule": "0 * * * *" }
