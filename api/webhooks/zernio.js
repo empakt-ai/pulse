@@ -83,6 +83,36 @@ export default async function handler(req, res) {
   const sigHeader = req.headers?.['x-zernio-signature'] || req.headers?.['x-signature'] || '';
   const verify = verifySignature(raw, sigHeader);
   if (!verify.ok) {
+    // ── TEMP DIAGNOSTIC (remove once Zernio webhook is verified) ─────────
+    // Brute-checks EVERY request header against every algo/encoding so one
+    // failed delivery reveals exactly how Zernio signs. Never logs SECRET —
+    // only its length, and HMAC digests (which don't reveal the key).
+    try {
+      const hdrs = req.headers || {};
+      const matches = [];
+      for (const [hk, hvRaw] of Object.entries(hdrs)) {
+        const hv = String(hvRaw || '').trim();
+        const stripped = hv.replace(/^\w+=/, '').trim();   // drop "sha256=" style prefix
+        if (!stripped) continue;
+        for (const algo of ['sha256', 'sha1', 'sha512']) {
+          for (const enc of ['hex', 'base64']) {
+            const d = crypto.createHmac(algo, SECRET).update(raw).digest(enc);
+            if (d === stripped || `${algo}=${d}` === hv) matches.push({ header: hk, algo, enc });
+          }
+        }
+      }
+      console.log('ZERNIO_WEBHOOK_DEBUG ' + JSON.stringify({
+        headerKeys: Object.keys(hdrs),
+        sigHeaderRead: String(sigHeader || ''),
+        rawLen: raw.length,
+        rawPreview: raw.toString('utf8').slice(0, 300),
+        secretSet: !!SECRET,
+        secretLen: SECRET.length,
+        matches,                       // [] means NOTHING matched the raw body
+      }));
+    } catch (e) {
+      console.log('ZERNIO_WEBHOOK_DEBUG error ' + e.message);
+    }
     return json(res, 401, { error: 'Invalid signature' });
   }
 
