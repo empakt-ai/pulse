@@ -5,8 +5,10 @@
 // workspace + account, and inserts an inbox_events row. Idempotent on
 // Zernio's delivery_id so replays don't double-insert.
 //
-// Webhook URL to register in Zernio dashboard:
-//   https://mashal.app/api/webhooks/zernio
+// Webhook URL to register in Zernio dashboard (use the www canonical host —
+// the bare apex mashal.app issues a 307 redirect that a POST webhook may not
+// follow, dropping the body):
+//   https://www.mashal.app/api/webhooks/zernio
 //
 // We don't process events synchronously here — the live-signals cron picks
 // up pending rows on its next pass. Keeps webhook latency low and avoids
@@ -16,6 +18,13 @@
 import crypto from 'node:crypto';
 import { supabase } from '../_lib/supabase.js';
 import { json } from '../_lib/auth.js';
+
+// Disable Vercel's automatic body parsing so we can read the EXACT raw bytes
+// Zernio signed. @vercel/node does NOT populate req.rawBody, so the old
+// JSON.stringify(req.body) fallback re-serialized the parsed body — reordering
+// keys and changing whitespace/unicode escaping — which makes the HMAC never
+// match a real delivery. We read the stream ourselves and parse it manually.
+export const config = { api: { bodyParser: false } };
 
 const SECRET = process.env.ZERNIO_WEBHOOK_SECRET || '';
 const IS_PROD = process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'production';
@@ -55,14 +64,16 @@ function pick(obj, ...keys) {
   return null;
 }
 
-// Vercel parses JSON bodies by default. Get the raw text for signature
-// verification by reading from req.rawBody when available; otherwise
-// re-serialize req.body (close enough — Zernio signs the JSON they sent
-// us, which we reconstruct deterministically here).
-async function readRawBody(req) {
-  if (req.rawBody) return Buffer.isBuffer(req.rawBody) ? req.rawBody.toString('utf8') : String(req.rawBody);
-  if (typeof req.body === 'string') return req.body;
-  return JSON.stringify(req.body || {});
+// Read the exact raw request bytes off the stream. With bodyParser disabled
+// req is the unconsumed IncomingMessage, so this is what Zernio actually
+// signed — feed it straight into the HMAC, then JSON.parse for the payload.
+function readRawBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
 }
 
 export default async function handler(req, res) {
@@ -75,8 +86,8 @@ export default async function handler(req, res) {
     return json(res, 401, { error: 'Invalid signature' });
   }
 
-  let body = req.body;
-  if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
+  let body;
+  try { body = JSON.parse(raw.toString('utf8')); } catch { body = {}; }
   if (!body || typeof body !== 'object') return json(res, 400, { error: 'Invalid body' });
 
   // Zernio webhook payload field names aren't fully nailed down in their
