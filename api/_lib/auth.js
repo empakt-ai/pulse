@@ -94,20 +94,34 @@ export async function authenticate(req) {
   if (workspace) attachTrialState(workspace);
   for (const w of accessible) attachTrialState(w);
 
-  // Admin-only tier override. Reads from the admin's own profile row, so
-  // there's no way a non-admin gets a tier upgrade by writing into their
-  // own row — auth.js refuses to honor it unless is_admin=true. Applies
-  // only to workspaces this user OWNS — being a member of someone else's
-  // workspace doesn't get you their override.
+  // ── Tier follows the USER, not the workspace ────────────────────────────
+  // One subscription per user grants that tier to EVERY workspace they own.
+  // We resolve the user's effective tier as the HIGHEST tier across the
+  // workspaces they OWN — a paid conversion sets one workspace's tier, which
+  // then lifts all of them, and any newly-created workspace inherits it. The
+  // resolved tier is stamped onto every owned workspace so all downstream
+  // tierFor()/gating reads agree. (Workspace-count caps are NOT touched.)
+  const TIER_RANK = { creator: 1, pro_creator: 2, brand: 3, agency: 4 };
+  const ownedTiers = accessible
+    .filter(w => roleMap[w.id] === 'owner')
+    .map(w => w.tier)
+    .filter(t => TIER_RANK[t]);
+  let userTier = ownedTiers.sort((a, b) => (TIER_RANK[b] || 0) - (TIER_RANK[a] || 0))[0] || null;
+
+  // Admin tier_override is a hard override on top. Reads from the admin's own
+  // profile row, so a non-admin can't self-upgrade by writing it, and it only
+  // applies to workspaces this user OWNS.
   const tierOverride = (isAdmin && typeof profileRow?.tier_override === 'string'
-    && ['creator', 'brand', 'agency'].includes(profileRow.tier_override))
+    && ['creator', 'pro_creator', 'brand', 'agency'].includes(profileRow.tier_override))
     ? profileRow.tier_override
     : null;
-  if (tierOverride) {
+  if (tierOverride) userTier = tierOverride;
+
+  if (userTier) {
     for (const w of accessible) {
       if (roleMap[w.id] === 'owner') {
-        w.tier = tierOverride;
-        w.tier_overridden = true;
+        w.tier = userTier;
+        if (tierOverride) w.tier_overridden = true;
       }
     }
   }
