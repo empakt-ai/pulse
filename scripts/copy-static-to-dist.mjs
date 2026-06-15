@@ -88,4 +88,15 @@ if (fs.existsSync(marketingJs)) {
   n++;
 }
 
-console.log(`Copied ${n} root-level file(s) + compare/, css/, images/ trees to dist/`);
+// /demo serves the SPA in demo mode. Vercel's cleanUrls turns a rewrite to
+// /index.html into a 308 redirect, so `/demo -> /index.html` 404s. Mirror the
+// working marketing pattern instead: ship a real dist/demo.html (a copy of the
+// built index, same hashed bundle) and rewrite /demo -> /demo.html. The SPA
+// reads window.location.pathname === '/demo' to enter demo mode, unchanged.
+const builtIndex = path.join(distDir, 'index.html');
+if (fs.existsSync(builtIndex)) {
+  copyFile(builtIndex, path.join(distDir, 'demo.html'));
+  n++;
+}
+
+console.log(`Copied ${n} root-level file(s) + compare/, css/, images/ trees to dist/ (incl. demo.html)`);

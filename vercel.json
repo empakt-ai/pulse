@@ -19,7 +19,7 @@
     { "source": "/terms",                 "destination": "/terms.html"               },
     { "source": "/stack",                 "destination": "/stack.html"               },
     { "source": "/admin",                 "destination": "/admin.html"               },
-    { "source": "/demo",                  "destination": "/index.html"               },
+    { "source": "/demo",                  "destination": "/demo.html"                },
     { "source": "/((?!api/|features|integrations|pricing|updates|about|contact|privacy|terms|stack|compare|admin|demo).*)", "destination": "/index.html" }
   ],
   "crons": [
