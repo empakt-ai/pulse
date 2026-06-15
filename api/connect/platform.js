@@ -50,7 +50,7 @@ async function ensureProfile(workspace) {
     // overwrite workspace.zernio_profile_id.
   }
 
-  const name = `pulse-${workspace.id}`;
+  const name = `mashal-${workspace.id}`;
   let profileId = null;
 
   try {
