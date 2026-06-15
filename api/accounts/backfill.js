@@ -20,7 +20,6 @@
 import { authenticate, json, trialLockoutEnvelope } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { runActor, estimateScrapeCost } from '../_lib/apify.js';
-import { scrapeChannel as scrapeYouTubeChannel } from '../_lib/youtube.js';
 import { TRIAL_LIMITS } from '../_lib/tiers.js';
 import { assertRole } from '../_lib/permissions.js';
 
@@ -98,13 +97,14 @@ export default async function handler(req, res) {
 
   try {
     if (account.platform === 'youtube') {
-      const channelKey = account.metadata?.channel_id || account.zernio_account_id;
-      if (!channelKey) {
-        return json(res, 400, { error: 'Missing YouTube channel id on account' });
-      }
-      const yt = await scrapeYouTubeChannel(channelKey, { maxResults: fetchLimit });
-      normalisedPosts = yt.posts || [];
-      cost_cents = 0; // direct API — no Apify charge
+      // YouTube own-account data now flows through Zernio, including the
+      // first-connect historic backfill via /api/sync?mode=backfill. The legacy
+      // Data-API one-shot fetch would feed a Zernio account id to Google and
+      // fail, so cleanly no-op the manual fetch instead of erroring.
+      return json(res, 200, {
+        ok: true, persisted: 0, platform: 'youtube',
+        message: 'YouTube history syncs automatically via Zernio — no manual fetch needed.',
+      });
     } else {
       const result = await runActor(account.platform, handle, { limit: fetchLimit });
       normalisedPosts = result.posts || [];

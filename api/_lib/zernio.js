@@ -111,6 +111,11 @@ export const zernio = {
     return call(`/profiles/${profileId}`);
   },
 
+  // Update a profile (e.g. rename). Zernio: PUT /v1/profiles/{id}; accepts name.
+  async updateProfile(profileId, patch) {
+    return call(`/profiles/${profileId}`, { method: 'PUT', body: JSON.stringify(patch) });
+  },
+
   async listProfiles() {
     return call('/profiles');
   },

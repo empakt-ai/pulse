@@ -20,7 +20,6 @@
 
 import { supabase } from './supabase.js';
 import { zernio, extractFollowers, parseAudienceDemographics } from './zernio.js';
-import { scrapeChannel as scrapeYouTubeChannel } from './youtube.js';
 import { pullAds } from './ads.js';
 import { scrapeProfile as apifyScrapeProfile, runActor as apifyRunActor, ACTORS as APIFY_ACTORS } from './apify.js';
 import { detectContent } from './content-detection.js';
@@ -225,19 +224,11 @@ async function syncOneAccount(workspace, acct, mode) {
   const scrapeOnly = !!workspace?.trial_active;
 
   try {
-    if (acct.platform === 'youtube') {
-      // YouTube goes through the Data API; we always pull the latest N
-      // videos rather than a date window because the API doesn't support
-      // `publishedAfter` on the playlistItems endpoint without re-paging.
-      const channelKey = acct.metadata?.channel_id || acct.zernio_account_id;
-      const limit = mode === 'backfill' ? 50 : mode === 'deep' ? 30 : 12;
-      const yt = await scrapeYouTubeChannel(channelKey, { maxResults: limit });
-      rows = (yt.posts || []).map(p => {
-        const rate = engagementRate(p);
-        return { workspace_id: workspace.id, source: 'own', platform: 'youtube',
-                 ...p, engagement_rate: rate, signal: signalFor(rate) };
-      }).filter(r => r.platform_post_id);
-    } else if (scrapeOnly && acct.platform_username) {
+    // YouTube now routes through Zernio (own-account connect + analytics) like
+    // every other platform — no Google OAuth / Data API. It must NOT take the
+    // Apify branch (there's no YouTube Apify actor), so trial + paid YouTube
+    // both fall through to the Zernio analytics path below.
+    if (scrapeOnly && acct.platform !== 'youtube' && acct.platform_username) {
       // Apify scrape using the account's public handle. Limit follows the
       // same depth tiers we use for Zernio so trial cards aren't visibly
       // shallower than paid ones (the difference is mostly under the hood).

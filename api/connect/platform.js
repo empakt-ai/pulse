@@ -6,15 +6,15 @@
 import { authenticate, json } from '../_lib/auth.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
-import { buildAuthUrl as buildYouTubeAuthUrl } from '../_lib/youtube.js';
 import { assertRole } from '../_lib/permissions.js';
 
-// Most platforms go through Zernio's hosted OAuth. YouTube uses Google's
-// OAuth directly so we get a refresh_token + Analytics API access scoped to
-// the actual creator account (Zernio's flow doesn't expose raw tokens).
-const ZERNIO_SUPPORTED = ['instagram', 'tiktok', 'facebook', 'linkedin', 'x', 'snapchat'];
-const DIRECT_SUPPORTED = ['youtube'];
-const SUPPORTED = [...ZERNIO_SUPPORTED, ...DIRECT_SUPPORTED];
+// All platforms — including YouTube — go through Zernio's hosted OAuth. Zernio's
+// own verified app handles the Google consent for YouTube, so there's no
+// "unverified app" warning and no raw Google tokens for us to manage. (Own-
+// account YouTube no longer uses the Google Data API; competitor YouTube still
+// does, via api/_lib/youtube.js + YOUTUBE_API_KEY — read-only, no OAuth.)
+const ZERNIO_SUPPORTED = ['instagram', 'tiktok', 'facebook', 'linkedin', 'x', 'snapchat', 'youtube'];
+const SUPPORTED = ZERNIO_SUPPORTED;
 
 function pickProfileId(res) {
   // Zernio shapes seen in the wild:
@@ -37,7 +37,19 @@ async function ensureProfile(workspace) {
   if (workspace.zernio_profile_id) {
     try {
       const existing = await zernio.getProfile(workspace.zernio_profile_id);
-      if (pickProfileId(existing)) return workspace.zernio_profile_id;
+      if (pickProfileId(existing)) {
+        // Self-heal: rebrand legacy `pulse-<id>` profile names to `mashal-<id>`
+        // once (the name is visible on the Zernio dashboard). Best-effort —
+        // never block connect on the rename.
+        const prof = existing.profile || existing;
+        if (typeof prof?.name === 'string' && prof.name.startsWith('pulse-')) {
+          await zernio.updateProfile(workspace.zernio_profile_id, {
+            name: `mashal-${workspace.id}`,
+            ...(prof.description != null ? { description: prof.description } : {}),
+          }).catch(() => {});
+        }
+        return workspace.zernio_profile_id;
+      }
       // Reached Zernio but no profile in the response → treat as gone, recreate.
     } catch (e) {
       // Only recreate on a definitive not-found. On transient/auth errors,
@@ -107,17 +119,7 @@ export default async function handler(req, res) {
   const appUrl = process.env.APP_URL || 'https://mashal.app';
 
   try {
-    // YouTube uses direct Google OAuth — no Zernio profile involved.
-    // The redirect_uri MUST be registered in Google Cloud Console exactly.
-    // We deliberately omit query params from redirect_uri so it matches the
-    // single registered URI; the platform is identified via OAuth `state`.
-    if (platform === 'youtube') {
-      const redirectUri = `${appUrl}/api/connect/callback`;
-      const authUrl = buildYouTubeAuthUrl(auth.user.id, auth.workspace.id, redirectUri);
-      return json(res, 200, { authUrl, platform });
-    }
-
-    // Everything else goes through Zernio.
+    // All platforms (YouTube included) go through Zernio's hosted OAuth.
     const profileId = await ensureProfile(auth.workspace);
     const redirectUrl = `${appUrl}/api/connect/callback?platform=${platform}`;
     const result = await zernio.getConnectUrl(platform, profileId, redirectUrl);
