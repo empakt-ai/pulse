@@ -77,6 +77,7 @@ const {
   platformBrand,
   platformLabel,
   restoreSession,
+  safeHref,
   sbAuth,
   useTweaks,
 } = window;

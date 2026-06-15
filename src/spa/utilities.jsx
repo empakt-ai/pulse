@@ -346,7 +346,7 @@ const MashalLogo = ({ className = 'h-7' }) => (
   </div>
 );
 
-Object.assign(window, { cls, Card, Btn, Eyebrow, Plat, Sparkline, BarSpark, Pill, MashalDot, Progress, StatCard, SectionHead, MashalLogo });
+Object.assign(window, { cls, safeHref, Card, Btn, Eyebrow, Plat, Sparkline, BarSpark, Pill, MashalDot, Progress, StatCard, SectionHead, MashalLogo });
 
 
 // ═════════════════════════════════════════════════════════════════════════
