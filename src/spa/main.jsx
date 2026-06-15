@@ -48,6 +48,7 @@ import '../../js/team/panel.jsx';
 import '../../js/support/panel.jsx';
 import '../../js/webhooks/panel.jsx';
 import '../../js/conversations/panel.jsx';
+import '../../js/connect-telegram/panel.jsx';
 
 // Demo-mode bootstrap. Top-level code in this module is a no-op unless the
 // URL is /demo, in which case it:

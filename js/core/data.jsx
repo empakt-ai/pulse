@@ -69,8 +69,8 @@ const formatNum = (n) => {
   return String(n);
 };
 
-const platformLabel = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', all: 'All platforms' };
-const platformBrand = { ig: '#D62976', tt: '#010101', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2' };
+const platformLabel = { ig: 'Instagram', tt: 'TikTok', yt: 'YouTube', li: 'LinkedIn', fb: 'Facebook', tg: 'Telegram', all: 'All platforms' };
+const platformBrand = { ig: '#D62976', tt: '#010101', yt: '#FF0000', li: '#0A66C2', fb: '#1877F2', tg: '#229ED9' };
 
 // Initials from a name/email — used by hydrateD to seed D.user.initials.
 const initialsOf = (s) => {

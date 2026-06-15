@@ -127,6 +127,17 @@ export const zernio = {
     return call(`/connect/${platform}?${params.toString()}`);
   },
 
+  // Telegram connect — NOT OAuth. Returns an access code (ZRN-XXXXXX) +
+  // instructions; the user adds @ZernioScheduleBot as a channel/group admin
+  // and sends the code. The connected channel then shows up in listAccounts
+  // like any other platform, so our existing /accounts import picks it up.
+  // Thin pass-through — the caller (api/connect/telegram.js) normalises the
+  // response shape.
+  async connectTelegram(profileId) {
+    const params = new URLSearchParams({ profileId });
+    return call(`/connect/telegram?${params.toString()}`);
+  },
+
   // List accounts connected to a Zernio profile
   async listAccounts(profileId) {
     const params = new URLSearchParams({ profileId });
