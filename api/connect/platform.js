@@ -25,7 +25,30 @@ function pickProfileId(res) {
 }
 
 async function ensureProfile(workspace) {
-  if (workspace.zernio_profile_id) return workspace.zernio_profile_id;
+  // Validate the stored profile still exists on Zernio before reusing it.
+  // A stale id (profile/accounts removed on Zernio, or the profile GC'd after
+  // a disconnect) still produces a valid-looking OAuth URL — so the consent
+  // screen appears normally — but Zernio's post-consent attach silently fails
+  // against a profile that no longer exists: the account never lands and the
+  // callback never redirects back. Recreating a fresh profile here is exactly
+  // the "treat every reconnect as an absolutely fresh connection" behaviour we
+  // want. (The connected_accounts/handle-registry rows are kept purely for
+  // trial-abuse prevention — they must NOT cause us to reuse dead Zernio state.)
+  if (workspace.zernio_profile_id) {
+    try {
+      const existing = await zernio.getProfile(workspace.zernio_profile_id);
+      if (pickProfileId(existing)) return workspace.zernio_profile_id;
+      // Reached Zernio but no profile in the response → treat as gone, recreate.
+    } catch (e) {
+      // Only recreate on a definitive not-found. On transient/auth errors,
+      // reuse the existing id rather than spawning duplicate profiles.
+      const gone = e.status === 404 || e.status === 410
+        || /not\s*found|no\s*such|does\s*not\s*exist|invalid\s*profile/i.test(e.message || '');
+      if (!gone) return workspace.zernio_profile_id;
+    }
+    // Fall through: stale/deleted profile → create a fresh one below and
+    // overwrite workspace.zernio_profile_id.
+  }
 
   const name = `pulse-${workspace.id}`;
   let profileId = null;
