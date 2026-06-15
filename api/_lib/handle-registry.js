@@ -125,9 +125,16 @@ export async function releaseHandle(platform, rawHandle, { permanent = false, re
   const history = Array.isArray(row.history) ? row.history : [];
   const event = { kind: permanent ? 'release_permanent' : 'release_trial', reason, at: now };
 
+  // Keep workspace_id bound to the OWNER even on a permanent (user-initiated)
+  // release. Nulling it — the old behaviour — made the handle un-reclaimable by
+  // its own owner: isAvailable() could no longer match workspace_id, so it
+  // returned 'trial_locked' and the account silently failed to re-import on
+  // every reconnect. The registry's only job is to stop a DIFFERENT workspace
+  // from re-trialing the same handle; the original owner must always be able to
+  // reconnect. released_at still marks it inactive, which is enough to block
+  // other workspaces (they hit the 'trial_locked'/'taken' branch).
   await supabase.update('social_handles', {
     released_at: now,
-    ...(permanent ? { workspace_id: null } : {}),
     history: [...history, event],
   }, { eq: { id: row.id } });
   return true;

@@ -4755,17 +4755,30 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
               try { window.dispatchEvent(new CustomEvent('pulse:refresh-brief')); } catch {}
             })
             .catch(() => {});
-        } else if (!anyConnected) {
-          // OAuth round-tripped but Zernio didn't surface the account. Most
-          // common cause for Instagram: a personal IG profile (Mashal needs a
-          // Business or Creator account). Same for Facebook personal profiles.
-          showToast(
-            'OAuth completed but no account was returned. ' +
-            (platform === 'instagram' || platform === 'facebook'
-              ? 'Mashal needs a Business or Creator account — check your account type.'
-              : 'Check your account permissions and try again.'),
-            'warn'
-          );
+        } else if (!anyConnected && !rejForPlatform.length) {
+          // The OAuth completed but the account isn't in our list yet. This is
+          // usually NOT an account-type problem — Zernio's listAccounts can lag
+          // a few seconds behind its own OAuth callback, so an immediate sync
+          // races ahead of persistence. Retry a few times before giving up so
+          // we don't wrongly tell the user their (valid) account is unsupported.
+          let recovered = false;
+          for (let i = 0; i < 4 && !recovered; i++) {
+            await new Promise(r => setTimeout(r, 2500));
+            try {
+              const retry = await api('/accounts', { method: 'POST' });
+              setAccounts(retry.accounts || []);
+              if ((retry.accounts || []).some(a => a.platform === platform && a.is_active !== false)) {
+                recovered = true;
+                showToast(`${PLATFORMS.find(p => p.id === platform)?.label || platform} connected ✓`);
+              }
+            } catch {}
+          }
+          if (!recovered) {
+            showToast(
+              "Couldn't confirm the account with Zernio yet. If it's a personal Instagram/Facebook profile, switch it to Business or Creator — otherwise give it a moment and press Sync.",
+              'warn'
+            );
+          }
         }
       } catch (err) { showToast(err.message, 'err'); }
       setConnecting(null);
