@@ -10,13 +10,13 @@ import React from 'react';
 // register. The number then imports uniformly through the existing
 // POST /api/accounts sync. READ-ONLY BYO: no provisioning, no outbound.
 //
+// CRITICAL: the SDK + config are preloaded on mount so FB.login can be called
+// SYNCHRONOUSLY in the click handler. Browsers block the signup popup if you
+// await anything (config fetch, SDK load) between the click and FB.login — that
+// produced a silent "stuck on Connecting, no popup" hang.
+//
 // Self-contained window-bridge module: window.WhatsappConnect.Card, mounted by
 // screens.jsx in the Settings "Connected accounts" section. Brand/Agency only.
-//
-// PARKED 2026-06-15 behind ENABLED=false: built but hidden until we validate the
-// Meta flow against Zernio's live sdk-config + a real WABA. Flip to true (one
-// line) to surface the card; the backend (api/connect/whatsapp.js) is live
-// either way. Nothing else changes.
 // ─────────────────────────────────────────────────────────────────────────
 
 const { cls, Btn, Icon, Plat, api } = window;
@@ -30,26 +30,29 @@ const ENABLED = true;
 const OWNER_ONLY = true;
 const FB_SDK_VERSION = 'v21.0';
 
-// Load Meta's JS SDK once. Resolves with window.FB.
-function loadFbSdk() {
+// Load Meta's JS SDK once and init it with the app id, via the canonical
+// fbAsyncInit hook so FB.init only runs when the SDK is genuinely ready.
+function ensureFbReady(appId) {
   return new Promise((resolve, reject) => {
-    if (window.FB) return resolve(window.FB);
-    const existing = document.getElementById('facebook-jssdk');
-    if (existing) {
-      const t0 = Date.now();
-      const iv = setInterval(() => {
-        if (window.FB) { clearInterval(iv); resolve(window.FB); }
-        else if (Date.now() - t0 > 12000) { clearInterval(iv); reject(new Error('Meta SDK load timed out')); }
-      }, 100);
-      return;
+    if (window.FB && window.__mashalFbInited) return resolve(window.FB);
+    const doInit = () => {
+      try {
+        window.FB.init({ appId, autoLogAppEvents: true, xfbml: false, version: FB_SDK_VERSION });
+        window.__mashalFbInited = true;
+        resolve(window.FB);
+      } catch (e) { reject(e); }
+    };
+    if (window.FB) return doInit();
+    window.fbAsyncInit = doInit;
+    if (!document.getElementById('facebook-jssdk')) {
+      const s = document.createElement('script');
+      s.id = 'facebook-jssdk';
+      s.async = true; s.defer = true; s.crossOrigin = 'anonymous';
+      s.src = 'https://connect.facebook.net/en_US/sdk.js';
+      s.onerror = () => reject(new Error('Failed to load Meta SDK (ad blocker?)'));
+      document.body.appendChild(s);
     }
-    const s = document.createElement('script');
-    s.id = 'facebook-jssdk';
-    s.async = true; s.defer = true; s.crossOrigin = 'anonymous';
-    s.src = `https://connect.facebook.net/en_US/sdk.js`;
-    s.onload = () => (window.FB ? resolve(window.FB) : reject(new Error('Meta SDK unavailable')));
-    s.onerror = () => reject(new Error('Failed to load Meta SDK (ad blocker?)'));
-    document.body.appendChild(s);
+    setTimeout(() => { if (!window.__mashalFbInited) reject(new Error('Meta SDK timed out loading')); }, 12000);
   });
 }
 
@@ -59,11 +62,49 @@ const isFacebookOrigin = (origin) => {
 };
 
 const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSynced, onDisconnect }) => {
+  const [ready, setReady] = React.useState(false);
+  const [prepErr, setPrepErr] = React.useState(null);
   const [busy, setBusy] = React.useState(false);
-  const sessionRef = React.useRef(null);   // { wabaId, phoneNumberId } from Meta postMessage
+  const cfgRef = React.useRef(null);        // { appId, configId, profileId }
+  const sessionRef = React.useRef(null);    // { wabaId, phoneNumberId } from Meta postMessage
   const connected = !!account;
   const tierKey = String(tier || 'creator').toLowerCase();
   const allowed = tierKey === 'brand' || tierKey === 'agency' || !!trialActive;
+
+  // Preload config (appId/configId) + SDK so the click can call FB.login
+  // synchronously. Surfaces any failure as prepErr so it's visible, not silent.
+  const prepare = React.useCallback(async () => {
+    setPrepErr(null);
+    try {
+      const cfg = await api('/connect/whatsapp');
+      await ensureFbReady(cfg.appId);
+      cfgRef.current = cfg;
+      setReady(true);
+    } catch (e) {
+      setReady(false);
+      setPrepErr(e.message || 'Could not prepare WhatsApp connect');
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (connected || !allowed || window.__MASHAL_DEMO_MODE) return;
+    prepare();
+  }, [connected, allowed, prepare]);
+
+  // Capture the WABA / phone-number ids Meta posts back during signup.
+  React.useEffect(() => {
+    const onMessage = (event) => {
+      if (!isFacebookOrigin(event.origin)) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH' && data.data) {
+          sessionRef.current = { wabaId: data.data.waba_id, phoneNumberId: data.data.phone_number_id };
+        }
+      } catch { /* not our message */ }
+    };
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
   // Poll the existing sync until the WhatsApp number lands.
   const pollForNumber = React.useCallback(async () => {
@@ -83,30 +124,21 @@ const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSyn
     return false;
   }, [onSynced, showToast]);
 
-  const connect = async () => {
+  // SYNCHRONOUS click handler — opens the Meta popup inside the user gesture.
+  // No awaits before FB.login (everything it needs was preloaded on mount).
+  const connect = () => {
     if (window.__MASHAL_DEMO_MODE) { window.__demoBlock?.('Sign up to connect your own accounts — this is a read-only demo.'); return; }
+    if (!ready || !cfgRef.current || !window.FB) {
+      showToast?.(prepErr || 'WhatsApp is still preparing — try again in a moment.', 'warn');
+      if (!ready) prepare();
+      return;
+    }
     setBusy(true);
     sessionRef.current = null;
-    let onMessage;
     try {
-      const cfg = await api('/connect/whatsapp');          // { appId, configId, profileId }
-      const FB = await loadFbSdk();
-      FB.init({ appId: cfg.appId, autoLogAppEvents: true, xfbml: false, version: FB_SDK_VERSION });
-
-      // Capture the WABA / phone-number ids Meta posts back during signup.
-      onMessage = (event) => {
-        if (!isFacebookOrigin(event.origin)) return;
-        try {
-          const data = JSON.parse(event.data);
-          if (data.type === 'WA_EMBEDDED_SIGNUP' && data.event === 'FINISH' && data.data) {
-            sessionRef.current = { wabaId: data.data.waba_id, phoneNumberId: data.data.phone_number_id };
-          }
-        } catch { /* not our message */ }
-      };
-      window.addEventListener('message', onMessage);
-
-      await new Promise((resolve) => {
-        FB.login(async (response) => {
+      window.FB.login((response) => {
+        // The popup is already open; async work here is fine.
+        (async () => {
           try {
             const code = response?.authResponse?.code;
             if (!code) { showToast?.('WhatsApp connect cancelled', 'warn'); return; }
@@ -119,24 +151,23 @@ const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSyn
           } catch (e) {
             showToast?.(e.message || 'WhatsApp registration failed', 'err');
           } finally {
-            resolve();
+            setBusy(false);
           }
-        }, {
-          config_id: cfg.configId,
-          response_type: 'code',
-          override_default_response_type: true,
-          extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
-        });
+        })();
+      }, {
+        config_id: cfgRef.current.configId,
+        response_type: 'code',
+        override_default_response_type: true,
+        extras: { setup: {}, featureType: '', sessionInfoVersion: '3' },
       });
     } catch (e) {
-      showToast?.(e.message || "Couldn't start WhatsApp connect", 'err');
-    } finally {
-      if (onMessage) window.removeEventListener('message', onMessage);
+      showToast?.(e.message || "Couldn't open WhatsApp signup", 'err');
       setBusy(false);
     }
   };
 
   const disabledReason = !allowed ? 'Brand & Agency' : (atCap && !connected ? 'Cap reached' : null);
+  const btnDisabled = busy || !!disabledReason || (!connected && !ready && !prepErr);
 
   return (
     <div className={cls(
@@ -164,7 +195,9 @@ const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSyn
           <div className="text-[12px] text-mute dark:text-muteDark font-mono mt-0.5 break-words">
             {connected
               ? (account.platform_username || account.platform_name || 'Number linked')
-              : 'Your WhatsApp Business number · read-only'}
+              : prepErr
+                ? <span className="text-magenta">{prepErr}</span>
+                : 'Your WhatsApp Business number · read-only'}
           </div>
         </div>
       </div>
@@ -179,11 +212,11 @@ const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSyn
       ) : (
         <button
           onClick={connect}
-          disabled={busy || !!disabledReason}
-          title={disabledReason ? (allowed ? undefined : 'WhatsApp unlocks on Brand and Agency') : undefined}
+          disabled={btnDisabled}
+          title={disabledReason ? (allowed ? undefined : 'WhatsApp unlocks on Brand and Agency') : (prepErr || undefined)}
           className={cls(
             'flex-shrink-0 self-center h-9 px-4 rounded-xl text-[13px] font-medium transition flex items-center gap-1.5 whitespace-nowrap',
-            (busy || disabledReason)
+            btnDisabled
               ? 'opacity-50 cursor-not-allowed bg-ink/5 dark:bg-paper/5 border border-line dark:border-lineDark text-mute dark:text-muteDark'
               : 'bg-ink text-paper dark:bg-paper dark:text-ink hover:bg-coal dark:hover:bg-chalk'
           )}
@@ -192,7 +225,11 @@ const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSyn
             ? <><Icon name="clock" className="w-3.5 h-3.5" /> Connecting…</>
             : disabledReason
               ? <><Icon name="info" className="w-3.5 h-3.5" /> {disabledReason}</>
-              : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>}
+              : prepErr
+                ? <><Icon name="refresh" className="w-3.5 h-3.5" /> Retry</>
+                : !ready
+                  ? <><Icon name="clock" className="w-3.5 h-3.5" /> Preparing…</>
+                  : <><Icon name="plus" className="w-3.5 h-3.5" /> Connect</>}
         </button>
       )}
     </div>
