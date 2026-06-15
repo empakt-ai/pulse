@@ -744,6 +744,116 @@ let _briefLang        = 'en';
 // dropping them straight into a defaulted persona.
 let _personaChosen    = false;
 
+// ── Demo data generators ────────────────────────────────────────────────
+// Derive a FULL, per-platform-differentiated dataset from each persona's seed
+// accounts so every screen is populated and visibly changes when you switch
+// platforms / agency clients. Deterministic (seeded by persona+workspace+
+// platform) so numbers stay stable across re-renders but differ per account.
+function _demoHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function _demoRng(seedStr) {
+  let s = _demoHash(String(seedStr)) || 1;
+  return () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+}
+const _PLAT_VIEW_MULT = { ig: 1.0, tt: 2.4, yt: 1.7, li: 0.5, fb: 0.8 };
+const _PLAT_EMOJI     = { ig: '📸', tt: '🎵', yt: '▶️', li: '💼', fb: '👍' };
+const _PLAT_TYPE      = { ig: 'reel', tt: 'video', yt: 'video', li: 'post', fb: 'post' };
+const _CAPTIONS = [
+  'Behind the scenes of this week', '3 things nobody tells you', 'The before & after',
+  'Answering your top question', 'This took 4 hours to set up', 'POV: when the plan works',
+  'A quick tip that changed everything', 'Day in the life', 'We tried it so you don’t have to',
+  'The result speaks for itself', 'What I wish I knew sooner', 'Save this one for later',
+];
+
+function genDemoPosts(accounts, seedBase) {
+  const out = []; let idx = 0;
+  for (const a of (accounts || [])) {
+    const key = (a.plat === 'sc' || a.plat === 'x') ? null : a.plat;
+    if (!key) continue;
+    const rng = _demoRng(seedBase + ':' + key);
+    const n = 3 + Math.floor(rng() * 4);
+    const mult = _PLAT_VIEW_MULT[key] || 1;
+    const baseEr = a.er || 4;
+    for (let i = 0; i < n; i++) {
+      const views = Math.max(60, Math.round((a.followers || 1200) * (0.22 + rng() * 0.75) * mult));
+      const er = Math.max(0.4, baseEr * (0.6 + rng() * 0.95));
+      const eng = views * er / 100;
+      const likes = Math.round(eng * 0.70), comments = Math.round(eng * 0.12),
+            saves = Math.round(eng * 0.11), shares = Math.round(eng * 0.07);
+      const engRate = Math.round((likes + comments + saves + shares) / views * 10000) / 100;
+      const signal = engRate >= baseEr * 1.45 ? 'viral'
+                   : engRate >= baseEr * 1.05 ? 'rising'
+                   : engRate >= baseEr * 0.7  ? 'steady' : 'declining';
+      const daysAgo = 1 + Math.floor(rng() * 27);
+      out.push({
+        id: 'demo-post-' + (idx++), platform: key, type: _PLAT_TYPE[key] || 'post',
+        post_type: 'post', source: 'own', title: _CAPTIONS[Math.floor(rng() * _CAPTIONS.length)],
+        emoji: _PLAT_EMOJI[key] || '✨', daysAgo,
+        posted_at: new Date(Date.now() - daysAgo * 86400000).toISOString(),
+        views, likes, comments, saves, shares, engRate, signal,
+      });
+    }
+  }
+  return out.sort((p, q) => q.views - p.views);
+}
+
+function genDemoBriefMetrics(accountSummary, posts, signalsOut) {
+  const keys = Object.keys(accountSummary);
+  const reachByPlat = {}; let reachTotal = 0;
+  for (const p of posts) { reachByPlat[p.platform] = (reachByPlat[p.platform] || 0) + p.views; reachTotal += p.views; }
+  const reachPrev = Math.round(reachTotal * 0.86);
+  const engByPlat = {}; let erSum = 0;
+  for (const k of keys) { engByPlat[k] = accountSummary[k].engRate30d || 0; erSum += engByPlat[k]; }
+  const avgEr = keys.length ? Math.round(erSum / keys.length * 100) / 100 : 0;
+  const high = signalsOut.filter(s => s.severity === 'high').length;
+  const med  = signalsOut.filter(s => s.severity === 'medium').length;
+  return {
+    reach: { total_30d: reachTotal, total_prev_30d: reachPrev,
+      delta_pct: reachPrev ? Math.round((reachTotal - reachPrev) / reachPrev * 100) : 0, by_platform: reachByPlat },
+    engagement: { avg_rate_30d: avgEr, avg_rate_prev_30d: Math.round(avgEr * 0.93 * 100) / 100,
+      delta_pct: 7, by_platform: engByPlat, benchmark_pct: Math.round(avgEr * 0.78 * 100) / 100 },
+    signals: { total: signalsOut.length,
+      breakdown: { critical: 0, high, strategic: med, other: Math.max(0, signalsOut.length - high - med) },
+      top_unread: signalsOut[0] ? { kind: signalsOut[0].kind, title: signalsOut[0].title, platform: signalsOut[0].platform } : null },
+  };
+}
+
+function genDemoAds(accountSummary, seedBase) {
+  const plats = Object.keys(accountSummary).filter(k => k === 'ig' || k === 'tt' || k === 'fb');
+  if (!plats.length) return null;
+  const rng = _demoRng(seedBase + ':ads');
+  const names = ['Spring launch — Reels', 'Always-on retargeting', 'New collection — Stories', 'Lookalike prospecting', 'Bestseller boost'];
+  const per = [], top = []; let spendT = 0, imprT = 0, clickT = 0, idx = 0;
+  for (const k of plats) {
+    const a = accountSummary[k];
+    const cnt = 2 + Math.floor(rng() * 3);
+    const spend = Math.round((a.followers || 5000) * 0.03 + 200 + rng() * 400);
+    const ctr = Math.round((1.1 + rng() * 1.9) * 100) / 100;
+    const impressions = Math.round(spend * (35 + rng() * 25));
+    const clicks = Math.round(impressions * ctr / 100);
+    per.push({ platform: k, count: cnt, spend, impressions, clicks, ctr });
+    spendT += spend; imprT += impressions; clickT += clicks;
+    top.push({ id: 'demo-ad-' + (idx), platform: k, name: names[idx++ % names.length], spend, impressions, clicks, ctr, status: rng() > 0.3 ? 'active' : 'paused' });
+  }
+  return { count: per.reduce((s, p) => s + p.count, 0), total_spend: spendT, total_impressions: imprT,
+    total_clicks: clickT, avg_ctr: imprT ? Math.round(clickT / imprT * 10000) / 100 : 0,
+    currency: 'USD', per_platform: per, top: top.sort((a, b) => b.spend - a.spend) };
+}
+
+function genDemoHeatmap(seedBase) {
+  const rng = _demoRng(seedBase + ':heat');
+  // 6 three-hour buckets × 7 days, values 0-4 (the SPA's colour array has 5 steps).
+  // Lightly weighted so mornings/evenings read busier than a flat random field.
+  return Array.from({ length: 6 }, (_, r) =>
+    Array.from({ length: 7 }, () => {
+      const peak = (r === 0 || r === 4) ? 1.4 : (r === 5 ? -0.6 : 0);
+      return Math.max(0, Math.min(4, Math.round(rng() * 3 + peak)));
+    }));
+}
+
 // ── personaToBrief — adapter: PERSONAS → /api/brief response shape ──
 // hydrateD() in js/core/data.jsx is the consumer. Anything it indexes
 // that we don't supply will fall back to D's empty-defaults in its
@@ -841,6 +951,15 @@ function personaToBrief(personaId, workspaceId, lang) {
       ? (ws?.name || 'team')
       : (persona.person?.firstName || persona.name || 'there');
 
+  // Generate the full, per-platform-differentiated dataset from the resolved
+  // accounts. Seeded by persona+workspace so each agency client + each platform
+  // shows distinct (but stable) numbers — fixing "everything looks identical".
+  const _seedBase = personaId + ':' + (workspaceId || '');
+  const postsOut = genDemoPosts(source.accounts || persona.accounts || [], _seedBase);
+  const briefMetricsOut = genDemoBriefMetrics(accountSummary, postsOut, signalsOut);
+  const adsOut = (personaId === 'brand' || personaId === 'agency') ? genDemoAds(accountSummary, _seedBase) : null;
+  const heatmapOut = genDemoHeatmap(_seedBase);
+
   return {
     user: {
       first_name: firstName,
@@ -857,12 +976,10 @@ function personaToBrief(personaId, workspaceId, lang) {
         ? persona.workspaces.map(w => ({ id: w.id, name: w.name }))
         : [{ id: personaId, name: persona.name }],
     accountSummary,
-    posts:        [],
+    posts:        postsOut,
     signals:      signalsOut,
     competitors:  competitorsOut,
-    heatmap:      Array.from({ length: 6 }, (_, r) =>
-                    Array.from({ length: 7 }, (_, c) =>
-                      Math.max(0, Math.round(20 + 80 * Math.sin((r * c + r + c) * 0.7))))),
+    heatmap:      heatmapOut,
     intelScore:   source.intel?.score ?? persona.intel?.score ?? null,
     todayActions: actionsOut.slice(0, 3),
     actionPlan:   actionsOut,
@@ -890,8 +1007,8 @@ function personaToBrief(personaId, workspaceId, lang) {
     formula:        null,
     rewrite:        null,
     marketContext:  persona.market || null,
-    briefMetrics:   null,
-    ads:            null,
+    briefMetrics:   briefMetricsOut,
+    ads:            adsOut,
     ads_intel:      null,
     adSettings:     null,
     audience: {
