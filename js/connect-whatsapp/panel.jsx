@@ -21,7 +21,13 @@ import React from 'react';
 
 const { cls, Btn, Icon, Plat, api } = window;
 
-const ENABLED = false;
+const ENABLED = true;
+// TEMP owner-only testing gate (2026-06-15): while we validate the Meta Embedded
+// Signup flow end-to-end, only platform admins (the founder, profiles.is_admin)
+// see the card. Paying customers don't. Flip OWNER_ONLY=false to expose to all
+// Brand/Agency. The server (api/connect/whatsapp.js) enforces the SAME gate so
+// it can't be bypassed by a non-owner hitting the endpoint directly.
+const OWNER_ONLY = true;
 const FB_SDK_VERSION = 'v21.0';
 
 // Load Meta's JS SDK once. Resolves with window.FB.
@@ -52,7 +58,7 @@ const isFacebookOrigin = (origin) => {
   catch { return false; }
 };
 
-const WhatsappCard = ({ account, tier, trialActive, atCap, showToast, onSynced, onDisconnect }) => {
+const WhatsappCardInner = ({ account, tier, trialActive, atCap, showToast, onSynced, onDisconnect }) => {
   const [busy, setBusy] = React.useState(false);
   const sessionRef = React.useRef(null);   // { wabaId, phoneNumberId } from Meta postMessage
   const connected = !!account;
@@ -191,6 +197,14 @@ const WhatsappCard = ({ account, tier, trialActive, atCap, showToast, onSynced, 
       )}
     </div>
   );
+};
+
+// Thin wrapper (no hooks) so the owner gate can early-return safely — the
+// hook-bearing inner component only mounts when the card is actually shown,
+// which keeps the rules of hooks happy regardless of when D.isAdmin hydrates.
+const WhatsappCard = (props) => {
+  if (OWNER_ONLY && !(window.D && window.D.isAdmin)) return null;
+  return <WhatsappCardInner {...props} />;
 };
 
 // Gate at the export so the screens.jsx seam renders nothing while parked.

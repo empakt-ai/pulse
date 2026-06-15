@@ -33,6 +33,16 @@ export default async function handler(req, res) {
   const denied = assertRole(auth, 'admin');
   if (denied) return json(res, denied.status, denied.body);
 
+  // TEMP owner-only testing gate (2026-06-15): mirrors OWNER_ONLY in
+  // js/connect-whatsapp/panel.jsx. While we validate the Meta flow, only
+  // platform admins (profiles.is_admin — the founder) can reach the WhatsApp
+  // connect endpoints, so a non-owner can't drive it even by calling directly.
+  // Remove this block (or gate it) to open WhatsApp to all Brand/Agency.
+  const OWNER_ONLY = true;
+  if (OWNER_ONLY && !auth.isAdmin) {
+    return json(res, 403, { error: 'WhatsApp connect is in limited testing.' });
+  }
+
   // TIER GATE — WhatsApp is a Brand/Agency channel (feeds Conversations).
   // Trial previews; Creator/Pro Creator get the upgrade pointer.
   const tierKey = String(ws.tier || 'creator').toLowerCase();
