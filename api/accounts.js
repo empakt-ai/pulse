@@ -83,6 +83,15 @@ export default async function handler(req, res) {
       platform_user_id: a.platformUserId || a.platform_user_id || a.userId || null,
       _raw: a,
       verified: !!a.verified,
+      // RECONNECT FIX: an account Zernio currently reports as connected must
+      // be active locally. Without these, re-importing a previously
+      // disconnected account (same zernio_account_id) upserts every other
+      // field but leaves is_active=false / status='disconnected' from the
+      // earlier DELETE — so the reconnect "succeeds" yet the account stays
+      // invisible, never syncs, and Fetch History 404s ("Account not found").
+      is_active: true,
+      status: 'connected',
+      disconnected_at: null,
       last_synced_at: new Date().toISOString(),
     })).filter(r => r.platform && r.zernio_account_id);
 
@@ -250,7 +259,8 @@ export default async function handler(req, res) {
 
     try {
       const updated = await supabase.update('connected_accounts',
-        { is_active: false }, { eq: filter });
+        { is_active: false, status: 'disconnected', disconnected_at: new Date().toISOString() },
+        { eq: filter });
 
       // Release the handle from the global registry so the user (or
       // anyone else) can re-bind it later. permanent:true nulls the
