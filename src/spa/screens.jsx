@@ -4735,7 +4735,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
         }
 
         const justConnected = (synced.new_accounts || []).find(a => a.platform === platform);
-        const anyConnected = (synced.accounts || []).find(a => a.platform === platform);
+        const anyConnected = (synced.accounts || []).find(a => a.platform === platform && a.is_active !== false);
         if (justConnected) {
           const label = PLATFORMS.find(p => p.id === platform)?.label || platform;
           showToast(`${label} connected — backfilling history…`);
@@ -4854,7 +4854,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           try {
             const synced = await api('/accounts', { method: 'POST' });
             setAccounts(synced.accounts || []);
-            const connected = synced.accounts?.find(a => a.platform === platformId);
+            const connected = synced.accounts?.find(a => a.platform === platformId && a.is_active !== false);
             if (connected) showToast(`${platformId} connected ✓`);
             else if (popup?.closed) showToast('Window closed — try connecting again', 'warn');
           } catch {}
@@ -4865,7 +4865,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
         // Check if account appeared
         try {
           const synced = await api('/accounts', { method: 'POST' });
-          const connected = (synced.accounts || []).find(a => a.platform === platformId);
+          // Only an ACTIVE account counts as connected. Closing the popup on a
+          // stale/disconnected row aborts the in-flight OAuth before Zernio
+          // ever sees it — the "popup closes before I can do anything" bug.
+          const connected = (synced.accounts || []).find(a => a.platform === platformId && a.is_active !== false);
           const isNewlyConnected = (synced.new_accounts || []).some(a => a.platform === platformId);
           if (connected) {
             clearInterval(poll);
@@ -5036,7 +5039,10 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
 
   const connectedMap = React.useMemo(() => {
     const m = {};
-    for (const a of accounts) m[a.platform] = a;
+    // Only genuinely-active accounts count as connected. A disconnected row
+    // lingers in connected_accounts purely for trial-abuse tracking — it must
+    // never render as a connected platform.
+    for (const a of accounts) if (a.is_active !== false) m[a.platform] = a;
     return m;
   }, [accounts]);
 

@@ -204,9 +204,14 @@ export default async function handler(req, res) {
       }
     }
 
+    // Return ONLY active accounts. Returning disconnected rows here let the
+    // SPA's connect poll treat a stale row as "connected" — it then closed the
+    // OAuth popup mid-flight (aborting the real authorization before it reached
+    // Zernio) and painted false "connected" tiles. GET already filters this
+    // way; POST must match.
     const accounts = await supabase.select('connected_accounts', {
       select: '*',
-      eq: { workspace_id: ws.id },
+      eq: { workspace_id: ws.id, is_active: true },
       order: 'connected_at.asc',
     }).catch(() => []);
 
