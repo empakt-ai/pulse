@@ -138,6 +138,24 @@ export const zernio = {
     return call(`/connect/telegram?${params.toString()}`);
   },
 
+  // WhatsApp BYO (bring-your-own existing WABA) — Meta Embedded Signup.
+  // 1) sdk-config gives the Meta app id + Embedded-Signup config id the
+  //    browser needs to launch FB.login. 2) After Meta returns an OAuth code
+  //    (+ wabaId/phoneNumberId via the signup postMessage) we register it with
+  //    Zernio. The connected number then appears in listAccounts like any
+  //    platform, so the existing /accounts import picks it up. Read-only BYO:
+  //    no provisioning, no $2/KYC, no outbound/templates.
+  async getWhatsappSdkConfig() {
+    return call('/connect/whatsapp/sdk-config');
+  },
+
+  async whatsappEmbeddedSignup({ code, profileId, wabaId, phoneNumberId }) {
+    const body = { code, profileId };
+    if (wabaId) body.wabaId = wabaId;
+    if (phoneNumberId) body.phoneNumberId = phoneNumberId;
+    return call('/connect/whatsapp/embedded-signup', { method: 'POST', body: JSON.stringify(body) });
+  },
+
   // List accounts connected to a Zernio profile
   async listAccounts(profileId) {
     const params = new URLSearchParams({ profileId });

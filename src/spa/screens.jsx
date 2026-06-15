@@ -5200,12 +5200,24 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                         />
                       );
                     })}
-                    {/* Telegram — guided bot + access-code flow (not OAuth), so
-                        it's a self-contained module, not a PLATFORMS row. Same
-                        connected_accounts shape; Brand/Agency only. */}
+                    {/* Telegram + WhatsApp — non-OAuth connect flows (bot-code /
+                        Meta Embedded Signup), so they're self-contained modules,
+                        not PLATFORMS rows. Same connected_accounts shape;
+                        Brand/Agency only. Each renders nothing while parked. */}
                     {window.TelegramConnect?.Card && (
                       <window.TelegramConnect.Card
                         account={connectedMap['telegram']}
+                        tier={tier}
+                        trialActive={!!workspace?.trial_active}
+                        atCap={atCap}
+                        showToast={showToast}
+                        onSynced={(accts) => setAccounts(accts || [])}
+                        onDisconnect={disconnectPlatform}
+                      />
+                    )}
+                    {window.WhatsappConnect?.Card && (
+                      <window.WhatsappConnect.Card
+                        account={connectedMap['whatsapp']}
                         tier={tier}
                         trialActive={!!workspace?.trial_active}
                         atCap={atCap}

@@ -96,8 +96,12 @@ export default async function handler(req, res) {
   //     platform, post: {...}, comment: {...}, message: {...} }
   const kind = pick(body, 'event', 'type', 'kind') || 'unknown';
   const deliveryId = pick(body, 'deliveryId', 'delivery_id', 'id', 'eventId') || null;
-  const zernioAccountId = pick(body, 'accountId', 'account_id', 'account.id', 'data.accountId') || null;
-  const zernioProfileId = pick(body, 'profileId', 'profile_id', 'account.profileId') || null;
+  // 'number.id'/'number.profileId' cover the WhatsApp BYO lifecycle envelope
+  // ({ id, event, timestamp, number:{ id, phoneNumber, country, profileId } }).
+  // Appended last so existing comment/dm/review events still match their own
+  // keys first — purely additive.
+  const zernioAccountId = pick(body, 'accountId', 'account_id', 'account.id', 'data.accountId', 'number.id', 'number._id') || null;
+  const zernioProfileId = pick(body, 'profileId', 'profile_id', 'account.profileId', 'number.profileId') || null;
   const platform = pick(body, 'platform', 'account.platform', 'data.platform') || null;
   const platformPostId = pick(body, 'post.platformPostId', 'post.id', 'post._id',
                                 'comment.postId', 'data.postId') || null;
@@ -181,6 +185,35 @@ export default async function handler(req, res) {
     if (accountId) {
       await supabase.update('connected_accounts',
         { status: 'disconnected', disconnected_at: new Date().toISOString() },
+        { eq: { id: accountId } }
+      ).catch(() => {});
+    }
+    return json(res, 200, { ok: true, kind: k, applied: !!accountId });
+  }
+
+  // WhatsApp BYO number lifecycle (the only events that fire for bring-your-own
+  // numbers — provisioned-only states like declined/verification_required won't
+  // arrive). Additive: drives connected_accounts.status, no inbox row.
+  //   activated / reactivated → live again
+  //   suspended               → Meta paused it (kept visible, flagged)
+  //   released                → terminal removal (mirror account.disconnected)
+  if (k === 'whatsapp.number.activated' || k === 'whatsapp.number.reactivated') {
+    if (accountId) {
+      await supabase.update('connected_accounts',
+        { status: 'connected', is_active: true, disconnected_at: null },
+        { eq: { id: accountId } }
+      ).catch(() => {});
+    }
+    return json(res, 200, { ok: true, kind: k, applied: !!accountId });
+  }
+
+  if (k === 'whatsapp.number.suspended' || k === 'whatsapp.number.released') {
+    const released = k === 'whatsapp.number.released';
+    if (accountId) {
+      await supabase.update('connected_accounts',
+        released
+          ? { status: 'disconnected', is_active: false, disconnected_at: new Date().toISOString() }
+          : { status: 'suspended' },
         { eq: { id: accountId } }
       ).catch(() => {});
     }

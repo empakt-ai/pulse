@@ -19,6 +19,12 @@ const { cls, Card, Btn, Icon, Plat, api } = window;
 
 const BOT_FALLBACK = '@ZernioScheduleBot';
 
+// PARKED 2026-06-15: Telegram connect is built + working, but hidden until we
+// have a real channel/account to validate against — WhatsApp ships first. Flip
+// to true (one line) to re-surface the card; the backend (api/connect/telegram.js)
+// stays live either way, so nothing else has to change.
+const ENABLED = false;
+
 // ── The connect dialog (code + steps + auto-detect poll) ──────────────────
 const TelegramConnectModal = ({ onClose, onConnected, showToast }) => {
   const [phase, setPhase] = React.useState('loading'); // loading | ready | error
@@ -246,4 +252,6 @@ const TelegramCard = ({ account, tier, trialActive, atCap, showToast, onSynced, 
   );
 };
 
-Object.assign(window, { TelegramConnect: { Card: TelegramCard } });
+// Gate at the export so the screens.jsx seam (`window.TelegramConnect?.Card &&`)
+// naturally renders nothing while parked.
+Object.assign(window, { TelegramConnect: { Card: ENABLED ? TelegramCard : null } });
