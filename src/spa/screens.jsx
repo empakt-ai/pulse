@@ -742,7 +742,9 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
   // also hides Ads, while Brand/Agency-intent trials still see it.
   const tierKey = (D.tier?.key || 'creator').toLowerCase();
   const showAds = tierKey === 'brand' || tierKey === 'agency';
-  const tabs = ['Brief','Stats', ...(showAds ? ['Ads'] : []),'Content','Intel','Actions','Growth','Targets','Reports','Settings'];
+  // Conversations (read-only inbox) is a Brand/Agency surface, same gate as Ads.
+  const showConv = tierKey === 'brand' || tierKey === 'agency';
+  const tabs = ['Brief','Stats', ...(showAds ? ['Ads'] : []),'Content','Intel', ...(showConv ? ['Conversations'] : []),'Actions','Growth','Targets','Reports','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);
   const menuRef = React.useRef(null);
@@ -6623,6 +6625,7 @@ function App() {
     Growth:   <GrowthScreen activePlatform={activePlatform} />,
     Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
+    Conversations: (window.Conversations && window.Conversations.Panel) ? <window.Conversations.Panel /> : null,
     Actions:  <ActionsScreen activePlatform={activePlatform} />,
     Reports:  <ReportsScreen />,
     Targets:  <TargetsScreen />,
