@@ -20,15 +20,24 @@ export default {
         mono:    ['Geist Mono', 'ui-monospace', 'monospace'],
         display: ['Bricolage Grotesque', 'system-ui', 'sans-serif'],
       },
+      // LIGHT THEME. The admin is built with a fixed light-on-dark token set
+      // (bg-ink/bg-inksoft surfaces, text-paper/text-muteDark text,
+      // border-lineDark). Rather than rewrite ~600 class usages, we flip the
+      // token VALUES so every surface/text/border pair inverts together:
+      //   • ink/inksoft  → light surfaces (page + white cards)
+      //   • paper        → dark text (and dark emphasis buttons via bg-paper)
+      //   • muteDark     → a readable mid-grey on light
+      //   • lineDark     → a light border
+      // The fg/bg relationship is preserved everywhere, so contrast holds.
       colors: {
-        ink:      '#0A0A0B',
-        inksoft:  '#15151B',
-        paper:    '#F5F1E8',
-        chalk:    '#FBFAF6',
+        ink:      '#F5F1E8',   // page / default surface (was dark)
+        inksoft:  '#FFFFFF',   // raised cards, inputs, selects (was dark)
+        paper:    '#0A0A0B',   // primary text + dark emphasis (was light)
+        chalk:    '#FBFAF6',   // unused in admin
         line:     '#E5E1D6',
-        lineDark: '#1F1F26',
+        lineDark: '#E5E1D6',   // now a light hairline (was dark)
         mute:     '#6F6B62',
-        muteDark: '#A19E94',
+        muteDark: '#6F6B62',   // readable on light (was a light grey)
         ultra:    '#6B5BFF',
         lime:     '#D6FF3E',
         magenta:  '#FF3D8A',

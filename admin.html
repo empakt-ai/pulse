@@ -11,12 +11,18 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
-  html, body { background: #0A0A0B; color: #F5F1E8; font-family: 'Geist', system-ui, sans-serif; }
+  html, body { background: #F5F1E8; color: #0A0A0B; font-family: 'Geist', system-ui, sans-serif; }
   /* Compact scrollbar in the audit log / lists */
   ::-webkit-scrollbar { width: 8px; height: 8px; }
-  ::-webkit-scrollbar-thumb { background: #1F1F26; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #2A2A33; }
+  ::-webkit-scrollbar-thumb { background: #E5E1D6; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #D8D3C6; }
   pre.diff { font-family: 'Geist Mono', monospace; font-size: 11px; line-height: 1.5; }
+  /* Form controls — make native selects/inputs/options legible in the light
+     theme regardless of OS defaults. This is the direct fix for dropdown
+     options and typed text only being readable on hover (light-on-light). */
+  input, select, textarea { color: #0A0A0B; }
+  select option { background-color: #FFFFFF; color: #0A0A0B; }
+  input::placeholder, textarea::placeholder { color: #9A958A; }
 </style>
 </head>
 <body>
