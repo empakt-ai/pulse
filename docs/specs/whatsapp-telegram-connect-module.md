@@ -13,25 +13,27 @@
 
 | | Telegram | WhatsApp (BYO) |
 |---|---|---|
-| Flow | **Likely** the generic Zernio OAuth (`GET /api/connect/telegram`) — same as IG/TikTok | **Not** generic OAuth. Meta **Embedded Signup** → WABA namespace |
-| Lives in | `connected_accounts` via the normal `/accounts` import | `/v1/whatsapp/phone-numbers` (`connected` array) + lifecycle webhooks |
-| Effort | Low (≈ one-line `ZERNIO_SUPPORTED` add + test) | Medium — dedicated connect sub-flow |
-| Certainty | Mechanism undocumented — **confirm** | Mechanism undocumented — **confirm before building** |
+| Flow | **Bot + access-code** (`GET /v1/connect/telegram` → code `ZRN-…`; user adds @ZernioScheduleBot as channel admin) — **NOT OAuth** | Meta **JS SDK** (`config_id`) + register endpoint — **NOT a hosted popup** |
+| Lives in | `GET /v1/accounts` → normal `/accounts` import (uniform) | `GET /v1/accounts` → normal `/accounts` import (uniform); also `/whatsapp/phone-numbers` `connected` |
+| Effort | Medium — small guided connect UI (code + instructions + poll) | Medium — Meta SDK embed + register endpoint |
+| Certainty | **Confirmed 2026-06-15 (§7)** | **Confirmed 2026-06-15 (§7)** |
 
 **Design consequence (modularity):** Telegram folds into the **existing** connect module (`api/connect/platform.js`); WhatsApp gets an **isolated** connect sub-flow, but both land in the **same** `connected_accounts` shape so everything downstream (account list, Conversations) treats them uniformly. *Isolate the divergent flow; unify the resulting data.*
 
-## 2. Telegram (the easy half)
+## 2. Telegram — guided bot + access-code flow (REVISED: not OAuth)
 
-- Add `'telegram'` to `ZERNIO_SUPPORTED` in `api/connect/platform.js`. The existing generic path then handles it: `GET /api/connect/telegram` → `ensureProfile` → `zernio.getConnectUrl('telegram', ...)` → popup → callback → `POST /api/accounts` import.
-- Add platform code `tg` to `js/core/data.jsx` (`platformLabel`/`platformBrand`) + `PlatformIcons`.
-- **Confirm with Zernio (§8):** is it generic OAuth, a **bot token**, or phone login? What gets connected (channel vs DMs)? Does it appear in `listAccounts`? If it needs a **bot token**, the UX differs (collect a token, not a popup) — that's a different, slightly larger front-end change, so confirm first.
-- Risk: **low** if generic OAuth; **medium** if bot-token. Validate by connecting one Telegram account end-to-end.
+Confirmed (§7): it does **not** ride the generic `getConnectUrl` popup. The flow:
+1. Backend: `GET /v1/connect/telegram?profileId=...` → returns access code `ZRN-XXXXXX` + instructions (wrap in our own `api/connect/telegram.js`).
+2. UI: a **small connect card** shows the code + steps — *"Add **@ZernioScheduleBot** as an admin of your channel/group, then send this code to the bot (with your channel @username, or by forwarding a message)."*
+3. Detect: poll `POST /api/accounts` (existing import) until the new `telegram` channel appears in `listAccounts` → uniform import, no Telegram-specific path. Add platform code `tg` to `js/core/data.jsx` + `PlatformIcons`.
+- **Read-only caveat:** only channel/group/supergroup messages (where the bot is admin) are captured — **private DMs to the bot are NOT stored.** Frame Telegram in Conversations as channel/group activity, not 1:1 DMs.
+- Risk: **medium** (a small guided connect UI + poll), no provisioning/cost. Still ships first — validates Conversations against a real messaging platform cheaply.
 
 ## 3. WhatsApp BYO (the harder half)
 
 - **Flow (partial, per docs):** Meta **Embedded Signup** → business authorizes their existing WABA → Zernio registers the number in the `connected` array of `GET /v1/whatsapp/phone-numbers` → number is readable in the inbox.
 - **Diverges from generic connect:** WABA namespace, connects per *phone number* (not a generic "account" OAuth), and emits lifecycle webhooks.
-- **Lifecycle webhooks to handle:** `whatsapp.number.activated`, `declined`, `action_required`, `verification_required`, `suspended`, `reactivated`, `released`. → add an **additive branch** in the existing `api/webhooks/zernio.js` that maps these to `connected_accounts.status` (mirrors how `account.disconnected` is handled today). No new webhook endpoint.
+- **Lifecycle webhooks to handle (BYO subset, per §7):** `whatsapp.number.activated`, `suspended`, `reactivated`, `released`. → add an **additive branch** in the existing `api/webhooks/zernio.js` mapping them to `connected_accounts.status` (mirrors `account.disconnected`). No new webhook endpoint. (`declined`/`action_required`/`verification_required` are provisioned-only — won't fire for BYO.)
 - **Data mapping (unify):** a connected WhatsApp number → one `connected_accounts` row (`platform='whatsapp'`, `zernio_account_id` = WABA number id, `platform_username` = number/display name). So Conversations + the accounts list treat it like any platform. **No schema change.**
 - **Out:** provisioning/renting numbers (the `$2`/KYC purchase flow), outbound, templates.
 
@@ -44,7 +46,7 @@
 **Seams (edits to existing files, minimal):**
 | Seam | File | Change |
 |---|---|---|
-| C1 | `api/connect/platform.js` | add `'telegram'` (and `'whatsapp'` *only if* it rides the generic path) to `ZERNIO_SUPPORTED` |
+| C1 | `api/connect/telegram.js` + `api/connect/whatsapp.js` | dedicated connect initiators (Telegram code flow; WhatsApp sdk-config + embedded-signup / credentials). +2 functions. Both import via existing `/api/accounts`. |
 | C2 | `api/webhooks/zernio.js` | additive `whatsapp.number.*` branch → `connected_accounts.status` |
 | C3 | `js/core/data.jsx` + `PlatformIcons` | add `tg`, `wa` codes/labels/icons |
 | C4 | `api/_lib/tiers.js` | platform availability per tier (WhatsApp/Telegram) |
@@ -64,20 +66,29 @@
 | Outbound / templates / broadcasts | separate `js/broadcasts/` + `api/broadcasts.js` | metered Meta cost stays isolated |
 | Reply | Conversations Phase 2 | additive POST |
 
-## 7. Open items — **confirm with Zernio before building WhatsApp** (doc gaps)
+## 7. CONFIRMED by Zernio (2026-06-15) — build-ready
 
-1. **WhatsApp BYO connect mechanism:** does Zernio return a **hosted Embedded-Signup/connect URL** we open in a popup (like `getConnectUrl`), **or** must we embed Meta's JS SDK (`config_id`) and then call a Zernio **register** endpoint? Exact **initiate** + **complete** endpoint paths + params.
-2. After a BYO number connects, does it appear in `GET /v1/accounts` (`listAccounts`) like other platforms, or **only** in `GET /v1/whatsapp/phone-numbers`? (Determines whether our existing `POST /api/accounts` import picks it up, or we need a WhatsApp-specific import.)
-3. **Telegram connect:** generic `GET /v1/connect/telegram` OAuth, or **bot token** / phone? What entity connects (channel / DMs)? Does it show in `listAccounts`?
-4. `whatsapp.number.*` webhook **payload shapes** (to map cleanly to `connected_accounts`).
-5. Any **add-on** gating for WhatsApp/Telegram inbox + analytics on Zernio's side.
+**WhatsApp (BYO, read-only).** Connect = embed Meta's JS SDK with Zernio's `config_id`, then register with Zernio (no Zernio-hosted popup):
+- `GET /v1/connect/whatsapp/sdk-config` → `{ appId, configId }` to init Meta Embedded Signup.
+- After the Meta popup returns an OAuth `code`: `POST /v1/connect/whatsapp/embedded-signup` `{ code, profileId, wabaId?, phoneNumberId? }`.
+- **Server-to-server alternative** (no front-end SDK): `POST /v1/connect/whatsapp/credentials` `{ profileId, accessToken, wabaId, phoneNumberId }` (the business's Meta System User token).
+- **Listing:** a connected number appears in `GET /v1/accounts` as a normal `whatsapp` account → **our existing `listAccounts` import picks it up, no WhatsApp-specific import path.** (Also in `/v1/whatsapp/phone-numbers` `connected` array; we only care about `connected`.)
+- **Webhooks (BYO subset):** only `whatsapp.number.activated`, `suspended` (+reason), `reactivated`, `released` (+reason, terminal) fire for BYO; `declined`/`action_required`/`verification_required` are provisioned-only (won't see them). Envelope: `{ id, event, timestamp, number:{ id, phoneNumber, country, profileId } }`. Headers: `X-Zernio-Event`, `X-Zernio-Event-Id` (idempotency), `X-Zernio-Signature` (HMAC-SHA256) — same verification as the existing webhook handler.
+- Docs: platforms/whatsapp, /whatsapp/connection, /connect/connect-whatsapp-credentials.
 
-## 8. Risk & sequencing
+**Telegram (NOT OAuth — bot + access code).** `GET /v1/connect/telegram?profileId=...` → returns an access code `ZRN-XXXXXX` + instructions. The user adds **@ZernioScheduleBot** as an admin of their channel/group, then sends the code to the bot (with the channel `@username`, or by forwarding a message). What connects = a **channel/group/supergroup**, and it shows in `GET /v1/accounts` like any platform. **Read-only caveat:** messages in channels/groups where the bot is admin are captured; **private DMs straight to the bot are NOT stored.**
 
-- **Telegram first** — low risk, likely a one-line `ZERNIO_SUPPORTED` add + a connect test; it also validates the Conversations module against a real messaging platform with no provisioning/cost.
-- **WhatsApp second** — only after Zernio confirms the Embedded-Signup mechanism (Q1/Q2). **Do not build blind.** Behind the Conversations tier-gate + a feature flag; fully reversible.
+**Inbox/analytics:** on our **usage-based plan, Inbox is included** — the read endpoints + `/v1/analytics/inbox/*` work for WhatsApp **and** Telegram with **no add-on**.
+
+**Referral/partner:** Zernio's Refer & Earn is link-based (`zernio.com/signup?ref=CODE`) with no server-side attribution, so it **won't** capture clients who connect through Mashal. Zernio frames our setup as **reseller/white-label** — so referral revenue isn't a lever here; pricing/markup is ours to set.
+
+## 8. Risk & sequencing (mechanisms now CONFIRMED — build-ready)
+
+- **Telegram first** — a small guided connect UI (`api/connect/telegram.js` → code + instructions card + poll). Medium effort, no cost; validates Conversations against a real messaging platform.
+- **WhatsApp second** — `api/connect/whatsapp.js` (sdk-config + embedded-signup; or the server-to-server `credentials` path) + the Meta JS SDK embed. Behind the Conversations tier-gate + a feature flag; reversible.
+- **Both import uniformly** via the existing `POST /api/accounts` / `listAccounts` path (Zernio confirmed connected WhatsApp + Telegram appear in `GET /v1/accounts`) — so no platform-specific import code. Inbox + analytics already included (no add-on).
 
 ---
 
 ### Owner summary
-Two connect additions feeding the read-only Conversations tab. **Telegram** is a near-trivial add to the existing connect module (confirm it's standard OAuth and not a bot-token). **WhatsApp** is bring-your-own-number only (Meta Embedded Signup → free, no $2/KYC, no outbound), built as an **isolated** connect sub-flow that still lands in the normal `connected_accounts` shape so everything downstream is uniform. The connect mechanisms aren't fully documented, so the spec's real gate is **five confirmation questions to Zernio** (you're already in contact) — Telegram can likely ship immediately after a quick test; WhatsApp waits on Zernio's answer to Q1/Q2.
+Two connect additions feeding the read-only Conversations tab, **mechanisms now confirmed by Zernio (§7)**. **Telegram** is a guided **bot + access-code** flow (not OAuth): we fetch a `ZRN-…` code, the user adds @ZernioScheduleBot as a channel admin and sends the code; channel/group messages are captured (not private bot DMs). **WhatsApp** is bring-your-own-number only via **Meta Embedded Signup** (JS SDK + `config_id`, or server-to-server credentials) → free, no $2/KYC, no outbound. Both land in the normal `connected_accounts` shape (they show in `GET /v1/accounts`), so everything downstream is uniform. Sequencing: **Telegram first, WhatsApp next** — no longer blocked on questions.
