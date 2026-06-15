@@ -243,6 +243,19 @@ async function syncOneAccount(workspace, acct, mode) {
       // shallower than paid ones (the difference is mostly under the hood).
       const limit = mode === 'backfill' ? 30 : mode === 'deep' ? 24 : 12;
       const result = await apifyRunActor(acct.platform, acct.platform_username, { limit });
+      // OBSERVABILITY: runActor never throws on actor-level failures (bad
+      // APIFY key, actor timeout, private/empty account) — it returns them in
+      // result.errors, which used to be discarded, leaving a silent posts:0.
+      // Surface them: log always, and propagate to `error` when the scrape
+      // also yielded no posts so the account isn't falsely marked synced.
+      if (result.errors?.length) {
+        console.error(`[sync] apify ${acct.platform} @${acct.platform_username}: ${JSON.stringify(result.errors)}`);
+        if (!result.posts?.length) {
+          error = result.errors.map(e => `${e.actor || acct.platform}: ${e.error}`).join('; ');
+        }
+      } else if (!result.posts?.length) {
+        console.warn(`[sync] apify ${acct.platform} @${acct.platform_username} returned 0 posts (no errors) — account may be private/empty (mode=${mode}, limit=${limit})`);
+      }
       rows = (result.posts || []).map(p => {
         const rate = engagementRate(p);
         return {
@@ -268,6 +281,12 @@ async function syncOneAccount(workspace, acct, mode) {
       const posts = Array.isArray(analytics) ? analytics : (analytics?.posts || analytics?.data || []);
       rows = posts.map(p => mapZernioPost(p, { workspaceId: workspace.id, platform: acct.platform }))
                   .filter(r => r.platform_post_id);
+      // OBSERVABILITY: Zernio /analytics returns [] (no throw) when the paid
+      // Analytics add-on isn't active or the window is empty — same silent
+      // posts:0 trap as the Apify path. Flag it so paid-tier blanks are visible.
+      if (!rows.length) {
+        console.warn(`[sync] zernio analytics ${acct.platform} acct=${acct.zernio_account_id} returned 0 posts (${fromDate}..${toDate}) — check Analytics add-on / window`);
+      }
     }
   } catch (e) {
     error = e.message;
@@ -337,6 +356,12 @@ export async function runSync(workspace, { mode = 'incremental', accountIds = nu
       await supabase.update('connected_accounts', stamp, { eq: { id: acct.id } }).catch(() => {});
     }
   }
+
+  // OBSERVABILITY: one structured line per sync so a blank dashboard can be
+  // traced from the logs without re-instrumenting. Shows the resolved path
+  // (trial→scrape vs paid→Zernio), per-account post counts, and any errors.
+  console.log(`[sync] ws=${workspace.id} mode=${mode} scrapeOnly=${!!workspace?.trial_active} totalPosts=${totalPosts} ` +
+    JSON.stringify(results.map(r => ({ platform: r.platform, posts: r.posts, reason: r.reason, error: r.error || null }))));
 
   // Build today's account_snapshots (one row per own account).
   // The avg_views_30d / avg_eng_rate_30d / total_views_30d columns are
