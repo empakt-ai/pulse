@@ -117,6 +117,7 @@ const WebhooksPanel = () => {
 
   const submit = async (e) => {
     e?.preventDefault?.();
+    if (window.__MASHAL_DEMO_MODE) { window.__demoBlock?.('Webhooks are off in the demo — start a free trial to add one.'); return; }
     const url = form.url.trim();
     if (!/^https:\/\/|^http:\/\/localhost/i.test(url)) {
       setFeedback({ type: 'err', msg: 'URL must start with https:// (or http://localhost for testing).' });

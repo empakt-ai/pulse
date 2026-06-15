@@ -4832,6 +4832,7 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
 
   // ── Connect a platform ───────────────────────────────────────────────────
   const connectPlatform = async (platformId) => {
+    if (window.__MASHAL_DEMO_MODE) { window.__demoBlock?.('Sign up to connect your own accounts — this is a read-only demo.'); return; }
     // Pre-flight cap check — refuse before opening the OAuth popup so the
     // user doesn't round-trip through Zernio just to be told no. Server
     // at /api/accounts still enforces this authoritatively as a backstop.

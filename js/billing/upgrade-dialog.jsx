@@ -64,6 +64,7 @@ const UpgradeDialog = ({ open, onClose, intentTier, trial, trialDays }) => {
   const supportEmail = 'hello@mashal.app';
 
   const startCheckout = async () => {
+    if (window.__MASHAL_DEMO_MODE) { window.__demoBlock?.('Start a free trial to upgrade — this is a read-only demo.'); return; }
     setLoading(true);
     setError(null);
     try {

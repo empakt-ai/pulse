@@ -739,6 +739,10 @@ const PERSONAS = {
 let _activePersonaId  = 'creator';
 let _activeWorkspaceId = null;
 let _briefLang        = 'en';
+// Whether the visitor has explicitly picked a tier (via the entry chooser or a
+// ?persona= deep link). When false on /demo, we show the chooser instead of
+// dropping them straight into a defaulted persona.
+let _personaChosen    = false;
 
 // ── personaToBrief — adapter: PERSONAS → /api/brief response shape ──
 // hydrateD() in js/core/data.jsx is the consumer. Anything it indexes
@@ -992,7 +996,7 @@ if (DEMO_MODE) {
   try {
     const params = new URLSearchParams(window.location.search);
     const p = params.get('persona');
-    if (p && PERSONAS[p]) _activePersonaId = p;
+    if (p && PERSONAS[p]) { _activePersonaId = p; _personaChosen = true; }
     if (_activePersonaId === 'agency') {
       const w = params.get('workspace');
       const wsRow = PERSONAS.agency.workspaces.find(x => x.id === w);
@@ -1191,12 +1195,149 @@ if (DEMO_MODE) {
     render();
   };
 
-  // Mount the banner after DOM is ready. demo-mode.jsx imports run BEFORE
-  // screens.jsx mounts, so document.body exists but the splash sits in it.
+  // ── Demo chrome v2: on-brand entry chooser + subtle floating dock ───────
+  // Replaces the old fixed top banner (which pushed the app down and looked
+  // foreign). The app now renders full-bleed exactly like the signed-in
+  // product. Only two demo surfaces remain: (1) a full-screen CHOOSER shown
+  // until a tier is picked, and (2) a small collapsible bottom-right DOCK to
+  // switch plan / workspace / language, start a trial, or exit. Vanilla DOM +
+  // inline styles in the brand palette so it's self-contained and load-safe.
+  const _PAPER='#F5F1E8', _INK='#0A0A0B', _ULTRA='#6B5BFF', _LIME='#D6FF3E', _LINE='#E5E1D6', _MUTE='#6F6B62';
+  const _SANS="Geist,system-ui,sans-serif", _DISP="'Bricolage Grotesque',system-ui,sans-serif", _MONO="'Geist Mono',monospace";
+  const _TIERS = [
+    { id:'creator',     label:'Creator',     price:'$15',  blurb:'Solo creator. Up to 2 accounts, your daily 6 AM brief, the essentials.' },
+    { id:'pro_creator', label:'Pro Creator', price:'$29',  blurb:'All 7 platforms, deeper competitor tracking, multilingual + market-context brief.' },
+    { id:'brand',       label:'Brand',       price:'$99',  blurb:'Brands: ad intelligence, audience insights, and native Arabic briefs.' },
+    { id:'agency',      label:'Agency',      price:'$449', blurb:'Agencies: every client in one place — switch between workspaces.' },
+  ];
+
+  // Transient read-only nudge, used by the destructive-action guards.
+  function demoBlock(message) {
+    let t = document.getElementById('mashal-demo-toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'mashal-demo-toast';
+      t.style.cssText = ['position:fixed','bottom:84px','left:50%','transform:translateX(-50%)','z-index:10001',
+        'background:'+_INK,'color:'+_PAPER,'padding:11px 16px','border-radius:12px','font:500 13px/1.4 '+_SANS,
+        'box-shadow:0 8px 30px rgba(0,0,0,0.25)','max-width:340px','text-align:center','opacity:0','transition:opacity .18s'].join(';');
+      document.body.appendChild(t);
+    }
+    t.textContent = message;
+    requestAnimationFrame(() => { t.style.opacity = '1'; });
+    clearTimeout(t._h); t._h = setTimeout(() => { t.style.opacity = '0'; }, 3200);
+  }
+  window.__demoBlock = demoBlock;
+
+  function showChooser() {
+    if (document.getElementById('mashal-demo-chooser')) return;
+    const o = document.createElement('div');
+    o.id = 'mashal-demo-chooser';
+    o.style.cssText = ['position:fixed','inset:0','z-index:10000','background:'+_PAPER,'display:flex',
+      'align-items:center','justify-content:center','padding:24px','overflow:auto','font-family:'+_SANS].join(';');
+    const cards = _TIERS.map(t =>
+      '<button data-choose="'+t.id+'" style="text-align:left;background:#fff;border:1px solid '+_LINE+';border-radius:18px;'+
+      'padding:20px;cursor:pointer;display:flex;flex-direction:column;gap:8px;min-height:158px;font-family:inherit;transition:border-color .12s,transform .12s" '+
+      'onmouseover="this.style.borderColor=\''+_ULTRA+'\';this.style.transform=\'translateY(-2px)\'" '+
+      'onmouseout="this.style.borderColor=\''+_LINE+'\';this.style.transform=\'none\'">'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">'+
+          '<span style="font:700 19px/1.1 '+_DISP+';color:'+_INK+'">'+t.label+'</span>'+
+          '<span style="font:500 12px '+_MONO+';color:'+_MUTE+'">'+t.price+'/mo</span></div>'+
+        '<p style="margin:0;font:400 13px/1.45 '+_SANS+';color:'+_MUTE+'">'+t.blurb+'</p>'+
+        '<span style="margin-top:auto;font:600 12.5px '+_SANS+';color:'+_ULTRA+'">Explore '+t.label+' &rarr;</span></button>'
+    ).join('');
+    o.innerHTML =
+      '<div style="max-width:760px;width:100%">'+
+        '<div style="text-align:center;margin-bottom:22px">'+
+          '<div style="font:700 24px '+_DISP+';color:'+_INK+';letter-spacing:-0.02em">Mashal<span style="color:'+_ULTRA+'">.</span></div>'+
+          '<h1 style="margin:14px 0 6px;font:700 27px/1.15 '+_DISP+';color:'+_INK+';letter-spacing:-0.02em">Choose a plan to walk through</h1>'+
+          '<p style="margin:0;font:400 14px '+_SANS+';color:'+_MUTE+'">A live, read-only demo — this is the exact dashboard you get when you sign in.</p></div>'+
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px">'+cards+'</div>'+
+        '<div style="text-align:center;margin-top:20px"><a href="/" style="font:500 12.5px '+_SANS+';color:'+_MUTE+';text-decoration:none">&larr; back to mashal.app</a></div>'+
+      '</div>';
+    o.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-choose]'); if (b) chooseDemo(b.getAttribute('data-choose'));
+    });
+    document.body.appendChild(o);
+  }
+
+  function chooseDemo(id) {
+    if (!PERSONAS[id]) return;
+    _personaChosen = true;
+    setDemoPersona(id);
+    const o = document.getElementById('mashal-demo-chooser');
+    if (o) { o.style.transition='opacity .2s'; o.style.opacity='0'; setTimeout(() => o.remove(), 220); }
+    renderDock();
+  }
+
+  let _dockOpen = false;
+  function mountDock() {
+    if (document.getElementById('mashal-demo-dock')) return;
+    const d = document.createElement('div');
+    d.id = 'mashal-demo-dock';
+    d.style.cssText = ['position:fixed','bottom:16px','right:16px','z-index:9998','font-family:'+_SANS].join(';');
+    document.body.appendChild(d);
+    d.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-dock]'); if (!el) return;
+      const a = el.getAttribute('data-dock');
+      if (a === 'toggle')    { _dockOpen = !_dockOpen; renderDock(); }
+      if (a === 'persona')   setDemoPersona(el.getAttribute('data-id'));
+      if (a === 'workspace') setDemoWorkspace(el.getAttribute('data-id'));
+      if (a === 'lang')      setDemoBriefLang(el.getAttribute('data-id'));
+      if (a === 'switch')    { _dockOpen = false; renderDock(); showChooser(); }
+    });
+    window.addEventListener('demo:rehydrate', renderDock);
+    renderDock();
+  }
+
+  function renderDock() {
+    const d = document.getElementById('mashal-demo-dock'); if (!d) return;
+    const s = getDemoState();
+    const tier = _TIERS.find(t => t.id === s.personaId) || _TIERS[0];
+    if (!_dockOpen) {
+      d.innerHTML = '<button data-dock="toggle" style="display:inline-flex;align-items:center;gap:8px;background:'+_INK+';'+
+        'color:'+_PAPER+';border:0;border-radius:999px;padding:9px 14px;cursor:pointer;box-shadow:0 6px 22px rgba(0,0,0,0.22);font:600 12.5px '+_SANS+'">'+
+        '<span style="width:7px;height:7px;border-radius:50%;background:'+_LIME+'"></span>Demo &middot; '+tier.label+
+        '<span style="font:500 10px '+_MONO+';opacity:.6">&#9650;</span></button>';
+      return;
+    }
+    const pills = _TIERS.map(t =>
+      '<button data-dock="persona" data-id="'+t.id+'" style="border:1px solid '+(s.personaId===t.id?_ULTRA:_LINE)+';'+
+      'background:'+(s.personaId===t.id?_ULTRA:'#fff')+';color:'+(s.personaId===t.id?'#fff':_INK)+';border-radius:999px;'+
+      'padding:5px 10px;cursor:pointer;font:500 11.5px '+_SANS+'">'+t.label+'</button>').join('');
+    const wsRow = s.personaId==='agency'
+      ? '<div style="font:500 10px '+_MONO+';text-transform:uppercase;letter-spacing:.12em;color:'+_MUTE+';margin:10px 0 5px">Client workspace</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:5px">'+PERSONAS.agency.workspaces.map(w =>
+          '<button data-dock="workspace" data-id="'+w.id+'" style="border:1px solid '+(s.workspaceId===w.id?_INK:_LINE)+';'+
+          'background:'+(s.workspaceId===w.id?'rgba(10,10,11,0.06)':'#fff')+';color:'+_INK+';border-radius:7px;padding:4px 9px;cursor:pointer;font:500 11px '+_SANS+'">'+w.name+'</button>').join('')+'</div>'
+      : '';
+    const langRow = s.personaId==='brand'
+      ? '<div style="font:500 10px '+_MONO+';text-transform:uppercase;letter-spacing:.12em;color:'+_MUTE+';margin:10px 0 5px">Brief language</div>'+
+        '<div style="display:inline-flex;border:1px solid '+_LINE+';border-radius:999px;padding:2px">'+['en','ar'].map(l =>
+          '<button data-dock="lang" data-id="'+l+'" style="border:0;cursor:pointer;border-radius:999px;padding:3px 11px;font:600 10px '+_MONO+';'+
+          'text-transform:uppercase;letter-spacing:.1em;background:'+(s.briefLang===l?_INK:'transparent')+';color:'+(s.briefLang===l?_PAPER:_MUTE)+'">'+l+'</button>').join('')+'</div>'
+      : '';
+    d.innerHTML = '<div style="background:'+_PAPER+';border:1px solid '+_LINE+';border-radius:16px;padding:14px;width:264px;box-shadow:0 12px 40px rgba(0,0,0,0.18)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+        '<span style="font:700 13px '+_DISP+';color:'+_INK+'">Viewing: '+tier.label+'</span>'+
+        '<button data-dock="toggle" style="border:0;background:transparent;cursor:pointer;color:'+_MUTE+';font:500 16px '+_SANS+';line-height:1">&times;</button></div>'+
+      '<div style="font:500 10px '+_MONO+';text-transform:uppercase;letter-spacing:.12em;color:'+_MUTE+';margin-bottom:6px">Switch plan</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:5px">'+pills+'</div>'+ wsRow + langRow +
+      '<div style="display:flex;gap:8px;margin-top:13px">'+
+        '<a href="/?route=signup" style="flex:1;text-align:center;background:'+_LIME+';color:'+_INK+';border-radius:999px;padding:8px 10px;font:600 12px '+_SANS+';text-decoration:none">Start free trial &rarr;</a>'+
+        '<a href="/" style="text-align:center;color:'+_MUTE+';border:1px solid '+_LINE+';border-radius:999px;padding:8px 12px;font:500 12px '+_SANS+';text-decoration:none">Exit</a></div></div>';
+  }
+
+  function mountDemoChrome() {
+    mountDock();
+    if (!_personaChosen) showChooser();
+  }
+
+  // Mount after DOM is ready. demo-mode.jsx imports run BEFORE screens.jsx
+  // mounts, so document.body exists but the splash sits in it.
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mountDemoBanner);
+    document.addEventListener('DOMContentLoaded', mountDemoChrome);
   } else {
-    mountDemoBanner();
+    mountDemoChrome();
   }
 }
 

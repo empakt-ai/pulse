@@ -120,6 +120,7 @@ const TeamPanel = () => {
 
   const submitInvite = async (e) => {
     e?.preventDefault?.();
+    if (window.__MASHAL_DEMO_MODE) { window.__demoBlock?.('Team invites are off in the demo — start a free trial to invite your team.'); return; }
     const email = inviteEmail.trim().toLowerCase();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       setInviteFeedback({ type: 'err', msg: 'Enter a valid email.' });
