@@ -39,7 +39,12 @@ export default {
         mute:     '#6F6B62',
         muteDark: '#6F6B62',   // readable on light (was a light grey)
         ultra:    '#6B5BFF',
-        lime:     '#D6FF3E',
+        // Deep olive (was bright lime #D6FF3E). lime is used as TEXT for status
+        // badges (active/completed/ready/resolved) + the diff viewer, so on the
+        // light theme it must read as text on cream — the bright lime (and even
+        // the brand's limeDeep #A8D200) is too low-contrast. This olive keeps
+        // the green family but is dark enough to be legible.
+        lime:     '#5C7314',
         magenta:  '#FF3D8A',
       },
     },
