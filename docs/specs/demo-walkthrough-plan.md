@@ -12,6 +12,11 @@
 - **Persona switcher** banner (L1074–1192): flip tier (with price), Brand EN|AR toggle, Agency workspace dropdown; URL-persisted (`?persona=&workspace=&lang=`). Tier-gated screens already render differently (audience = pro+, competitor ads = brand/agency).
 - API interceptor (L1029–1065): reads → persona data; mutations (`/sync`, `/intelligence/generate`, `/team/invite`, …) → `{ok:true, demo:true}`. All 10 screens render.
 
+## The "separate layer" is the switcher BANNER, not the layout (key clarification)
+The app under `/demo` already renders the **real** components a signed-in user sees (same `BriefScreen`/`StatsScreen`/etc., fed dummy data) — so "exactly what I see when I sign in" is already true *underneath*. What makes it *feel* like a separate layer is the **persona-switcher banner** (`demo-mode.jsx:1083–1192`): a `position:fixed` dark bar, intentionally styled with vanilla inline CSS to *not* match the app's design system, that pins to the top and pushes the whole app down. **That banner is the wrapper to remove.**
+
+**Target experience (per req):** click Demo → a clean, on-brand **chooser** asks *"Explore as: Creator / Pro Creator / Business / Agency."* Pick one → you're "signed in" as that dummy account in the **real app with no foreign bar**. Switching plans / exiting is a **subtle, native-feeling** control (or a return to the chooser), not a persistent overlay. It should read as *"I am this user,"* not *"I'm in a demo viewer."*
+
 ## What blocks re-expose (the only real work for Phase 1)
 **Req 1c (read-only, no data entry) is not fully enforced.** Four Settings actions aren't demo-gated and would fire real flows or break UX:
 | Action | Where | Today |
@@ -34,7 +39,13 @@
 
 ---
 
-## Phase 1 — Make it truly read-only, then re-expose (small, high-value)
+## Phase 1 — Real signed-in feel + read-only + re-expose
+
+**0. Replace the foreign banner with an entry chooser + native chrome (the "no separate layer" fix).**
+- On `/demo` (no persona chosen yet), render a clean, **on-brand** chooser screen in the app's own design system: *"Explore Mashal as: Creator · Pro Creator · Business · Agency"* (short blurb per tier). Selecting one sets the persona and drops into the real app.
+- **Remove the `position:fixed` switcher banner** (and its `body.paddingTop` offset) so the app renders full-bleed exactly like the signed-in product — no foreign bar, no push-down.
+- Replace switching with a **subtle native control**: e.g. a small, app-styled pill/menu (or a "Switch plan" item near the existing workspace/account area) that re-opens the chooser; keep one discreet "Start free trial" CTA. The agency workspace + Brand EN/AR toggles move into the *real* in-app controls (the SPA already has a workspace switcher + the Brand brief EN|AR toggle) rather than the banner.
+- Net: the demo *is* the real layout; the only demo-specific surface is the entry chooser and one quiet exit/convert affordance.
 
 **1. One demo-guard helper, applied at 4 call sites.** Add `demoGuard(message)` (returns true + shows a friendly nudge when `window.__MASHAL_DEMO_MODE`). At the top of each of the 4 handlers:
 ```
@@ -49,12 +60,12 @@ Tailored copy per action (Connect / Upgrade / Invite / Webhook). This converts e
 
 **3. A subtle "DEMO" affordance** — a small persistent badge + a "Start free trial" CTA in the demo chrome, so visitors always know it's a demo and have a one-click path to convert.
 
-## Phase 2 — Tooltips / guided walkthrough (none exists today)
-Build a **demo-only** lightweight tour (no impact on the real app):
-- **First-load welcome card** (dismissible): "This is a live, read-only demo. Switch tiers up top; click through the tabs." Built on the existing vanilla-DOM switcher banner.
-- **Per-screen tooltips / coach-marks**: short callouts on the first visit to each tab ("This is your 6 AM verdict", "Switch to Brand to see Arabic briefs + ad intelligence", "Agencies manage every client here"). Use the existing `demo:rehydrate` event + `window.__demoGetState()` to know which screen/persona is active.
-- Keep it **dismissible + replayable**; store "seen" in `localStorage` (demo-scoped). Start simple (hover tooltips + an intro card); a full step-through tour is a later polish.
-- Module: `js/demo-tour/` (publishes nothing into the real app; only mounts when `__MASHAL_DEMO_MODE`).
+## Phase 2 — Light, native tooltips ("match the actual layout")
+Per the brief: the walkthrough should **mirror the real layout, not sit on top of it**. So keep it subtle and native — no heavy tour overlay:
+- **One small dismissible intro** on first entry after the chooser ("Read-only demo — click any tab to explore. Switch plan anytime.").
+- **Subtle, on-brand tooltips/coach-marks** on first visit to each tab, styled in the app's design system (not a foreign overlay): "your 6 AM verdict", "Brand unlocks Arabic briefs + ad intel", "agencies manage every client here". Triggered via the existing `demo:rehydrate` + `window.__demoGetState()`.
+- **Dismissible + replayable**; "seen" stored in demo-scoped `localStorage`. No "next → next" forced tour unless we later decide we want one.
+- Module: `js/demo-tour/`, mounts only when `__MASHAL_DEMO_MODE`; publishes nothing into the real app.
 
 ## Phase 3 — Conversations layer (WhatsApp/Telegram) — depends on the Conversations tab
 Once the read-only Conversations module ships (see `conversations-module.md`), add **demo conversation data** to each persona (sample DMs/comments + messaging analytics, incl. WhatsApp + Telegram threads in Arabic/English) so the demo showcases it. This is purely additive persona data + the demo interceptor returning it for `/conversations`. **Do not block Phase 1/2 on this** — re-expose the demo now; light up Conversations in the demo when the tab exists.
