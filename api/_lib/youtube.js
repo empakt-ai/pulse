@@ -70,7 +70,12 @@ export function buildAuthUrl(userId, workspaceId, redirectUri) {
     response_type: 'code',
     scope: OAUTH_SCOPES.join(' '),
     access_type: 'offline',         // required for refresh_token
-    prompt: 'consent',              // forces refresh_token on repeat consent
+    // 'select_account' forces Google's account picker every time, so the user
+    // chooses WHICH Google account / YouTube channel to connect instead of
+    // Google silently replaying the last-authorized one (which connected the
+    // wrong channel). 'consent' still forces re-consent so a refresh_token is
+    // always re-issued. Space-separated = both prompts.
+    prompt: 'select_account consent',
     include_granted_scopes: 'true',
     state: signOAuthState(userId, workspaceId),
   });
