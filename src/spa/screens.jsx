@@ -4821,10 +4821,14 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
           digest_email:  wsData.workspace.digest_email || '',
           featured_on_homepage: !!wsData.workspace.featured_on_homepage,
           brief_language: wsData.workspace.brief_language || 'en',
+          // Drives the 6am-local cron dispatch. Show the stored value as-is
+          // (even the schema default 'UTC') so the user sees reality and can
+          // correct it; the dashboard self-heal + this control both fix it.
+          timezone:      wsData.workspace.timezone || 'UTC',
         });
       } catch (e) {
         // Not yet authenticated — show form with defaults
-        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false, brief_language: 'en' });
+        setForm({ name: D.workspace, user_type: 'creator', category: 'music', country: 'CA', focus_regions: [], account_age: '6-12mo', weekly_digest_enabled: false, digest_email: '', featured_on_homepage: false, brief_language: 'en', timezone: 'UTC' });
       } finally {
         setLoading(false);
       }
@@ -5303,6 +5307,44 @@ const SettingsScreen = ({ scrollAnchor, onAnchorConsumed }) => {
                 }. The Mashal interface stays in English.
               </p>
             )}
+          </div>
+
+          <div className="h-px bg-line dark:bg-lineDark" />
+
+          {/* Brief delivery timezone — drives the 6am-local cron dispatch
+              (api/cron/hourly.js). Auto-detected from the browser at
+              onboarding and self-healed on dashboard load; this control lets
+              the user see it and re-sync it to the current device. The value
+              is validated server-side in api/workspaces.js PATCH. */}
+          <div id="settings-timezone" style={{ scrollMarginTop: '80px' }}>
+            <h3 className="font-display text-[17px] font-semibold tracking-tight mb-0.5">Brief delivery timezone</h3>
+            <p className="text-[13px] text-mute dark:text-muteDark mb-3">
+              Your daily brief is generated at <strong>6:00 AM</strong> in this timezone. We detect it automatically from your browser — adjust it here if your briefs should follow a different clock.
+            </p>
+            <div className="flex items-center gap-3 flex-wrap">
+              <code className="inline-flex items-center h-10 px-3 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[13.5px] font-mono">
+                {form.timezone || 'UTC'}
+              </code>
+              {(() => {
+                let deviceTz = 'UTC';
+                try { deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch {}
+                if (deviceTz === (form.timezone || 'UTC')) {
+                  return <span className="text-[12px] text-mute dark:text-muteDark font-mono">matches this device ✓</span>;
+                }
+                return (
+                  <button
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, timezone: deviceTz }))}
+                    className="inline-flex items-center h-10 px-3.5 rounded-xl border border-ultra/40 text-ultra text-[13px] font-medium hover:bg-ultra/5 transition"
+                  >
+                    Use this device ({deviceTz})
+                  </button>
+                );
+              })()}
+            </div>
+            <p className="text-[11.5px] text-mute dark:text-muteDark mt-2">
+              Save below to apply — takes effect from the next morning's brief.
+            </p>
           </div>
 
           <div className="h-px bg-line dark:bg-lineDark" />

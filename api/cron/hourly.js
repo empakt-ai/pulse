@@ -20,7 +20,7 @@
 
 import crypto from 'node:crypto';
 import { supabase } from '../_lib/supabase.js';
-import { json } from '../_lib/auth.js';
+import { json, attachTrialState } from '../_lib/auth.js';
 import { runSync } from '../_lib/sync.js';
 import { generateBrief, generateLiveSignals } from '../_lib/intelligence.js';
 import { syncCompetitorsForWorkspace } from '../_lib/competitor-sync.js';
@@ -198,6 +198,22 @@ async function runWorkspace(workspace) {
 
   // ── Morning brief (06:00 local, daily) ───────────────────────────────
   if (jobs.includes('brief')) {
+    // Catch-up backfill: pull full history for any account whose first-connect
+    // historical backfill never completed (initial_sync_complete=false) — e.g.
+    // the connect-time backfill errored, leaving the account with only the thin
+    // incremental window. runSync('backfill') self-filters to incomplete
+    // accounts and early-returns (no-op) once they're all done, so this is a
+    // one-time cost per account and free on the steady state. Runs BEFORE the
+    // incremental pull + brief so the morning brief sees the recovered history.
+    try {
+      const bf = await runSync(workspace, { mode: 'backfill' });
+      if (bf.accounts?.length) {
+        result.steps.push({ step: 'backfill-catchup', posts: bf.posts, refreshed: bf.refreshed, failed: bf.failed });
+      }
+    } catch (e) {
+      result.steps.push({ step: 'backfill-catchup', error: e.message });
+    }
+
     // If we did NOT run the deep sync this hour, still do an incremental
     // pull so the brief sees fresh data.
     if (!jobs.includes('weekly-deep')) {
@@ -311,7 +327,12 @@ export default async function handler(req, res) {
   try { trial_sweep = await runTrialSweep(); } catch (e) { trial_sweep = { error: e.message }; }
 
   const workspaces = await supabase.select('workspaces', {
-    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email,trial_locked',
+    // trial_started_at/ends_at/converted_at feed attachTrialState() below, which
+    // sets ws.trial_active — the flag the sync layer keys on to choose the Apify
+    // scrape path (trials) vs the paid Zernio /analytics path. Without these the
+    // cron synced every trial account through Zernio, which returns [] without the
+    // paid add-on → 0 posts every morning → stale/empty briefs.
+    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email,trial_locked,trial_started_at,trial_ends_at,trial_converted_at',
   }).catch(() => []);
 
   // Sequential to stay under the 60s function budget. With 50ish workspaces
@@ -320,6 +341,10 @@ export default async function handler(req, res) {
   for (const ws of (workspaces || [])) {
     // Skip locked trials — they're effectively dormant until upgrade.
     if (ws.trial_locked) { results.push({ workspace_id: ws.id, skipped: true, reason: 'trial_locked' }); continue; }
+    // Derive trial_active (+locked/days_left) in-memory so runSync picks the
+    // right data path: trial → Apify scrape, paid → Zernio analytics. Mirrors
+    // exactly what authenticate() does on the request path.
+    attachTrialState(ws);
     try {
       results.push(await runWorkspace(ws));
     } catch (e) {

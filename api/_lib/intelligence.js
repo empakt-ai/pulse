@@ -1180,25 +1180,91 @@ export function buildBriefPrompt({ workspace, accounts, posts, snapshots, compet
   return { system: SYSTEM_PROMPT, user: buildUserMessage(payload, resolveTone(workspace), workspace) };
 }
 
+// Brief-kind signal rows that make up "the current morning brief". These are
+// replaced wholesale on each generation; live-signal rows (kind='live') are an
+// independent append-only feed and are never touched here.
+const BRIEF_KINDS = [
+  'verdict', 'action',
+  // Original kinds
+  'viral', 'gap', 'collab', 'engagement', 'warning', 'audience', 'timing', 'trend',
+  // Cross-platform content-intelligence kinds (migration 005)
+  'cross_platform_gap', 'missed_crosspost', 'series_arc',
+  'hook_pattern', 'collaboration_multiplier', 'engagement_velocity',
+  'caption_language_split',
+];
+
+// Soft-delete the prior morning brief so the dashboard reads the latest one.
+async function clearPriorBrief(workspaceId) {
+  await supabase.update('signals',
+    { is_read: true },
+    { eq: { workspace_id: workspaceId }, in: { kind: BRIEF_KINDS } }
+  ).catch(() => {});
+}
+
+// When a scheduled brief can't be generated (no connected accounts, or no posts
+// synced yet) we must NOT leave yesterday's brief sitting unread — the dashboard
+// would render it as "today's brief" and it looks stale (this is exactly the
+// "showing data from two days prior" report). Instead clear the prior brief and
+// drop a single honest, dated verdict so every workspace still gets a fresh 6am
+// card that explains what's happening. Best-effort: a failure here just leaves
+// the prior state untouched.
+async function writeNoDataBrief(workspace, reason) {
+  await clearPriorBrief(workspace.id);
+  const now = new Date().toISOString();
+  const copy = reason === 'no_accounts'
+    ? {
+        title: 'Connect an account to get your first brief',
+        body: 'No connected accounts on this workspace yet. Connect Instagram, TikTok, or YouTube in Settings and your first daily brief lands at 6am the next morning.',
+        action: 'Connect an account',
+      }
+    : {
+        title: 'No new activity to analyze this morning',
+        body: 'We couldn’t find any posts to analyze for your connected accounts in this run. This usually clears once your latest posts finish syncing and your next brief will pick them up. If it keeps happening, re-check your connected accounts in Settings.',
+        action: 'Review accounts',
+      };
+  await supabase.insert('signals', [{
+    workspace_id: workspace.id,
+    kind: 'verdict',
+    platform: 'all',
+    title: copy.title,
+    body: copy.body,
+    impact: 'Setup',
+    action: copy.action,
+    is_series: false,
+    model_used: null,
+    latency_ms: null,
+    tokens_used: null,
+    metadata: { generated_at: now, model: null, intel_score: null, status: reason, no_data: true },
+  }]).catch((e) => console.warn('[intelligence] no-data brief insert failed:', e.message));
+}
+
+// Confirm a workspace is genuinely empty — with direct count queries that THROW
+// on error rather than silently resolving to [] — before replacing its brief, so
+// a transient failure in the bulk data fetch can never wipe a good brief. Then
+// drop the appropriate no-data card. No-op when the counts come back non-empty.
+async function handleInsufficientData(workspace) {
+  let acctChk, postChk;
+  try {
+    [acctChk, postChk] = await Promise.all([
+      supabase.select('connected_accounts', { select: 'id', eq: { workspace_id: workspace.id, is_active: true }, limit: 1 }),
+      supabase.select('posts', { select: 'id', eq: { workspace_id: workspace.id }, limit: 1 }),
+    ]);
+  } catch (e) {
+    console.warn(`[intelligence] insufficient_data confirm failed for ws=${workspace.id}, leaving brief intact: ${e.message}`);
+    return;
+  }
+  if (!acctChk?.length) await writeNoDataBrief(workspace, 'no_accounts');
+  else if (!postChk?.length) await writeNoDataBrief(workspace, 'no_posts');
+  // else: data actually exists — the bulk fetch glitched; leave the brief intact.
+}
+
 // ── Persist generated brief into signals table ─────────────────────────────────
 async function persist({ workspace, brief, intelScore, usage, model, modelUsed, latencyMs, tokensUsed }) {
   // Soft-delete prior BRIEF rows (verdict/action/standard signals) so the
   // screen reads today's brief. Live-signal rows (kind='live') are kept —
   // they're an independent append-only feed and shouldn't be invalidated
   // when a new morning brief lands.
-  const briefKinds = [
-    'verdict', 'action',
-    // Original kinds
-    'viral', 'gap', 'collab', 'engagement', 'warning', 'audience', 'timing', 'trend',
-    // Cross-platform content-intelligence kinds (migration 005)
-    'cross_platform_gap', 'missed_crosspost', 'series_arc',
-    'hook_pattern', 'collaboration_multiplier', 'engagement_velocity',
-    'caption_language_split',
-  ];
-  await supabase.update('signals',
-    { is_read: true },
-    { eq: { workspace_id: workspace.id }, in: { kind: briefKinds } }
-  ).catch(() => {});
+  await clearPriorBrief(workspace.id);
 
   // Common per-row provenance fields. model_used / latency_ms / tokens_used
   // were added in migrations/005 so the UI can attribute generations.
@@ -1504,7 +1570,12 @@ export async function generateBrief(workspace, { manual = true } = {}) {
   ]);
 
   if (!accounts?.length || !posts?.length) {
-    return { skipped: 'insufficient_data', accounts: accounts?.length || 0, posts: posts?.length || 0 };
+    const reason = !accounts?.length ? 'no_accounts' : 'no_posts';
+    console.warn(`[intelligence] skip ws=${workspace.id} insufficient_data accounts=${accounts?.length || 0} posts=${posts?.length || 0}`);
+    // Don't leave the previous brief unread (it would render as "today's" and
+    // look stale) — replace it with an honest, dated no-data card instead.
+    await handleInsufficientData(workspace);
+    return { skipped: 'insufficient_data', reason, accounts: accounts?.length || 0, posts: posts?.length || 0 };
   }
 
   // 2) Deterministic intel score
@@ -1636,7 +1707,10 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
   ]);
 
   if (!accounts?.length || !posts?.length) {
-    yield { skipped: 'insufficient_data', accounts: accounts?.length || 0, posts: posts?.length || 0 };
+    const reason = !accounts?.length ? 'no_accounts' : 'no_posts';
+    console.warn(`[intelligence/stream] skip ws=${workspace.id} insufficient_data accounts=${accounts?.length || 0} posts=${posts?.length || 0}`);
+    await handleInsufficientData(workspace);
+    yield { skipped: 'insufficient_data', reason, accounts: accounts?.length || 0, posts: posts?.length || 0 };
     return;
   }
 

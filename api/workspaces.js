@@ -166,6 +166,27 @@ export default async function handler(req, res) {
     for (const k of ALLOWED_FIELDS) if (k in (body || {})) patch[k] = body[k];
     if (!Object.keys(patch).length) return json(res, 400, { error: 'No valid fields to update' });
 
+    // Validate the IANA timezone before persisting. A malformed value would be
+    // accepted silently and then fall back to UTC inside the cron's localClock()
+    // (api/cron/hourly.js) and brief.js localHour() — firing this customer's 6am
+    // brief at the wrong local time with no error. Drop an invalid value rather
+    // than fail the whole PATCH so the other fields still save. The browser
+    // normally supplies a valid Intl resolvedOptions().timeZone; this guards
+    // against tampering, stale clients, and bad backfills.
+    if ('timezone' in patch) {
+      const tz = patch.timezone;
+      let valid = typeof tz === 'string' && tz.length > 0;
+      if (valid) {
+        try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); }
+        catch { valid = false; }
+      }
+      if (!valid) {
+        console.warn(`[workspaces] dropping invalid timezone ${JSON.stringify(tz)} for ws=${workspace.id}`);
+        delete patch.timezone;
+        if (!Object.keys(patch).length) return json(res, 400, { error: 'Invalid timezone' });
+      }
+    }
+
     // TIER GATES — Creator can't toggle features that the /pricing
     // comparison reserves for Pro Creator+. Strip these from the patch
     // silently and respond with the cleaned patch so the SPA can show

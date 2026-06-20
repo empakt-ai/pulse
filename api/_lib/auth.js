@@ -143,7 +143,11 @@ export async function authenticate(req) {
 
 // Compute and attach trial flags to a workspace row. Idempotent and
 // dependency-free — pure function over the row's own columns + now().
-function attachTrialState(w) {
+// Exported so the cron (api/cron/hourly.js) can attach the same trial
+// state before it calls runSync — otherwise trial_active is undefined in
+// the cron context and the sync layer wrongly routes trial accounts down
+// the paid Zernio path instead of the Apify scrape path.
+export function attachTrialState(w) {
   if (!w) return;
   const now = Date.now();
   const endsAt = w.trial_ends_at ? new Date(w.trial_ends_at).getTime() : null;
