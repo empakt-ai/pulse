@@ -124,6 +124,21 @@ export default async function handler(req, res) {
       };
     });
 
+    // ONE ACCOUNT PER PLATFORM. connected_accounts enforces
+    // UNIQUE (workspace_id, platform) — the connected_accounts_workspace_id_platform_key
+    // constraint. If Zernio's listAccounts reports more than one account on the
+    // same platform, collapse to the first so (a) the batched upsert below can't
+    // collide with itself on (workspace_id, platform) — which Postgres rejects
+    // with "ON CONFLICT DO UPDATE command cannot affect row a second time" — and
+    // (b) the handle/slot accounting that follows operates on what we'll actually
+    // persist.
+    const seenPlatforms = new Set();
+    const dedupedRows = rows.filter(r => {
+      if (seenPlatforms.has(r.platform)) return false;
+      seenPlatforms.add(r.platform);
+      return true;
+    });
+
     const existing = await supabase.select('connected_accounts', {
       select: 'zernio_account_id,platform',
       eq: { workspace_id: ws.id },
@@ -145,7 +160,7 @@ export default async function handler(req, res) {
     const rejected = [];
     const claimableRows = [];
     const tierForClaim = (ws.tier || 'creator');
-    for (const r of rows) {
+    for (const r of dedupedRows) {
       // No handle (e.g. Zernio returned account_id only) — skip the
       // claim check, treat as connectable. Downstream features will
       // simply lack a handle-based competitor view.
@@ -180,8 +195,17 @@ export default async function handler(req, res) {
 
     if (claimableRows.length) {
       try {
+        // Conflict on (workspace_id, platform), NOT (workspace_id,
+        // zernio_account_id). The table's binding uniqueness is one account per
+        // platform per workspace, so a reconnect that yields a FRESH
+        // zernio_account_id must OVERWRITE the existing per-platform row
+        // (replacing zernio_account_id, reactivating is_active/status) rather
+        // than INSERT a second row — the latter trips
+        // connected_accounts_workspace_id_platform_key. Keying on
+        // zernio_account_id missed the stale row and produced exactly that
+        // "duplicate key value violates unique constraint" 500 on reconnect.
         await supabase.upsert('connected_accounts', claimableRows, {
-          onConflict: 'workspace_id,zernio_account_id',
+          onConflict: 'workspace_id,platform',
         });
       } catch (e) {
         return json(res, 500, { error: `DB upsert failed: ${e.message}` });
