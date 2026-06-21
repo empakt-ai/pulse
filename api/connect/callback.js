@@ -127,9 +127,16 @@ async function handleGoogleCallback(req, res, code, state) {
   // zernio_account_id (it's the unique external identifier we have for this
   // account, even though there's no Zernio profile involved for YT).
   try {
+    // Match the existing row by (workspace_id, platform), NOT by channel id.
+    // connected_accounts enforces one YouTube account per workspace
+    // (connected_accounts_workspace_id_platform_key). Re-authorizing Google can
+    // surface a different channel — or the prior row may be a stale disconnect —
+    // so we OVERWRITE the per-platform row (the update below replaces
+    // zernio_account_id with the new channel.id). Looking it up by channel.id
+    // missed that row and the fallback INSERT tripped the unique constraint.
     const existing = await supabase.select('connected_accounts', {
       select: 'id',
-      eq: { workspace_id: verified.workspaceId, zernio_account_id: channel.id },
+      eq: { workspace_id: verified.workspaceId, platform: 'youtube' },
     });
     const row = {
       workspace_id: verified.workspaceId,
@@ -140,7 +147,12 @@ async function handleGoogleCallback(req, res, code, state) {
       platform_name: channel.snippet?.title || null,
       followers: Number(channel.statistics?.subscriberCount || 0),
       verified: false,
+      // Fully reactivate on reconnect — if the per-platform row we're
+      // overwriting was previously disconnected, clearing status/disconnected_at
+      // (not just is_active) keeps it from staying invisible to syncs.
       is_active: true,
+      status: 'connected',
+      disconnected_at: null,
       last_synced_at: new Date().toISOString(),
       metadata: {
         provider: 'google',
