@@ -1,5 +1,5 @@
 -- ============================================================================
--- One-off remediation — ayaznoorm@gmail.com
+-- One-off remediation — ayaznoor@gmail.com
 --
 -- Error reported in the app:
 --   "DB upsert failed: duplicate key value violates unique constraint
@@ -43,7 +43,7 @@
 WITH usr AS (
   SELECT id AS user_id, email
   FROM auth.users
-  WHERE lower(email) = lower('ayaznoorm@gmail.com')
+  WHERE lower(email) = lower('ayaznoor@gmail.com')
 ),
 ws AS (
   SELECT w.id AS workspace_id, w.name
@@ -70,7 +70,7 @@ ORDER BY ca.platform, ca.is_active DESC, ca.connected_at DESC NULLS LAST;
 -- disconnect; this just confirms nothing is left bound that would block a
 -- re-claim on reconnect.
 --
--- WITH usr AS (SELECT id FROM auth.users WHERE lower(email)=lower('ayaznoorm@gmail.com')),
+-- WITH usr AS (SELECT id FROM auth.users WHERE lower(email)=lower('ayaznoor@gmail.com')),
 --      ws  AS (SELECT w.id FROM workspaces w JOIN usr u ON w.owner_id = u.id)
 -- SELECT sh.platform, sh.handle, sh.workspace_id, sh.released_at, sh.last_bound_at
 -- FROM social_handles sh
@@ -88,7 +88,7 @@ BEGIN;
 WITH usr AS (
   SELECT id AS user_id
   FROM auth.users
-  WHERE lower(email) = lower('ayaznoorm@gmail.com')
+  WHERE lower(email) = lower('ayaznoor@gmail.com')
 ),
 ws AS (
   SELECT w.id AS workspace_id
@@ -103,7 +103,7 @@ WHERE ca.workspace_id = ws.workspace_id
 -- AFTER state — verify the slot is now free (expect at most one ACTIVE row
 -- per platform, and no is_active=false rows remaining for this workspace).
 WITH usr AS (
-  SELECT id AS user_id FROM auth.users WHERE lower(email) = lower('ayaznoorm@gmail.com')
+  SELECT id AS user_id FROM auth.users WHERE lower(email) = lower('ayaznoor@gmail.com')
 ),
 ws AS (
   SELECT w.id AS workspace_id FROM workspaces w JOIN usr u ON w.owner_id = u.user_id

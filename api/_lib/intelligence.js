@@ -374,7 +374,13 @@ function buildHashtagIntel(ownPosts, competitors, posts) {
 }
 
 function buildPayload({ workspace, accounts, posts, snapshots, competitors, contentPieces = [], seriesRows = [], adsIntel = null }) {
-  const ownPosts = posts.filter(p => p.source === 'own');
+  // Only the platforms the workspace currently has CONNECTED (accounts is
+  // already is_active-filtered upstream). Posts from a platform that's no
+  // longer connected — or a stale pre-disconnect row — must not surface in
+  // top_posts / series / cross-platform groups, or a dead platform reads as
+  // "underperforming" and the brief recommends platforms the user isn't on.
+  const connectedPlatforms = new Set(accounts.map(a => a.platform));
+  const ownPosts = posts.filter(p => p.source === 'own' && connectedPlatforms.has(p.platform));
   const byPlatform = {};
 
   for (const a of accounts) {
@@ -627,12 +633,21 @@ When you read the data, look for:
 
 1. The standout post(s) — what topic, format, hook, or timing made them work? Generalize the pattern in one sentence.
 2. The dud(s) — what's underperforming THEIR baseline (not industry baseline)? Why specifically?
-3. The platform pattern — is one platform carrying the rest? Is one dead weight? Is the engagement quality (saves/shares/comments) different across platforms?
+3. The platform pattern — different platforms reward different behaviour, so read each on its OWN strengths. A platform with fewer views but strong comments or likes is NOT dead weight — it's a different audience relationship (TikTok often drives comments/discovery; Instagram often drives saves/shares/buy-intent). Name what each platform is winning at. Only call a platform underperforming if it's slipping against the workspace's OWN baseline on the metric that platform is normally strong at — never merely because it trails another platform on a single number like views.
 4. Cross-platform leverage — can a viral post on one platform be repurposed cheaply on another?
 5. The cadence — are they posting enough? Too much? Bunching on one platform and starving another?
 6. Audience intent signals — are people SAVING content (high intent), SHARING (advocacy), or just LIKING (passive)? Save and share rates beat like rates as a signal of real value.
 7. Competitor positioning — if competitor data exists, where do they sit relative to peers in their market/category?
 8. The bottleneck — what's the SINGLE highest-leverage thing? Almost always one of: hook quality, posting cadence, platform distribution, CTA strength, audience targeting. Identify which.
+
+═══ WHAT YOU CAN'T SEE — NEVER ASSUME ═══
+
+The DATA payload is published-post metrics only (views, likes, comments, saves, shares). You CANNOT see whether the user replies to comments, sends DMs, posts Stories, goes live, or what they have scheduled. Their outbound engagement is invisible to you. Therefore:
+
+• NEVER instruct the user to "reply to your comments", "engage with your audience", "respond to DMs", or any upkeep task you can't verify they're skipping. They are almost certainly already doing it — telling a creator to do what they already do every day is the fastest way to lose them. This is the single most common failure of generic AI advice; do not commit it.
+• The ONLY exception: a SPECIFIC recent post (< 48h) whose comment count is far above that post's own view-normalised norm. Then you may surface it as a TIME-SENSITIVE OPPORTUNITY ("'Episode 2' is pulling 3× your usual comment rate while it's live — that thread is worth jumping into now"), framed as a window to seize, never as a correction for neglect.
+• Every action must ADD something the user is likely NOT already doing — a new format to test, a cross-post they missed, a hashtag/territory gap, a hook rewrite, a posting-time shift, a watch-time/retention lever, a follower-conversion move. If an action could be handed to any creator without seeing THEIR numbers, cut it and find the one their data actually points to.
+• Bias the whole brief toward what's MISSING and what's the next OPPORTUNITY for reach, followers, and watch time — not maintenance of what's already working.
 
 ═══ VERDICT ═══
 
@@ -654,7 +669,7 @@ Ordered by urgency. Each action must:
   • Be do-able in under 30 minutes if "Now", under 2 hours if "Today",
     finishable in a single sitting if "This week", a multi-step build if "This month"
   • Move ONE metric the reader cares about
-  • Avoid generic copy ("engage with your audience" → no, "reply to the top 8 comments on the 'Khasara' reel within the next hour" → yes)
+  • Avoid generic copy AND avoid upkeep you can't verify ("engage with your audience" → no; "reply to your comments" → no, you can't see whether they already have). Make it a move that ADDS reach: "re-cut the 'App 4 of 10' open to land the hook in 1.5s and re-test on TikTok, where your hook is currently arriving ~2s late" → yes
   • "This month" actions are strategic builds — content series launches, new
     formats to test, niche territory to claim. They should explain what to build,
     why it wins, and the success metric to watch.
@@ -680,7 +695,7 @@ The payload's \`series\` field is the source of truth — pulled from the worksp
 
 ═══ ENGAGEMENT VELOCITY ═══
 
-The payload's \`recent_24h\` array contains posts under 24 hours old with a \`views_per_hour\` rate. When a post's views_per_hour is meaningfully higher than the user's typical platform average (compare to \`platforms.{platform}.total_views_30d / 30 / 24\`), emit an \`engagement_velocity\` signal with the actual ratio and a "what to do in the next 6 hours" action (reply to comments, cross-post, boost). Only emit when the lead is real — if the post is brand new (< 2 hours) the signal is noise unless the rate is exceptional.
+The payload's \`recent_24h\` array contains posts under 24 hours old with a \`views_per_hour\` rate. When a post's views_per_hour is meaningfully higher than the user's typical platform average (compare to \`platforms.{platform}.total_views_30d / 30 / 24\`), emit an \`engagement_velocity\` signal with the actual ratio and a "what to do in the next 6 hours" action that AMPLIFIES the momentum — cross-post it to the platform it isn't on yet, cut a follow-up/Part 2 while the topic is hot, or put spend behind it. Do NOT default to "reply to comments" (you can't see whether they already are). Only emit when the lead is real — if the post is brand new (< 2 hours) the signal is noise unless the rate is exceptional.
 
 ═══ PLATFORM BEST-PRACTICE RULES ═══
 
@@ -695,6 +710,7 @@ ${allRulesAsPromptText()}
   • Has a clear "so what" — connects the observation to a strategic implication
   • Uses the right kind label (viral / gap / collab / engagement / warning / timing / trend)
   • Avoids stating the obvious ("you have 294 followers on Instagram" is not a signal — "your IG ER ranks in the top 8% for accounts under 1K followers" is)
+  • ONLY references platforms present in the \`platforms\` object. Never warn that the user is "missing" a platform they aren't on, and never recommend launching a platform that isn't connected — if it's not in \`platforms\`, it doesn't exist for this brief.
 
 ═══ OUTPUT FORMAT ═══
 
@@ -1561,7 +1577,13 @@ export async function generateBrief(workspace, { manual = true } = {}) {
   //    reason about cross-platform groupings and ongoing numbered series
   //    rather than treating each post as an isolated row.
   const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
-    supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
+    // is_active:true ONLY — a disconnected/stale account row must never feed
+    // the brief. Without this filter a soft-deleted row (e.g. a YouTube account
+    // connected once then disconnected) leaks in as a zero-post platform and the
+    // model "helpfully" reports the user is missing a platform they never ran,
+    // or generates a full brief off accounts that aren't connected anymore.
+    // Mirrors the dashboard read in api/brief.js.
+    supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id, is_active: true } }).catch(() => []),
     supabase.select('posts', { select: '*', eq: { workspace_id: workspace.id }, order: 'posted_at.desc', limit: 200 }).catch(() => []),
     supabase.select('account_snapshots', { select: '*', eq: { workspace_id: workspace.id }, order: 'snapshot_date.desc', limit: 30 }).catch(() => []),
     supabase.select('competitors', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
@@ -1698,7 +1720,9 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
   yield { phase: 'gathering' };
 
   const [accounts, posts, snapshots, competitors, contentPieces, seriesRows] = await Promise.all([
-    supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),
+    // is_active:true ONLY — see generateBrief() above. Stale/disconnected rows
+    // must not leak into the brief payload.
+    supabase.select('connected_accounts', { select: '*', eq: { workspace_id: workspace.id, is_active: true } }).catch(() => []),
     supabase.select('posts', { select: '*', eq: { workspace_id: workspace.id }, order: 'posted_at.desc', limit: 200 }).catch(() => []),
     supabase.select('account_snapshots', { select: '*', eq: { workspace_id: workspace.id }, order: 'snapshot_date.desc', limit: 30 }).catch(() => []),
     supabase.select('competitors', { select: '*', eq: { workspace_id: workspace.id } }).catch(() => []),

@@ -291,10 +291,14 @@ async function runTrialSweep() {
         { eq: { id: w.id } }
       );
       // Soft-disconnect all accounts so syncs stop running against locked
-      // trials. The user can reactivate them on upgrade.
+      // trials. The user can reactivate them on upgrade. Set status too —
+      // leaving status='connected' on a deactivated row is the split-state
+      // bug that makes the UI show "connected" while sync and the brief
+      // treat the account as gone. Scope to is_active=true so we don't stamp
+      // a fresh disconnected_at over rows already disconnected earlier.
       await supabase.update('connected_accounts',
-        { is_active: false },
-        { eq: { workspace_id: w.id } }
+        { is_active: false, status: 'disconnected', disconnected_at: new Date().toISOString() },
+        { eq: { workspace_id: w.id, is_active: true } }
       ).catch(() => {});
       const released = await releaseAllForWorkspace(w.id, { reason: 'trial_expired' });
       swept.push({ workspace_id: w.id, name: w.name, handles_released: released });
