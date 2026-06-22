@@ -15,7 +15,15 @@
 
 import { supabase } from './supabase.js';
 
-const CONTENT_WINDOW_MS = 48 * 3600 * 1000; // ±48 hours for cross-platform grouping
+const CONTENT_WINDOW_MS = 48 * 3600 * 1000;   // ±48h: identical-caption cross-platform grouping
+// Reworded-per-platform cross-posts — and platforms whose API hands back a
+// different caption than the user typed (TikTok often returns its own
+// title/description) — won't share an exact fingerprint, so a tighter,
+// similarity-based pass links them: a platform the cluster lacks, posted within
+// ±3h, whose caption content-tokens overlap by >= 0.5 Jaccard. The tight window
+// keeps it from merging distinct series entries (Part 1 vs Part 2, days apart).
+const CROSSPOST_WINDOW_MS = 3 * 3600 * 1000;  // ±3h for the fuzzy cross-platform pass
+const SIM_THRESHOLD = 0.5;                     // min Jaccard on content-tokens for a fuzzy match
 
 // ── Caption normalization ───────────────────────────────────────────────
 // Strip markers + emojis + punctuation + collapse whitespace + lowercase,
@@ -42,6 +50,22 @@ function fingerprint(caption) {
   // emojis or hashtags) are returned as empty so callers can fall back to
   // the post id and avoid mis-grouping unrelated empty-caption posts.
   return stripped.slice(0, 100);
+}
+
+// Content-bearing tokens of a fingerprint (words 3+ chars). Drives the fuzzy
+// cross-platform pass so the same upload links even when the caption differs
+// across platforms.
+function contentTokens(fp) {
+  if (!fp) return new Set();
+  return new Set(fp.split(' ').filter(t => t.length >= 3));
+}
+
+// Jaccard similarity of two token sets: |A∩B| / |A∪B|. 0 when either is empty.
+function jaccard(a, b) {
+  if (!a.size || !b.size) return 0;
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  return inter / (a.size + b.size - inter);
 }
 
 // Detect the entry number for series matching. Returns { stem, number }
@@ -78,107 +102,92 @@ export async function detectContentPieces(workspace) {
   }).catch(() => []);
   if (!posts?.length) return { created: 0, linked: 0, pieces: 0 };
 
-  // Group posts by fingerprint, then within each fingerprint group split
-  // into 48-hour clusters keyed by the earliest post in the cluster.
-  const byFp = new Map();
+  // Single-pass, time-ordered clustering. Each post joins an existing cluster
+  // when it's the SAME content, otherwise it starts a new one. "Same content":
+  //   (a) identical caption fingerprint within ±48h — exact cross-posts and
+  //       re-uploads of the same caption; or
+  //   (b) a platform the cluster doesn't have yet, posted within ±3h, whose
+  //       caption content-tokens overlap the cluster anchor by >= 0.5 Jaccard.
+  // (b) is the fix for the same upload reworded per platform ("medicine
+  // tracking app" on IG vs "complete medication tracking app" on TikTok): an
+  // exact-fingerprint match split those into two single-platform pieces and the
+  // brief wrongly reported a "missed cross-post". The tight 3h window stops it
+  // from merging distinct series entries (Part 1 vs Part 2), which post days apart.
+  const clusters = [];
   for (const p of posts) {
     const fp = fingerprint(p.caption);
-    const key = fp || `__solo_${p.id}`; // empty fingerprint → solo piece
-    if (!byFp.has(key)) byFp.set(key, []);
-    byFp.get(key).push(p);
-  }
-
-  // Existing pieces for this workspace, keyed by fingerprint for upsert.
-  const existing = await supabase.select('content_pieces', {
-    select: 'id,fingerprint,first_posted_at,detected_platforms',
-    eq: { workspace_id: workspace.id },
-  }).catch(() => []);
-  const existingByFp = new Map((existing || []).map(r => [r.fingerprint, r]));
-
-  let created = 0, linked = 0, pieces = 0;
-  const piecesToWrite = [];
-  const piecesToUpdate = [];
-  const postLinks = []; // [{ post_id, piece_id }]
-
-  for (const [key, group] of byFp.entries()) {
-    if (!group.length) continue;
-    // Cluster the group into 48h windows around the first post.
-    group.sort((a, b) => String(a.posted_at || '').localeCompare(String(b.posted_at || '')));
-    const clusters = [];
-    for (const p of group) {
-      const ts = p.posted_at ? new Date(p.posted_at).getTime() : 0;
-      const existingCluster = clusters.find(c => {
-        const firstTs = c.first ? new Date(c.first).getTime() : 0;
-        return Math.abs(ts - firstTs) <= CONTENT_WINDOW_MS;
-      });
-      if (existingCluster) {
-        existingCluster.posts.push(p);
-      } else {
-        clusters.push({ first: p.posted_at, posts: [p] });
-      }
+    const tokens = contentTokens(fp);
+    const ts = p.posted_at ? new Date(p.posted_at).getTime() : 0;
+    let target = null;
+    for (const c of clusters) {
+      const dt = Math.abs(ts - c.anchorTs);
+      if (fp && fp === c.fp && dt <= CONTENT_WINDOW_MS) { target = c; break; }
+      if (dt <= CROSSPOST_WINDOW_MS
+          && !c.platforms.has(p.platform)
+          && tokens.size >= 3
+          && jaccard(tokens, c.anchorTokens) >= SIM_THRESHOLD) { target = c; break; }
     }
-
-    for (const cluster of clusters) {
-      const fp = key.startsWith('__solo_') ? '' : key;
-      // Aggregate stats for this cluster.
-      const platforms = [...new Set(cluster.posts.map(p => p.platform))];
-      const totalViews = cluster.posts.reduce((s, p) => s + (p.views || 0), 0);
-      const sortedByViews = [...cluster.posts].sort((a, b) => (b.views || 0) - (a.views || 0));
-      const best = sortedByViews[0];
-      const worst = sortedByViews[sortedByViews.length - 1];
-      const firstPostedAt = cluster.posts[0].posted_at;
-      const title = (cluster.posts.find(p => p.caption)?.caption || '').slice(0, 80) || null;
-
-      // Re-use the existing piece when one already exists for this fingerprint
-      // AND its first_posted_at falls inside this cluster's window. Otherwise
-      // create a fresh piece (e.g. user posted the same evergreen caption a
-      // year apart — those are different pieces).
-      let pieceId = null;
-      const hit = fp && existingByFp.get(fp);
-      if (hit) {
-        const hitTs = hit.first_posted_at ? new Date(hit.first_posted_at).getTime() : 0;
-        const clusterTs = firstPostedAt ? new Date(firstPostedAt).getTime() : 0;
-        if (Math.abs(hitTs - clusterTs) <= CONTENT_WINDOW_MS) {
-          pieceId = hit.id;
-          piecesToUpdate.push({
-            id: pieceId,
-            detected_platforms: platforms,
-            total_views: totalViews,
-            best_platform: best?.platform || null,
-            best_views: best?.views || 0,
-            worst_views: worst?.views || 0,
-            title,
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
-      if (!pieceId) {
-        // Defer ID generation to Postgres. We collect the rows and insert
-        // them in one batch below, then read back the inserted ids.
-        piecesToWrite.push({
-          workspace_id: workspace.id,
-          fingerprint: fp,
-          title,
-          first_posted_at: firstPostedAt,
-          detected_platforms: platforms,
-          total_views: totalViews,
-          best_platform: best?.platform || null,
-          best_views: best?.views || 0,
-          worst_views: worst?.views || 0,
-          _cluster: cluster, // sidecar — stripped before insert
-        });
-      } else {
-        // Link all posts in this cluster to the existing piece.
-        for (const p of cluster.posts) {
-          if (p.content_piece_id !== pieceId) postLinks.push({ post_id: p.id, piece_id: pieceId });
-        }
-        linked += cluster.posts.length;
-      }
-      pieces += 1;
+    if (target) {
+      target.posts.push(p);
+      target.platforms.add(p.platform);
+    } else {
+      clusters.push({ fp, anchorTokens: tokens, anchorTs: ts, platforms: new Set([p.platform]), posts: [p] });
     }
   }
 
-  // Insert new pieces in one batch, then link their posts.
+  let created = 0, linked = 0;
+  const livePieceIds = new Set();
+  const postLinks = [];     // [{ post_id, piece_id }]
+  const piecesToWrite = []; // clusters with no existing piece to reuse
+
+  for (const cluster of clusters) {
+    const cp = cluster.posts;
+    const platforms = [...cluster.platforms];
+    const totalViews = cp.reduce((s, p) => s + (p.views || 0), 0);
+    const byViews = [...cp].sort((a, b) => (b.views || 0) - (a.views || 0));
+    const best = byViews[0];
+    const worst = byViews[byViews.length - 1];
+    const firstPostedAt = cp
+      .map(p => p.posted_at)
+      .filter(Boolean)
+      .sort((a, b) => String(a).localeCompare(String(b)))[0] || null;
+    const title = (cp.find(p => p.caption)?.caption || '').slice(0, 80) || null;
+
+    const aggregate = {
+      fingerprint: cluster.fp || '',
+      title,
+      first_posted_at: firstPostedAt,
+      detected_platforms: platforms,
+      total_views: totalViews,
+      best_platform: best?.platform || null,
+      best_views: best?.views || 0,
+      worst_views: worst?.views || 0,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Stable id: reuse a piece these posts already point to (keeps ids steady
+    // and absorbs a previously-split piece into the merged one). Pick the id
+    // the most posts already share.
+    const idCounts = new Map();
+    for (const p of cp) {
+      if (p.content_piece_id) idCounts.set(p.content_piece_id, (idCounts.get(p.content_piece_id) || 0) + 1);
+    }
+    const pieceId = idCounts.size
+      ? [...idCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+      : null;
+
+    if (pieceId) {
+      livePieceIds.add(pieceId);
+      await supabase.update('content_pieces', aggregate, { eq: { id: pieceId } }).catch(() => {});
+      for (const p of cp) {
+        if (p.content_piece_id !== pieceId) postLinks.push({ post_id: p.id, piece_id: pieceId });
+      }
+    } else {
+      piecesToWrite.push({ workspace_id: workspace.id, ...aggregate, _cluster: cp });
+    }
+  }
+
+  // Insert brand-new pieces in one batch, then link their posts.
   if (piecesToWrite.length) {
     const toInsert = piecesToWrite.map(({ _cluster, ...rest }) => rest);
     const inserted = await supabase.insert('content_pieces', toInsert).catch(() => []);
@@ -186,29 +195,34 @@ export async function detectContentPieces(workspace) {
       const id = inserted?.[i]?.id;
       if (!id) continue;
       created += 1;
-      for (const p of piecesToWrite[i]._cluster.posts) {
-        postLinks.push({ post_id: p.id, piece_id: id });
-      }
-      linked += piecesToWrite[i]._cluster.posts.length;
+      livePieceIds.add(id);
+      for (const p of piecesToWrite[i]._cluster) postLinks.push({ post_id: p.id, piece_id: id });
     }
   }
 
-  // Patch each post that needs a new linkage. Done one-by-one because
-  // PostgREST's update endpoint doesn't accept per-row values in a batch.
-  // 50-ish posts per workspace per sync — within Vercel Pro's 60s.
+  // Apply post → piece links. One-by-one: PostgREST can't take per-row values
+  // in a batch update. ~50 posts/workspace/sync, well within the budget.
   for (const link of postLinks) {
     await supabase.update('posts',
       { content_piece_id: link.piece_id },
       { eq: { id: link.post_id } }).catch(() => {});
+    linked += 1;
   }
 
-  // Aggregate updates for already-existing pieces.
-  for (const u of piecesToUpdate) {
-    const { id, ...patch } = u;
-    await supabase.update('content_pieces', patch, { eq: { id } }).catch(() => {});
+  // Drop orphaned pieces — any content_piece for this workspace no longer
+  // backed by a post (e.g. the losing half of a merge). Left alone they keep
+  // their stale single-platform stats and re-emit the false missed-crosspost
+  // signal, so they must go. Safe: nothing references them after re-linking.
+  const allPieces = await supabase.select('content_pieces', {
+    select: 'id', eq: { workspace_id: workspace.id },
+  }).catch(() => []);
+  for (const row of (allPieces || [])) {
+    if (!livePieceIds.has(row.id)) {
+      await supabase.delete('content_pieces', { eq: { id: row.id } }).catch(() => {});
+    }
   }
 
-  return { created, linked, pieces };
+  return { created, linked, pieces: clusters.length };
 }
 
 // ── Series detection + trend calc ───────────────────────────────────────
