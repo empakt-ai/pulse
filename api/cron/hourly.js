@@ -324,6 +324,15 @@ export default async function handler(req, res) {
     return json(res, 401, { error: 'Unauthorized' });
   }
 
+  // On-demand regeneration: GET/POST /api/cron/hourly?force=1 (same CRON_SECRET
+  // auth as the scheduled tick) regenerates the morning brief for EVERY eligible
+  // workspace right now, ignoring the local-clock gate. It generates from the
+  // data already in the DB (no sync / competitor scrape) so the whole fan-out
+  // stays well inside the function budget; the scheduled 06:00 run still does
+  // the full sync-then-brief. Use it to backfill briefs for accounts that
+  // missed a morning run (e.g. after a fix) without waiting for tomorrow.
+  const force = (req.query?.force ?? '').toString() === '1';
+
   // Trial sweep runs first — locking expired trials before the per-
   // workspace fan-out means a workspace that just expired won't get one
   // more brief generated on its way out.
@@ -350,7 +359,19 @@ export default async function handler(req, res) {
     // exactly what authenticate() does on the request path.
     attachTrialState(ws);
     try {
-      results.push(await runWorkspace(ws));
+      if (force) {
+        // Generate the brief immediately from current data (no sync). Records
+        // as 'intelligence_auto' so it doesn't burn the workspace's quota.
+        const brief = await generateBrief(ws, { manual: false });
+        results.push({
+          workspace_id: ws.id, name: ws.name, forced: true,
+          ok: !brief?.error && !brief?.skipped,
+          ...(brief?.error ? { error: brief.error } : {}),
+          ...(brief?.skipped ? { skipped_reason: brief.skipped } : {}),
+        });
+      } else {
+        results.push(await runWorkspace(ws));
+      }
     } catch (e) {
       results.push({ workspace_id: ws.id, error: e.message });
     }
@@ -359,8 +380,11 @@ export default async function handler(req, res) {
   return json(res, 200, {
     ran_at: new Date().toISOString(),
     utc_hour: new Date().getUTCHours(),
+    forced: force,
     workspaces_scanned: workspaces.length,
     trial_sweep,
-    results: results.filter(r => !r.skipped),
+    // In force mode surface every workspace (incl. no-data) so the caller can
+    // see exactly who got a brief; the scheduled tick stays terse.
+    results: force ? results : results.filter(r => !r.skipped),
   });
 }
