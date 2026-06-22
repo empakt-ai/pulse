@@ -1619,7 +1619,7 @@ export async function generateBrief(workspace, { manual = true } = {}) {
   const result = await generateIntelligence({
     system: SYSTEM_PROMPT,
     user:   buildUserMessage(payload, tone, workspace),
-    max_tokens: 6000,
+    max_tokens: 12000,  // headroom: Gemini 3.x thinking tokens share this budget with the JSON
     temperature: 0.6,
   });
 
@@ -1748,7 +1748,7 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
   const startMs = Date.now();
   let fullText = '';
   let usage = {};
-  let model = 'gemini-2.5-flash';
+  let model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
   // Inline the stream call here so we forward chunks one-for-one to the
   // browser. Importing geminiCallStream keeps the SSE-parsing logic in
@@ -1757,7 +1757,7 @@ export async function* generateBriefStream(workspace, { manual = true } = {}) {
     for await (const ev of geminiCallStream({
       system: SYSTEM_PROMPT,
       user:   buildUserMessage(payload, tone, workspace),
-      max_tokens: 6000,
+      max_tokens: 12000,  // headroom: Gemini 3.x thinking tokens share this budget with the JSON
       temperature: 0.6,
     })) {
       if (ev.chunk) {

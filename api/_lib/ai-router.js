@@ -17,14 +17,18 @@ import { call as geminiCall, estimateCostCents as geminiCost } from './gemini.js
 import { messages as anthropicMessages, estimateCostCents as anthropicCost } from './anthropic.js';
 import { getSetting } from './platform-settings.js';
 
-const GEMINI_MODEL    = 'gemini-2.5-flash';
+// Gemini 3.5 Flash — GA/stable (2026-05), the most capable Flash tier and our
+// brief default. Env-overridable: set GEMINI_MODEL on the Vercel project to roll
+// back to gemini-2.5-flash (or pin a dated snapshot) without a redeploy.
+const GEMINI_MODEL    = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 
-// Per-provider timeout for the PRIMARY call. Vercel kills the function at
-// 60s; if the primary hangs the full duration the fallback never gets a
-// chance to run. 45s leaves ~15s headroom for Gemini (typically 5–10s).
-// Bump only if you're confident your provider returns within the buffer.
-const PRIMARY_TIMEOUT_MS = 45_000;
+// Per-provider timeout for the PRIMARY call. If the primary hangs we want the
+// fallback provider to still get a turn inside the function budget (now 300s
+// for all api/* functions per vercel.json). 90s comfortably covers
+// gemini-3.5-flash with low thinking (typically ~8–25s) while still leaving
+// room for the Claude fallback. Bump only if your provider returns within it.
+const PRIMARY_TIMEOUT_MS = 90_000;
 
 async function runGemini({ system, user, max_tokens, temperature, signal }) {
   const res = await geminiCall({
@@ -64,7 +68,7 @@ async function runAnthropic({ system, user, max_tokens, temperature, signal }) {
 // Public entry. `model` argument is honoured if explicitly passed (so
 // /api/analytics/compare-models can force a side-by-side run); otherwise
 // we read the admin-controlled default from platform_settings.
-export async function generateIntelligence({ system, user, model, max_tokens = 6000, temperature = 0.6 } = {}) {
+export async function generateIntelligence({ system, user, model, max_tokens = 12000, temperature = 0.6 } = {}) {
   const start = Date.now();
   const requested = (model || await getSetting('ai_provider') || 'gemini').toString().toLowerCase();
   const primary = (requested === 'anthropic' || requested === 'claude') ? 'anthropic' : 'gemini';

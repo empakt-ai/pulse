@@ -6,7 +6,9 @@
 // ═════════════════════════════════════════════════════════════════════════
 
 const KEY = process.env.GEMINI_API_KEY;
-const DEFAULT_MODEL = 'gemini-2.5-flash';
+// Default for direct callers (e.g. the streaming brief path). Matches
+// ai-router's GEMINI_MODEL; env-overridable for instant rollback to 2.5-flash.
+const DEFAULT_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 
 if (!KEY) console.warn('[gemini] GEMINI_API_KEY missing — Gemini calls will fail');
 
@@ -23,16 +25,21 @@ function streamEndpoint(model) {
 // Map our { system, messages } shape (Anthropic-style) onto Gemini's
 // systemInstruction + contents shape. We expect a single user turn for
 // brief generation, which keeps the mapping trivial.
-function buildBody({ system, user, max_tokens, temperature, json }) {
+function buildBody({ system, user, max_tokens, temperature, json, model }) {
+  // Thinking control is model-family-specific AND the two knobs are mutually
+  // exclusive — sending both returns a 400. Gemini 3.x uses
+  // thinkingConfig.thinkingLevel (minimal|low|medium|high; can't be fully
+  // disabled, the floor is 'minimal'); Gemini 2.5 uses
+  // thinkingConfig.thinkingBudget (0 disables). Thinking tokens count against
+  // maxOutputTokens on both, so the brief callers pass a generous budget to
+  // leave room for the full JSON after thinking.
+  const isGen3plus = /gemini-[3-9]/.test(model || '');
   const body = {
     contents: [{ role: 'user', parts: [{ text: user }] }],
     generationConfig: {
       temperature: temperature ?? 0.6,
-      maxOutputTokens: max_tokens ?? 6000,
-      // Gemini 2.5 Flash spends "thinking" tokens against maxOutputTokens
-      // before emitting visible content. For a JSON-mode brief we don't
-      // need that — disable thinking so the budget goes to actual output.
-      thinkingConfig: { thinkingBudget: 0 },
+      maxOutputTokens: max_tokens ?? 12000,
+      thinkingConfig: isGen3plus ? { thinkingLevel: 'low' } : { thinkingBudget: 0 },
     },
   };
   if (system) {
@@ -53,7 +60,7 @@ function buildBody({ system, user, max_tokens, temperature, json }) {
 // Throws on non-2xx so the router can fall back to Claude.
 export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, temperature, json = true, signal } = {}) {
   if (!KEY) throw new Error('GEMINI_API_KEY missing');
-  const body = buildBody({ system, user, max_tokens, temperature, json });
+  const body = buildBody({ system, user, max_tokens, temperature, json, model });
   const res = await fetch(endpoint(model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -113,7 +120,7 @@ export async function call({ system, user, model = DEFAULT_MODEL, max_tokens, te
 // Generator pattern — drain with `for await (const c of callStream(...))`.
 export async function* callStream({ system, user, model = DEFAULT_MODEL, max_tokens, temperature, json = true } = {}) {
   if (!KEY) throw new Error('GEMINI_API_KEY missing');
-  const body = buildBody({ system, user, max_tokens, temperature, json });
+  const body = buildBody({ system, user, max_tokens, temperature, json, model });
   const res = await fetch(streamEndpoint(model), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -182,10 +189,14 @@ export async function* callStream({ system, user, model = DEFAULT_MODEL, max_tok
 // Cheap-by-default cost estimator. Numbers approximate Google's
 // flash-tier rate card; refresh when pricing changes. Returns cents.
 export function estimateCostCents(usage = {}, model = DEFAULT_MODEL) {
-  // gemini-2.5-flash: $0.30 / 1M input, $2.50 / 1M output.
-  const rate = model.includes('pro')
-    ? { in: 1.25, out: 10.00 }    // gemini-2.5-pro reference
-    : { in: 0.30, out: 2.50 };    // 2.5-flash default
+  // Flash-tier rate card (refresh when Google's pricing changes). The output
+  // rate already includes thinking tokens on both 2.5 and 3.x.
+  const m = (model || '').toLowerCase();
+  const rate =
+      m.includes('pro')              ? { in: 1.25, out: 10.00 } // *-pro reference
+    : m.includes('gemini-3.5-flash') ? { in: 1.50, out:  9.00 } // 3.5 Flash (GA)
+    : /gemini-[3-9].*flash/.test(m)  ? { in: 0.50, out:  3.00 } // 3.x Flash (preview/lite)
+    :                                  { in: 0.30, out:  2.50 }; // 2.5 Flash
   const dollars = (usage.input_tokens || 0) / 1e6 * rate.in
                 + (usage.output_tokens || 0) / 1e6 * rate.out;
   return Math.round(dollars * 100);
