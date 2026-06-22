@@ -18,12 +18,16 @@ import { supabase } from './supabase.js';
 const CONTENT_WINDOW_MS = 48 * 3600 * 1000;   // ±48h: identical-caption cross-platform grouping
 // Reworded-per-platform cross-posts — and platforms whose API hands back a
 // different caption than the user typed (TikTok often returns its own
-// title/description) — won't share an exact fingerprint, so a tighter,
-// similarity-based pass links them: a platform the cluster lacks, posted within
-// ±3h, whose caption content-tokens overlap by >= 0.5 Jaccard. The tight window
-// keeps it from merging distinct series entries (Part 1 vs Part 2, days apart).
-const CROSSPOST_WINDOW_MS = 3 * 3600 * 1000;  // ±3h for the fuzzy cross-platform pass
-const SIM_THRESHOLD = 0.5;                     // min Jaccard on content-tokens for a fuzzy match
+// title/description) — won't share an exact fingerprint. Measured on a real
+// reworded pair, the FULL captions overlapped only ~0.35 Jaccard but the
+// opening HOOK (first ~60 chars) overlapped ~0.56: creators keep the hook
+// consistent across platforms even when they reword the body. So the fuzzy pass
+// matches on the TITLE: a platform the cluster lacks, posted within ±45min
+// (cross-posts land near-simultaneously), title-token Jaccard >= 0.45, and
+// never across different series numbers (Part 1 vs Part 2).
+const CROSSPOST_WINDOW_MS = 45 * 60 * 1000;   // ±45min for the fuzzy cross-platform pass
+const TITLE_PREFIX_CHARS = 60;                 // hook length compared for fuzzy matching
+const SIM_THRESHOLD = 0.45;                    // min Jaccard on title tokens for a fuzzy match
 
 // ── Caption normalization ───────────────────────────────────────────────
 // Strip markers + emojis + punctuation + collapse whitespace + lowercase,
@@ -106,32 +110,37 @@ export async function detectContentPieces(workspace) {
   // when it's the SAME content, otherwise it starts a new one. "Same content":
   //   (a) identical caption fingerprint within ±48h — exact cross-posts and
   //       re-uploads of the same caption; or
-  //   (b) a platform the cluster doesn't have yet, posted within ±3h, whose
-  //       caption content-tokens overlap the cluster anchor by >= 0.5 Jaccard.
-  // (b) is the fix for the same upload reworded per platform ("medicine
-  // tracking app" on IG vs "complete medication tracking app" on TikTok): an
-  // exact-fingerprint match split those into two single-platform pieces and the
-  // brief wrongly reported a "missed cross-post". The tight 3h window stops it
-  // from merging distinct series entries (Part 1 vs Part 2), which post days apart.
+  //   (b) a platform the cluster doesn't have yet, posted within ±45min, with a
+  //       TITLE-token Jaccard >= 0.45 against the cluster anchor, and NOT a
+  //       different series number (Part 1 vs Part 2).
+  // (b) is the fix for the same upload reworded per platform ("medicine tracking
+  // app" on IG vs "complete medication tracking app" on TikTok): the full
+  // captions diverge (~0.35) but the hooks match (~0.56), so an exact match
+  // split them into two single-platform pieces and the brief wrongly reported a
+  // "missed cross-post". The tight window + title focus + series guard keep it
+  // from merging distinct content that merely shares a series name or hashtags.
   const clusters = [];
   for (const p of posts) {
     const fp = fingerprint(p.caption);
-    const tokens = contentTokens(fp);
+    const titleTokens = contentTokens(fp.slice(0, TITLE_PREFIX_CHARS));
+    const seriesNum = seriesMatch(p.caption || '')?.number ?? null;
     const ts = p.posted_at ? new Date(p.posted_at).getTime() : 0;
     let target = null;
     for (const c of clusters) {
       const dt = Math.abs(ts - c.anchorTs);
       if (fp && fp === c.fp && dt <= CONTENT_WINDOW_MS) { target = c; break; }
+      const seriesClash = seriesNum != null && c.seriesNum != null && seriesNum !== c.seriesNum;
       if (dt <= CROSSPOST_WINDOW_MS
           && !c.platforms.has(p.platform)
-          && tokens.size >= 3
-          && jaccard(tokens, c.anchorTokens) >= SIM_THRESHOLD) { target = c; break; }
+          && !seriesClash
+          && titleTokens.size >= 3
+          && jaccard(titleTokens, c.titleTokens) >= SIM_THRESHOLD) { target = c; break; }
     }
     if (target) {
       target.posts.push(p);
       target.platforms.add(p.platform);
     } else {
-      clusters.push({ fp, anchorTokens: tokens, anchorTs: ts, platforms: new Set([p.platform]), posts: [p] });
+      clusters.push({ fp, titleTokens, seriesNum, anchorTs: ts, platforms: new Set([p.platform]), posts: [p] });
     }
   }
 
