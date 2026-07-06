@@ -92,11 +92,6 @@ const ReplyBox = ({ item }) => {
   if (item.kind === 'comment_reply_sent') {
     return <div className="mt-1.5 text-[11px] text-mute dark:text-muteDark">↩ Sent from Mashal</div>;
   }
-  // Pulled straight from Zernio (not in our webhook feed) — read-only for now;
-  // replying to these lands in the next pass.
-  if (item.external) {
-    return <div className="mt-1.5 text-[11px] text-mute dark:text-muteDark">Pulled from {item.platform_label} · reply coming soon</div>;
-  }
   if (sent) {
     return <div className="mt-2 text-[12px] font-medium text-limeDeep">✓ Reply sent</div>;
   }
@@ -106,7 +101,8 @@ const ReplyBox = ({ item }) => {
     if (!msg || sending) return;
     setSending(true); setErr(null);
     try {
-      await api('/engage/reply', { method: 'POST', body: JSON.stringify({ inbox_event_id: item.id, message: msg }) });
+      const target = item.external ? { comment: item.reply_ctx } : { inbox_event_id: item.id };
+      await api('/engage/reply', { method: 'POST', body: JSON.stringify({ ...target, message: msg }) });
       setSent(true); setText('');
     } catch (e) {
       setErr(e?.message || 'Reply failed');

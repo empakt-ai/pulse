@@ -56,33 +56,61 @@ export default async function handler(req, res) {
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }
   const inboxEventId = body?.inbox_event_id || null;
+  const ext = body?.comment || null;   // external (Zernio-pulled) comment context
   const message = String(body?.message || '').trim();
 
-  if (!inboxEventId) return json(res, 400, { error: 'inbox_event_id is required' });
+  if (!inboxEventId && !ext) return json(res, 400, { error: 'inbox_event_id or comment is required' });
   if (!message) return json(res, 400, { error: 'message is required' });
   if (message.length > MAX_LEN) {
     return json(res, 400, { error: `message exceeds ${MAX_LEN} characters` });
   }
 
-  // Load the comment event — scoped to THIS workspace so a member of another
-  // workspace can't reply into ours by guessing an id.
-  const evt = await supabase.select('inbox_events', {
-    select: 'id,workspace_id,platform,kind,account_id,zernio_account_id,platform_post_id,post_id,author_handle,payload',
-    eq: { id: inboxEventId, workspace_id: ws.id },
-    limit: 1, single: true,
-  }).catch(() => null);
-  if (!evt) return json(res, 404, { error: 'Comment not found' });
-  if (!String(evt.kind || '').toLowerCase().includes('comment')) {
-    return json(res, 400, { error: 'That event is not a comment — only comments can be replied to here.' });
-  }
+  // Resolve the ids Zernio needs (accountId, platform post id, comment id) plus
+  // the local columns for recording — from EITHER a stored inbox event OR an
+  // external comment pulled live from Zernio. Both are workspace-scoped so a
+  // member of another workspace can't reply into ours.
+  let accountId, postId, commentId, platform, localAccountId, localPostId, evtId, authorFrom;
 
-  // Resolve the three ids Zernio needs. account id + platform post id are
-  // columns; the comment id lives only in the stored payload (payload.comment.id).
-  const payload = evt.payload || {};
-  const accountId = evt.zernio_account_id || pick(payload, 'account.id', 'accountId');
-  const postId    = evt.platform_post_id
-    || pick(payload, 'comment.platformPostId', 'post.platformPostId', 'post.id');
-  const commentId = pick(payload, 'comment.id', 'commentId', 'comment._id');
+  if (inboxEventId) {
+    const evt = await supabase.select('inbox_events', {
+      select: 'id,workspace_id,platform,kind,account_id,zernio_account_id,platform_post_id,post_id,author_handle,payload',
+      eq: { id: inboxEventId, workspace_id: ws.id },
+      limit: 1, single: true,
+    }).catch(() => null);
+    if (!evt) return json(res, 404, { error: 'Comment not found' });
+    if (!String(evt.kind || '').toLowerCase().includes('comment')) {
+      return json(res, 400, { error: 'That event is not a comment — only comments can be replied to here.' });
+    }
+    // account id + platform post id are columns; the comment id lives only in
+    // the stored payload (payload.comment.id).
+    const payload = evt.payload || {};
+    accountId      = evt.zernio_account_id || pick(payload, 'account.id', 'accountId');
+    postId         = evt.platform_post_id || pick(payload, 'comment.platformPostId', 'post.platformPostId', 'post.id');
+    commentId      = pick(payload, 'comment.id', 'commentId', 'comment._id');
+    platform       = evt.platform;
+    localAccountId = evt.account_id;
+    localPostId    = evt.post_id;
+    evtId          = evt.id;
+    authorFrom     = pick(payload, 'account.username') || null;
+  } else {
+    // External comment (from GET /inbox/comments). Verify the account belongs
+    // to this workspace before acting on its behalf, then use the ids the pull
+    // already resolved.
+    const acct = await supabase.select('connected_accounts', {
+      select: 'id,platform,zernio_account_id',
+      eq: { workspace_id: ws.id, zernio_account_id: ext.zernio_account_id },
+      limit: 1, single: true,
+    }).catch(() => null);
+    if (!acct) return json(res, 403, { error: 'That account is not in this workspace.' });
+    accountId      = acct.zernio_account_id;
+    postId         = ext.platform_post_id || null;
+    commentId      = ext.comment_id || null;
+    platform       = acct.platform;
+    localAccountId = acct.id;
+    localPostId    = null;
+    evtId          = null;
+    authorFrom     = null;
+  }
 
   if (!accountId || !postId || !commentId) {
     return json(res, 422, {
@@ -108,17 +136,17 @@ export default async function handler(req, res) {
   // reply already posted to the platform.
   const outbound = {
     workspace_id: ws.id,
-    account_id: evt.account_id,
+    account_id: localAccountId,
     zernio_account_id: accountId,
-    platform: evt.platform,
+    platform,
     kind: 'comment_reply_sent',
-    post_id: evt.post_id,
+    post_id: localPostId,
     platform_post_id: postId,
-    author_handle: pick(payload, 'account.username') || null,
+    author_handle: authorFrom,
     body: message,
     payload: {
       in_reply_to_comment_id: commentId,
-      in_reply_to_event_id: evt.id,
+      in_reply_to_event_id: evtId,
       sent_by_user_id: auth.user.id,
       zernio_response: zres ?? null,
     },
@@ -130,8 +158,8 @@ export default async function handler(req, res) {
     ok: true,
     reply: {
       message,
-      in_reply_to: evt.id,
-      platform: evt.platform,
+      in_reply_to: evtId,
+      platform,
       recorded_event_id: Array.isArray(inserted) ? (inserted[0]?.id || null) : null,
     },
   });
