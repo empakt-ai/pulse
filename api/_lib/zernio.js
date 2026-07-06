@@ -247,6 +247,21 @@ export const zernio = {
     return call(`/accounts/${accountId}`, { method: 'DELETE' });
   },
 
+  // ── Engagement writes (inbox) ───────────────────────────────────────────
+  // Reply to a comment on one of the profile's posts. Zernio proxies this to
+  // the platform's native "reply to comment" (IG, FB, YouTube, LinkedIn,
+  // Threads, X, Reddit, Bluesky). `postId` is the PLATFORM post id — Zernio's
+  // internal post.id comes back null on the comment webhook, so callers pass
+  // inbox_events.platform_post_id. `commentId` is the platform comment id
+  // (payload.comment.id from the webhook).
+  //   POST /v1/inbox/comments/{postId}  body { accountId, commentId, message }
+  async replyToComment({ accountId, postId, commentId, message }) {
+    return call(`/inbox/comments/${encodeURIComponent(postId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ accountId, commentId, message }),
+    });
+  },
+
   // Instagram-specific account insights
   async getInstagramInsights(accountId) {
     const params = new URLSearchParams({ accountId });

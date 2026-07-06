@@ -33,6 +33,63 @@ const StatTile = ({ label, value }) => (
   </div>
 );
 
+// Inline reply composer for a comment card. Comments can be replied to via
+// Zernio (POST /api/engage/reply); DMs stay read-only for now. Our own sent
+// replies come back as kind 'comment_reply_sent' and render as a quiet label
+// rather than another reply box.
+const ReplyBox = ({ item }) => {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [sent, setSent] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  if (item.group !== 'comment') return null;
+  if (item.kind === 'comment_reply_sent') {
+    return <div className="mt-1.5 text-[11px] text-mute dark:text-muteDark">↩ Sent from Mashal</div>;
+  }
+  if (sent) {
+    return <div className="mt-2 text-[12px] font-medium text-limeDeep">✓ Reply sent</div>;
+  }
+
+  const send = async () => {
+    const msg = text.trim();
+    if (!msg || sending) return;
+    setSending(true); setErr(null);
+    try {
+      await api('/engage/reply', { method: 'POST', body: JSON.stringify({ inbox_event_id: item.id, message: msg }) });
+      setSent(true); setText('');
+    } catch (e) {
+      setErr(e?.message || 'Reply failed');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="mt-2 text-[12px] font-medium text-ultra hover:underline">Reply</button>
+    );
+  }
+
+  return (
+    <div className="mt-2 space-y-2">
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
+        placeholder={`Reply to ${item.author || 'this comment'}…`}
+        className="w-full rounded-lg border border-line dark:border-lineDark bg-transparent px-3 py-2 text-[13px] resize-y focus:outline-none focus:ring-1 focus:ring-ultra" />
+      {err && <div className="text-[12px] text-magenta">{err}</div>}
+      <div className="flex items-center gap-2">
+        <Btn variant="ink" onClick={send} disabled={sending || !text.trim()}>
+          {sending ? 'Sending…' : 'Send reply'}
+        </Btn>
+        <button onClick={() => { setOpen(false); setErr(null); }}
+          className="text-[12px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper">Cancel</button>
+      </div>
+    </div>
+  );
+};
+
 const ConversationsScreen = () => {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -134,6 +191,7 @@ const ConversationsScreen = () => {
                     <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(it.received_at)}</span>
                   </div>
                   <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{it.body || <span className="italic opacity-70">(no text)</span>}</p>
+                  <ReplyBox item={it} />
                 </div>
               </div>
             </Card>
@@ -141,7 +199,7 @@ const ConversationsScreen = () => {
         </div>
       )}
 
-      <p className="text-[11px] text-mute dark:text-muteDark text-center mt-6">Read-only view. Replying from Mashal is coming soon.</p>
+      <p className="text-[11px] text-mute dark:text-muteDark text-center mt-6">Reply to comments right here. Replying to DMs is coming soon.</p>
     </div>
   );
 };
