@@ -86,14 +86,15 @@ export default async function handler(req, res) {
     });
   }
 
-  // Fire the DM through Zernio. The human-agent tag lets IG/FB replies land
-  // outside the 24h standard window (valid up to 7 days) — the correct mode for
-  // a person replying from an inbox. Non-Meta platforms have no such window.
-  const tag = ['instagram', 'facebook'].includes(String(evt.platform || '').toLowerCase())
-    ? 'HUMAN_AGENT' : null;
+  // Fire the DM through Zernio with STANDARD messaging (works within the
+  // platform's 24h window). We do NOT send the HUMAN_AGENT tag: Meta requires
+  // Facebook App Review approval of the Human Agent feature on the underlying
+  // app, and without it Zernio rejects the tag ("must be reviewed and approved
+  // by Facebook"). To reply outside 24h later, that feature has to be approved
+  // on Zernio's Meta app — then pass tag: 'HUMAN_AGENT' here.
   let zres;
   try {
-    zres = await zernio.sendDirectMessage({ accountId, conversationId, message, tag });
+    zres = await zernio.sendDirectMessage({ accountId, conversationId, message });
   } catch (e) {
     // Surface Zernio's error verbatim (e.g. 24h messaging window expired,
     // missing permission, conversation archived).
