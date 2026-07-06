@@ -160,20 +160,31 @@ export default async function handler(req, res) {
   // enabled, and webhooks don't backfill history). Best-effort + time-bounded
   // so a slow or failing account never blocks the (webhook-fed) IG feed. These
   // are read-only for now (external:true) — replying to them comes next.
-  const withTimeout = (p, ms) => Promise.race([
-    Promise.resolve(p).catch(() => null),
-    new Promise(r => setTimeout(() => r(null), ms)),
-  ]);
+  const raceTimeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('pull timeout')), ms));
   const seenComments = new Set(
     items.filter(i => i.group === 'comment' && i.comment_id).map(i => String(i.comment_id))
   );
   const pulled = [];
+  const pullDebug = [];   // per-account diagnostics (admin-only in the response)
   await Promise.all(accounts.map(async (acct) => {
-    const resp = await withTimeout(zernio.listInboxComments(acct.zernio_account_id, { limit: 100 }), 6000);
-    if (!resp) return;
-    const list = Array.isArray(resp) ? resp : (resp.comments || resp.data || []);
-    if (!Array.isArray(list)) return;
-    for (const c of list) {
+    let resp = null, err = null;
+    try {
+      resp = await Promise.race([
+        zernio.listInboxComments(acct.zernio_account_id, { limit: 100 }),
+        raceTimeout(6000),
+      ]);
+    } catch (e) { err = e?.message || String(e); }
+    const list = Array.isArray(resp) ? resp : (resp?.comments || resp?.data || resp?.items || []);
+    const arr = Array.isArray(list) ? list : [];
+    pullDebug.push({
+      platform: acct.platform,
+      error: err,
+      respType: resp == null ? 'null' : (Array.isArray(resp) ? 'array' : typeof resp),
+      respKeys: (resp && typeof resp === 'object' && !Array.isArray(resp)) ? Object.keys(resp).slice(0, 12) : null,
+      count: arr.length,
+      itemKeys: (arr[0] && typeof arr[0] === 'object') ? Object.keys(arr[0]).slice(0, 20) : null,
+    });
+    for (const c of arr) {
       const cid = c?.id || c?._id || c?.commentId;
       if (!cid || seenComments.has(String(cid))) continue;
       seenComments.add(String(cid));
@@ -201,6 +212,7 @@ export default async function handler(req, res) {
       });
     }
   }));
+  try { console.log('[conversations.pull]', JSON.stringify(pullDebug)); } catch { /* noop */ }
   if (pulled.length) {
     items.push(...pulled);
     items.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
@@ -216,5 +228,8 @@ export default async function handler(req, res) {
       last_7d: last7.slice().reverse(), // oldest → today, for a left-to-right bar
     },
     tier: { key: tierKey },
+    // Admin-only pull diagnostics (per-account: error/shape/count). Temporary —
+    // remove once the FB/YouTube/TikTok pull is confirmed working.
+    ...(auth.isAdmin ? { _pull: pullDebug } : {}),
   });
 }
