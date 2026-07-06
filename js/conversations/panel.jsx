@@ -69,6 +69,17 @@ const MediaRow = ({ media }) => (!media || !media.length) ? null : (
   </div>
 );
 
+// One pill in the per-account switcher (All accounts + one per connected account).
+const AccountChip = ({ active, onClick, label, sub }) => (
+  <button onClick={onClick}
+    className={cls('flex-shrink-0 h-9 px-3 rounded-lg text-[12.5px] font-medium border transition whitespace-nowrap',
+      active
+        ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+        : 'border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper')}>
+    {label}{sub && <span className={cls('ml-1.5 text-[10px] font-normal', active ? 'opacity-70' : 'opacity-60')}>{sub}</span>}
+  </button>
+);
+
 // Inline reply composer for a comment card. Comments can be replied to via
 // Zernio (POST /api/engage/reply); DMs stay read-only for now. Our own sent
 // replies come back as kind 'comment_reply_sent' and render as a quiet label
@@ -393,6 +404,7 @@ const ConversationsScreen = () => {
   const [locked, setLocked] = React.useState(false);
   const [filter, setFilter] = React.useState('all');
   const [view, setView] = React.useState('inbox');   // 'inbox' | 'automations'
+  const [account, setAccount] = React.useState('all'); // 'all' | zernio_account_id
 
   React.useEffect(() => {
     let alive = true;
@@ -432,9 +444,21 @@ const ConversationsScreen = () => {
   }
 
   const items = data?.items || [];
-  const a = data?.analytics || { total: 0, by_group: {}, last_7d: [] };
-  const shown = filter === 'all' ? items : items.filter(i => i.group === filter);
-  const series = a.last_7d || [];
+  const accounts = data?.accounts || [];
+  const byAccount = account === 'all' ? items : items.filter(i => i.zernio_account_id === account);
+  const shown = filter === 'all' ? byAccount : byAccount.filter(i => i.group === filter);
+
+  // Account-aware tiles + 7-day series (recomputed client-side so switching
+  // accounts updates the numbers, not just the list).
+  const now = Date.now();
+  const counts = { total: byAccount.length, dm: 0, comment: 0, review: 0 };
+  const last7 = [0, 0, 0, 0, 0, 0, 0];
+  for (const i of byAccount) {
+    counts[i.group] = (counts[i.group] || 0) + 1;
+    const d = Math.floor((now - new Date(i.received_at).getTime()) / 86400000);
+    if (d >= 0 && d < 7) last7[d] += 1;
+  }
+  const series = last7.slice().reverse();
   const maxBar = Math.max(1, ...series);
 
   // Group DMs into conversation threads; other kinds stay as flat cards. Build
@@ -483,14 +507,26 @@ const ConversationsScreen = () => {
 
       {view === 'automations' ? <AutomationsView /> : (<>
 
+      {accounts.length > 1 && (
+        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
+          <AccountChip active={account === 'all'} onClick={() => setAccount('all')} label="All accounts" />
+          {accounts.map(ac => (
+            <AccountChip key={ac.zernio_account_id}
+              active={account === ac.zernio_account_id}
+              onClick={() => setAccount(ac.zernio_account_id)}
+              label={`@${ac.username}`} sub={ac.platform_label} />
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-        <StatTile label="Total" value={formatNum(a.total || 0)} />
-        <StatTile label="DMs" value={formatNum(a.by_group?.dm || 0)} />
-        <StatTile label="Comments" value={formatNum(a.by_group?.comment || 0)} />
-        <StatTile label="Reviews" value={formatNum(a.by_group?.review || 0)} />
+        <StatTile label="Total" value={formatNum(counts.total || 0)} />
+        <StatTile label="DMs" value={formatNum(counts.dm || 0)} />
+        <StatTile label="Comments" value={formatNum(counts.comment || 0)} />
+        <StatTile label="Reviews" value={formatNum(counts.review || 0)} />
       </div>
 
-      {series.length > 0 && (
+      {counts.total > 0 && (
         <Card className="mb-5">
           <div className="text-[11px] font-mono uppercase tracking-[0.14em] text-mute dark:text-muteDark mb-3">Last 7 days</div>
           <div className="flex items-end gap-1.5 h-16">

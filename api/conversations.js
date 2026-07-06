@@ -17,6 +17,8 @@ import { engageGate } from './_lib/tiers.js';
 const PLATFORM_LABEL = {
   instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram',
   whatsapp: 'WhatsApp', youtube: 'YouTube', google_business: 'Google Business',
+  tiktok: 'TikTok', linkedin: 'LinkedIn', x: 'X', threads: 'Threads',
+  bluesky: 'Bluesky', reddit: 'Reddit', pinterest: 'Pinterest',
 };
 
 // Collapse the many webhook `kind` strings into 3 display groups.
@@ -76,7 +78,7 @@ export default async function handler(req, res) {
   // the payload is used only to extract threading keys (conversation id,
   // direction, comment parent) — it is not shipped to the browser.
   const rows = await supabase.select('inbox_events', {
-    select: 'id,platform,kind,author_handle,body,post_id,platform_post_id,payload,received_at',
+    select: 'id,platform,kind,author_handle,body,post_id,platform_post_id,account_id,zernio_account_id,payload,received_at',
     eq: { workspace_id: ws.id },
     order: 'received_at.desc',
     limit: 200,
@@ -108,6 +110,8 @@ export default async function handler(req, res) {
       platform_label:    PLATFORM_LABEL[r.platform] || r.platform || 'Unknown',
       group,
       kind:              r.kind,
+      account_id:        r.account_id || null,
+      zernio_account_id: r.zernio_account_id || null,
       author:            r.author_handle || null,
       body:              r.body || null,
       post_id:           r.post_id || null,
@@ -133,8 +137,26 @@ export default async function handler(req, res) {
     if (days >= 0 && days < 7) last7[days] += 1;
   }
 
+  // Connected accounts for the per-account switcher. Inbox + reply/DM are
+  // platform-agnostic — whichever accounts are connected (IG, FB, TikTok,
+  // YouTube, LinkedIn, …) each get their own filter, plus a combined view.
+  const accts = await supabase.select('connected_accounts', {
+    select: 'id,platform,platform_username,zernio_account_id',
+    eq: { workspace_id: ws.id, is_active: true },
+  }).catch(() => []);
+  const accounts = (accts || [])
+    .filter(a => a.zernio_account_id)
+    .map(a => ({
+      id:                a.id,
+      platform:          a.platform,
+      platform_label:    PLATFORM_LABEL[a.platform] || a.platform || 'Account',
+      username:          a.platform_username,
+      zernio_account_id: a.zernio_account_id,
+    }));
+
   return json(res, 200, {
     items,
+    accounts,
     analytics: {
       total: items.length,
       by_platform,
