@@ -262,16 +262,23 @@ export const zernio = {
     });
   },
 
-  // Send a direct-message reply into an existing conversation thread. Symmetric
-  // with replyToComment — Zernio proxies to the platform's native DM send
-  // (IG/FB Messenger). `conversationId` is Zernio's conversation id
-  // (payload.message.conversationId on the message.received webhook); the read
-  // side is GET /inbox/messages/{id}, so the send mirrors it as POST.
-  //   POST /v1/inbox/messages/{conversationId}  body { accountId, message }
-  async sendDirectMessage({ accountId, conversationId, message }) {
-    return call(`/inbox/messages/${encodeURIComponent(conversationId)}`, {
+  // Send a direct-message reply into an existing conversation thread. Zernio
+  // proxies to the platform's native DM send (IG/FB Messenger, etc.).
+  // `conversationId` is Zernio's conversation id (payload.message.conversationId
+  // on the message.received webhook); `accountId` is the connected account.
+  // Note the message is a nested resource of the conversation, not /inbox/messages.
+  //   POST /v1/inbox/conversations/{conversationId}/messages
+  //   body { accountId, message, messagingType?, messageTag? }
+  //
+  // `tag` (e.g. 'HUMAN_AGENT') sends via messagingType MESSAGE_TAG so a person
+  // can reply outside the platform's 24h standard window (Meta allows
+  // HUMAN_AGENT up to 7 days). Omit for platforms without a messaging window.
+  async sendDirectMessage({ accountId, conversationId, message, tag = null }) {
+    const body = { accountId, message };
+    if (tag) { body.messagingType = 'MESSAGE_TAG'; body.messageTag = tag; }
+    return call(`/inbox/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ accountId, message }),
+      body: JSON.stringify(body),
     });
   },
 

@@ -37,6 +37,26 @@ function pick(obj, ...paths) {
   return null;
 }
 
+// Normalise Zernio attachments (shared reels, story mentions, images sent in a
+// DM/comment) to a flat { url, type, title } the UI can render. Real shape:
+// { url, type:'video'|'share'|..., payload:{ url, title }, originalType:'ig_reel'
+// |'story_mention' }. Prefer originalType (more descriptive) for the label.
+function normMedia(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const a of list) {
+    const url = a?.url || a?.payload?.url || a?.src || a?.image_url || null;
+    if (!url) continue;
+    out.push({
+      url,
+      type: String(a?.originalType || a?.type || 'file').toLowerCase(),
+      title: a?.payload?.title || a?.title || null,
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
 
@@ -76,6 +96,12 @@ export default async function handler(req, res) {
       ? pick(p, 'comment.id', 'commentId', 'comment._id') : null;
     const parent_comment_id = group === 'comment'
       ? pick(p, 'comment.parentCommentId', 'parentCommentId') : null;
+    // Media a follower attached (shared reel, story mention, image, …).
+    const media = group === 'dm'
+      ? normMedia(pick(p, 'message.attachments'))
+      : group === 'comment'
+        ? normMedia(pick(p, 'comment.attachments', 'comment.media'))
+        : [];
     return {
       id:                r.id,
       platform:          r.platform,
@@ -90,6 +116,7 @@ export default async function handler(req, res) {
       direction,
       comment_id:        comment_id || null,
       parent_comment_id: parent_comment_id || null,
+      media,
       received_at:       r.received_at,
     };
   });

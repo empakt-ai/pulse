@@ -33,6 +33,42 @@ const StatTile = ({ label, value }) => (
   </div>
 );
 
+// Media a follower attached to a DM/comment (shared reel, story mention, image).
+// Image-ish types render an inline thumbnail (with a graceful fall-back to a
+// labelled link if the — often expiring — CDN url won't load); everything else
+// renders as a clickable chip.
+const MEDIA_LABELS = {
+  ig_reel: 'Shared reel', video: 'Shared video', share: 'Shared post',
+  story_mention: 'Story mention', image: 'Photo', photo: 'Photo',
+  audio: 'Voice message', file: 'Attachment',
+};
+
+const MediaAtt = ({ m }) => {
+  const [broken, setBroken] = React.useState(false);
+  const label = m.title || MEDIA_LABELS[m.type] || 'Attachment';
+  const isImg = /image|photo|story/.test(m.type) && !broken;
+  if (isImg) {
+    return (
+      <a href={m.url} target="_blank" rel="noreferrer" className="block">
+        <img src={m.url} onError={() => setBroken(true)} alt={label}
+          className="max-h-40 max-w-full rounded-lg border border-line dark:border-lineDark object-cover" />
+      </a>
+    );
+  }
+  return (
+    <a href={m.url} target="_blank" rel="noreferrer" title={label}
+      className="inline-flex items-center gap-1.5 max-w-[240px] text-[12px] text-ultra hover:underline px-2 py-1 rounded-lg bg-ultra/5 border border-ultra/20">
+      <span aria-hidden>📎</span><span className="truncate">{label}</span>
+    </a>
+  );
+};
+
+const MediaRow = ({ media }) => (!media || !media.length) ? null : (
+  <div className="flex flex-wrap gap-1.5 mt-1.5">
+    {media.map((m, i) => <MediaAtt key={i} m={m} />)}
+  </div>
+);
+
 // Inline reply composer for a comment card. Comments can be replied to via
 // Zernio (POST /api/engage/reply); DMs stay read-only for now. Our own sent
 // replies come back as kind 'comment_reply_sent' and render as a quiet label
@@ -329,7 +365,8 @@ const DmThread = ({ thread, onSent }) => {
                   m.direction === 'outgoing'
                     ? 'bg-ink text-paper dark:bg-paper dark:text-ink rounded-br-sm'
                     : 'bg-ink/[0.06] dark:bg-paper/[0.08] rounded-bl-sm')}>
-                  {m.body || <span className="italic opacity-70">(no text)</span>}
+                  {m.body ? m.body : ((m.media && m.media.length) ? null : <span className="italic opacity-70">(no text)</span>)}
+                  <MediaRow media={m.media} />
                 </div>
               </div>
             ))}
@@ -497,7 +534,8 @@ const ConversationsScreen = () => {
                     <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">{f.it.group}</span>
                     <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(f.it.received_at)}</span>
                   </div>
-                  <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{f.it.body || <span className="italic opacity-70">(no text)</span>}</p>
+                  <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{f.it.body ? f.it.body : ((f.it.media && f.it.media.length) ? null : <span className="italic opacity-70">(no text)</span>)}</p>
+                  <MediaRow media={f.it.media} />
                   <ReplyBox item={f.it} />
                 </div>
               </div>

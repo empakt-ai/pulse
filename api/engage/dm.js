@@ -86,10 +86,14 @@ export default async function handler(req, res) {
     });
   }
 
-  // Fire the DM through Zernio.
+  // Fire the DM through Zernio. The human-agent tag lets IG/FB replies land
+  // outside the 24h standard window (valid up to 7 days) — the correct mode for
+  // a person replying from an inbox. Non-Meta platforms have no such window.
+  const tag = ['instagram', 'facebook'].includes(String(evt.platform || '').toLowerCase())
+    ? 'HUMAN_AGENT' : null;
   let zres;
   try {
-    zres = await zernio.sendDirectMessage({ accountId, conversationId, message });
+    zres = await zernio.sendDirectMessage({ accountId, conversationId, message, tag });
   } catch (e) {
     // Surface Zernio's error verbatim (e.g. 24h messaging window expired,
     // missing permission, conversation archived).
