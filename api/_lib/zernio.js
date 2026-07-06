@@ -299,6 +299,25 @@ export const zernio = {
     return call(`${path}?${params.toString()}`);
   },
 
+  // Zernio's DM inbox is TWO-LEVEL, mirroring comments:
+  //   GET /inbox/conversations?accountId               → the conversation list
+  //   GET /inbox/conversations/{conversationId}/messages?accountId → its messages
+  // Shapes are wrapped ({ data/conversations/messages: [...], pagination }).
+  // Used to PULL DM history the webhook never delivered (webhooks are forward-
+  // only). The messages path is the same resource sendDirectMessage POSTs to.
+  async listConversations(accountId, { cursor, limit } = {}) {
+    const params = new URLSearchParams({ accountId });
+    if (cursor) params.set('cursor', cursor);
+    if (limit) params.set('limit', String(limit));
+    return call(`/inbox/conversations?${params.toString()}`);
+  },
+  async listConversationMessages(accountId, conversationId, { cursor, limit } = {}) {
+    const params = new URLSearchParams({ accountId });
+    if (cursor) params.set('cursor', cursor);
+    if (limit) params.set('limit', String(limit));
+    return call(`/inbox/conversations/${encodeURIComponent(conversationId)}/messages?${params.toString()}`);
+  },
+
   // ── Comment→DM automations (Zernio-hosted) ──────────────────────────────
   // Zernio hosts the keyword→DM automation for Instagram + Facebook: it
   // watches for a keyword comment, sends the private reply (and optional
