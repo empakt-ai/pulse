@@ -105,8 +105,16 @@ export default async function handler(req, res) {
   const platform = pick(body, 'platform', 'account.platform', 'data.platform') || null;
   const platformPostId = pick(body, 'post.platformPostId', 'post.id', 'post._id',
                                 'comment.postId', 'data.postId') || null;
-  const authorHandle = pick(body, 'author.username', 'comment.author.username',
-                               'message.from.username', 'from.username', 'author') || null;
+  // Author/sender identity. Comments carry comment.author.username; DMs carry
+  // the sender under message.sender.* (username OR name) and again on the
+  // conversation as participant*. Prefer a handle, fall back to a display name,
+  // so the inbox shows who it's from instead of "Someone".
+  const authorHandle = pick(body,
+    'comment.author.username', 'author.username',
+    'message.sender.username', 'message.from.username', 'from.username',
+    'conversation.participantUsername',
+    'message.sender.name', 'conversation.participantName',
+    'author') || null;
   const text = pick(body, 'comment.text', 'message.text', 'text', 'body') || null;
 
   // Resolve workspace + post locally. Best-effort — webhook still records
