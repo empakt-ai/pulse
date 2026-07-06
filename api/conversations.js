@@ -28,6 +28,15 @@ function groupFor(kind) {
   return 'other';
 }
 
+// Defensive dotted-path read over the stored payload.
+function pick(obj, ...paths) {
+  for (const p of paths) {
+    const v = p.split('.').reduce((o, kk) => (o == null ? null : o[kk]), obj);
+    if (v != null) return v;
+  }
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') return json(res, 405, { error: 'Method not allowed' });
 
@@ -43,25 +52,47 @@ export default async function handler(req, res) {
   const gate = engageGate(ws);
   if (gate) return json(res, gate.status, gate.body);
 
-  // Recent inbox events for this workspace (webhook-fed). Read-only.
+  // Recent inbox events for this workspace (webhook-fed). Read for the feed;
+  // the payload is used only to extract threading keys (conversation id,
+  // direction, comment parent) — it is not shipped to the browser.
   const rows = await supabase.select('inbox_events', {
-    select: 'id,platform,kind,author_handle,body,post_id,platform_post_id,received_at',
+    select: 'id,platform,kind,author_handle,body,post_id,platform_post_id,payload,received_at',
     eq: { workspace_id: ws.id },
     order: 'received_at.desc',
     limit: 200,
   }).catch(() => []);
 
-  const items = (rows || []).map(r => ({
-    id:             r.id,
-    platform:       r.platform,
-    platform_label: PLATFORM_LABEL[r.platform] || r.platform || 'Unknown',
-    group:          groupFor(r.kind),
-    kind:           r.kind,
-    author:         r.author_handle || null,
-    body:           r.body || null,
-    post_id:        r.post_id || null,
-    received_at:    r.received_at,
-  }));
+  const items = (rows || []).map(r => {
+    const p = r.payload || {};
+    const group = groupFor(r.kind);
+    const kindStr = String(r.kind || '').toLowerCase();
+    // DM threading: conversation id + which way the message went.
+    const conversation_id = group === 'dm'
+      ? pick(p, 'message.conversationId', 'conversation.id', 'conversationId') : null;
+    const direction = group === 'dm'
+      ? (pick(p, 'message.direction') || (kindStr.includes('sent') ? 'outgoing' : 'incoming')) : null;
+    // Comment threading: the comment id + its parent (for nesting replies).
+    const comment_id = group === 'comment'
+      ? pick(p, 'comment.id', 'commentId', 'comment._id') : null;
+    const parent_comment_id = group === 'comment'
+      ? pick(p, 'comment.parentCommentId', 'parentCommentId') : null;
+    return {
+      id:                r.id,
+      platform:          r.platform,
+      platform_label:    PLATFORM_LABEL[r.platform] || r.platform || 'Unknown',
+      group,
+      kind:              r.kind,
+      author:            r.author_handle || null,
+      body:              r.body || null,
+      post_id:           r.post_id || null,
+      platform_post_id:  r.platform_post_id || null,
+      conversation_id:   conversation_id || null,
+      direction,
+      comment_id:        comment_id || null,
+      parent_comment_id: parent_comment_id || null,
+      received_at:       r.received_at,
+    };
+  });
 
   // Lightweight analytics computed locally (no Zernio add-on needed).
   const by_platform = {};

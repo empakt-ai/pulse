@@ -274,6 +274,82 @@ const AutomationsView = () => {
   );
 };
 
+// ─── DM thread (Step 3) ───────────────────────────────────────────────────
+// A grouped conversation: all messages we've captured for one Zernio
+// conversation, oldest→newest, with an inline reply composer. Sending posts to
+// /api/engage/dm (which resolves the account + conversation server-side from
+// any event in the thread), then reloads so the sent DM appears in the thread.
+const DmThread = ({ thread, onSent }) => {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState('');
+  const [sending, setSending] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  const msgs = thread.messages;                 // oldest → newest
+  const last = msgs[msgs.length - 1];
+  const anchorId = last?.id;                     // any event resolves the thread server-side
+
+  const send = async () => {
+    const m = text.trim();
+    if (!m || sending || !anchorId) return;
+    setSending(true); setErr(null);
+    try {
+      await api('/engage/dm', { method: 'POST', body: JSON.stringify({ inbox_event_id: anchorId, message: m }) });
+      setText('');
+      if (onSent) await onSent();               // reload → the sent DM stitches into this thread
+    } catch (e) { setErr(e?.message || 'Send failed'); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <Card className="!py-3.5">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-start gap-3 text-left">
+        <div className="w-8 h-8 rounded-full bg-line dark:bg-lineDark flex items-center justify-center flex-shrink-0">
+          <Icon name="message" className="w-4 h-4 text-mute dark:text-muteDark" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-[13px] font-medium truncate">{thread.participant}</span>
+            <span className="text-[11px] text-mute dark:text-muteDark">{thread.platform_label}</span>
+            {msgs.length > 1 && <span className="text-[10px] font-mono text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">{msgs.length}</span>}
+            <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(thread.last_at)}</span>
+          </div>
+          <p className="text-[13px] text-mute dark:text-muteDark line-clamp-1">
+            {last?.direction === 'outgoing' ? 'You: ' : ''}{last?.body || <span className="italic opacity-70">(no text)</span>}
+          </p>
+        </div>
+      </button>
+
+      {open && (
+        <div className="mt-3 pl-11 space-y-2">
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {msgs.map(m => (
+              <div key={m.id} className={cls('flex', m.direction === 'outgoing' ? 'justify-end' : 'justify-start')}>
+                <div className={cls('max-w-[85%] rounded-2xl px-3 py-1.5 text-[13px]',
+                  m.direction === 'outgoing'
+                    ? 'bg-ink text-paper dark:bg-paper dark:text-ink rounded-br-sm'
+                    : 'bg-ink/[0.06] dark:bg-paper/[0.08] rounded-bl-sm')}>
+                  {m.body || <span className="italic opacity-70">(no text)</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="pt-1 space-y-2">
+            <textarea value={text} onChange={e => setText(e.target.value)} rows={2}
+              placeholder={`Reply to ${thread.participant}…`}
+              className="w-full rounded-lg border border-line dark:border-lineDark bg-transparent px-3 py-2 text-[13px] resize-y focus:outline-none focus:ring-1 focus:ring-ultra" />
+            {err && <div className="text-[12px] text-magenta">{err}</div>}
+            <div className="flex items-center gap-2">
+              <Btn variant="ink" onClick={send} disabled={sending || !text.trim()}>{sending ? 'Sending…' : 'Send DM'}</Btn>
+              <span className="text-[11px] text-mute dark:text-muteDark">Sends a direct message via Zernio</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+};
+
 const ConversationsScreen = () => {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -294,6 +370,11 @@ const ConversationsScreen = () => {
       }
     })();
     return () => { alive = false; };
+  }, []);
+
+  // Silent refetch after a send, so a newly-sent DM appears in its thread.
+  const reload = React.useCallback(async () => {
+    try { const r = await api('/conversations'); setData(r); } catch { /* keep current */ }
   }, []);
 
   if (loading) {
@@ -318,6 +399,30 @@ const ConversationsScreen = () => {
   const shown = filter === 'all' ? items : items.filter(i => i.group === filter);
   const series = a.last_7d || [];
   const maxBar = Math.max(1, ...series);
+
+  // Group DMs into conversation threads; other kinds stay as flat cards. Build
+  // a recency-ordered feed where each DM thread appears once, at its latest msg.
+  const dmThreads = new Map();
+  const feed = [];
+  for (const it of shown) {                        // shown is newest-first
+    if (it.group === 'dm') {
+      const key = it.conversation_id || ('u:' + (it.author || 'unknown'));
+      let t = dmThreads.get(key);
+      if (!t) {
+        t = { key, participant: null, platform: it.platform, platform_label: it.platform_label, messages: [], last_at: it.received_at };
+        dmThreads.set(key, t);
+        feed.push({ type: 'thread', key });
+      }
+      t.messages.push(it);
+      if (!t.participant && it.author) t.participant = it.author;
+    } else {
+      feed.push({ type: 'item', it });
+    }
+  }
+  for (const t of dmThreads.values()) {
+    t.messages.reverse();                          // oldest → newest for display
+    if (!t.participant) t.participant = 'Someone';
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -371,27 +476,29 @@ const ConversationsScreen = () => {
         ))}
       </div>
 
-      {shown.length === 0 ? (
+      {feed.length === 0 ? (
         <Card className="!p-10 text-center">
           <p className="text-[14px] text-mute dark:text-muteDark">No conversations yet. As people DM, comment and review, they'll appear here.</p>
         </Card>
       ) : (
         <div className="space-y-2">
-          {shown.map(it => (
-            <Card key={it.id} className="!py-3.5">
+          {feed.map(f => f.type === 'thread' ? (
+            <DmThread key={f.key} thread={dmThreads.get(f.key)} onSent={reload} />
+          ) : (
+            <Card key={f.it.id} className="!py-3.5">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-full bg-line dark:bg-lineDark flex items-center justify-center flex-shrink-0">
                   <Icon name="message" className="w-4 h-4 text-mute dark:text-muteDark" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[13px] font-medium truncate">{it.author || 'Someone'}</span>
-                    <span className="text-[11px] text-mute dark:text-muteDark">{it.platform_label}</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">{it.group}</span>
-                    <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(it.received_at)}</span>
+                    <span className="text-[13px] font-medium truncate">{f.it.author || 'Someone'}</span>
+                    <span className="text-[11px] text-mute dark:text-muteDark">{f.it.platform_label}</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">{f.it.group}</span>
+                    <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(f.it.received_at)}</span>
                   </div>
-                  <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{it.body || <span className="italic opacity-70">(no text)</span>}</p>
-                  <ReplyBox item={it} />
+                  <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{f.it.body || <span className="italic opacity-70">(no text)</span>}</p>
+                  <ReplyBox item={f.it} />
                 </div>
               </div>
             </Card>
@@ -399,7 +506,7 @@ const ConversationsScreen = () => {
         </div>
       )}
 
-      <p className="text-[11px] text-mute dark:text-muteDark text-center mt-6">Reply to comments right here. Replying to DMs is coming soon.</p>
+      <p className="text-[11px] text-mute dark:text-muteDark text-center mt-6">Reply to comments and DMs right from here.</p>
 
       </>)}
     </div>

@@ -262,6 +262,19 @@ export const zernio = {
     });
   },
 
+  // Send a direct-message reply into an existing conversation thread. Symmetric
+  // with replyToComment — Zernio proxies to the platform's native DM send
+  // (IG/FB Messenger). `conversationId` is Zernio's conversation id
+  // (payload.message.conversationId on the message.received webhook); the read
+  // side is GET /inbox/messages/{id}, so the send mirrors it as POST.
+  //   POST /v1/inbox/messages/{conversationId}  body { accountId, message }
+  async sendDirectMessage({ accountId, conversationId, message }) {
+    return call(`/inbox/messages/${encodeURIComponent(conversationId)}`, {
+      method: 'POST',
+      body: JSON.stringify({ accountId, message }),
+    });
+  },
+
   // ── Comment→DM automations (Zernio-hosted) ──────────────────────────────
   // Zernio hosts the keyword→DM automation for Instagram + Facebook: it
   // watches for a keyword comment, sends the private reply (and optional
