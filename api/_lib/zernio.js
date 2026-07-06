@@ -282,17 +282,21 @@ export const zernio = {
     });
   },
 
-  // List inbox comments Zernio holds for an account, across its recent posts.
-  // Used to PULL comments that never webhooked to us — YouTube is polling-only
-  // (no real-time webhooks), and a platform's comment webhook may also be
-  // newly enabled (webhooks are forward-only, so history won't backfill).
-  //   GET /v1/inbox/comments?accountId=…
-  //   → { comments: [ { id, text, author, postId, parentCommentId, timestamp, media } ] }
-  async listInboxComments(accountId, { cursor, limit } = {}) {
+  // Zernio's inbox comments API is TWO-LEVEL (confirmed from live responses):
+  //   GET /inbox/comments?accountId        → COMMENTED POSTS, not comments:
+  //       { data: [ { id, accountUsername, content, createdTime, permalink,
+  //                   picture, commentCount, likeCount } ], pagination, meta }
+  //   GET /inbox/comments/{postId}?accountId → the comments ON that post:
+  //       { data/comments: [ { id, text, author, parentCommentId, timestamp } ] }
+  // Pass postId to get the second form. Used to PULL comments that never
+  // webhooked to us (YouTube is polling-only; webhooks are forward-only so
+  // history won't backfill).
+  async listInboxComments(accountId, { postId, cursor, limit } = {}) {
     const params = new URLSearchParams({ accountId });
     if (cursor) params.set('cursor', cursor);
     if (limit) params.set('limit', String(limit));
-    return call(`/inbox/comments?${params.toString()}`);
+    const path = postId ? `/inbox/comments/${encodeURIComponent(postId)}` : '/inbox/comments';
+    return call(`${path}?${params.toString()}`);
   },
 
   // ── Comment→DM automations (Zernio-hosted) ──────────────────────────────

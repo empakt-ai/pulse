@@ -155,62 +155,67 @@ export default async function handler(req, res) {
       zernio_account_id: a.zernio_account_id,
     }));
 
-  // ── Live pull: comments Zernio holds that never reached our webhook feed
-  // (YouTube is polling-only; a platform's comment webhook may also be newly
-  // enabled, and webhooks don't backfill history). Best-effort + time-bounded
-  // so a slow or failing account never blocks the (webhook-fed) IG feed. These
-  // are read-only for now (external:true) — replying to them comes next.
+  // ── Live pull: comments Zernio holds that never reached our webhook feed.
+  // Zernio's comments API is two-level: list COMMENTED POSTS for the account,
+  // then fetch the comments per post. Bounded (skip webhook-covered IG; cap the
+  // per-account post fan-out) + time-bounded so a slow/failing account never
+  // blocks the feed. Read-only display (external:true) with a reply context.
+  const PULL_SKIP = new Set(['instagram']);   // IG is covered by real-time webhooks
+  const POSTS_PER_ACCOUNT = 8;
   const raceTimeout = (ms) => new Promise((_, rej) => setTimeout(() => rej(new Error('pull timeout')), ms));
+  const zcall = (p) => Promise.race([p, raceTimeout(6000)]).catch(() => null);
   const seenComments = new Set(
     items.filter(i => i.group === 'comment' && i.comment_id).map(i => String(i.comment_id))
   );
   const pulled = [];
   const pullDebug = [];   // per-account diagnostics (admin-only in the response)
-  await Promise.all(accounts.map(async (acct) => {
-    let resp = null, err = null;
-    try {
-      resp = await Promise.race([
-        zernio.listInboxComments(acct.zernio_account_id, { limit: 100 }),
-        raceTimeout(6000),
-      ]);
-    } catch (e) { err = e?.message || String(e); }
-    const list = Array.isArray(resp) ? resp : (resp?.comments || resp?.data || resp?.items || []);
-    const arr = Array.isArray(list) ? list : [];
-    pullDebug.push({
-      platform: acct.platform,
-      error: err,
-      respType: resp == null ? 'null' : (Array.isArray(resp) ? 'array' : typeof resp),
-      respKeys: (resp && typeof resp === 'object' && !Array.isArray(resp)) ? Object.keys(resp).slice(0, 12) : null,
-      count: arr.length,
-      itemKeys: (arr[0] && typeof arr[0] === 'object') ? Object.keys(arr[0]).slice(0, 20) : null,
-    });
-    for (const c of arr) {
-      const cid = c?.id || c?._id || c?.commentId;
-      if (!cid || seenComments.has(String(cid))) continue;
-      seenComments.add(String(cid));
-      const postId = c?.postId || c?.platformPostId || c?.post?.id || null;
-      pulled.push({
-        id:                `zc:${cid}`,
-        platform:          acct.platform,
-        platform_label:    acct.platform_label,
-        group:             'comment',
-        kind:              'comment.received',
-        account_id:        acct.id,
-        zernio_account_id: acct.zernio_account_id,
-        author:            c?.author || c?.username || c?.from?.username || null,
-        body:              c?.text || c?.message || null,
-        post_id:           null,
-        platform_post_id:  postId,
-        conversation_id:   null,
-        direction:         null,
-        comment_id:        String(cid),
-        parent_comment_id: c?.parentCommentId || c?.parent_comment_id || null,
-        media:             normMedia(c?.media || c?.attachments),
-        received_at:       c?.timestamp || c?.createdAt || c?.sentAt || null,
-        external:          true,
-        reply_ctx:         { zernio_account_id: acct.zernio_account_id, platform_post_id: postId, comment_id: String(cid), platform: acct.platform },
-      });
-    }
+  await Promise.all(accounts.filter(a => !PULL_SKIP.has(a.platform)).map(async (acct) => {
+    // 1) commented posts for this account
+    const postsResp = await zcall(zernio.listInboxComments(acct.zernio_account_id, { limit: 50 }));
+    const rawPosts = Array.isArray(postsResp) ? postsResp : (postsResp?.data || postsResp?.comments || postsResp?.items || []);
+    const posts = (Array.isArray(rawPosts) ? rawPosts : [])
+      .filter(p => Number(p?.commentCount || 0) > 0)
+      .sort((a, b) => String(b?.createdTime || '').localeCompare(String(a?.createdTime || '')))
+      .slice(0, POSTS_PER_ACCOUNT);
+    // 2) comments per post
+    let got = 0, sampleKeys = null;
+    await Promise.all(posts.map(async (post) => {
+      const pid = post?.id || post?.postId || post?.platformPostId;
+      if (!pid) return;
+      const cResp = await zcall(zernio.listInboxComments(acct.zernio_account_id, { postId: pid }));
+      const rawC = Array.isArray(cResp) ? cResp : (cResp?.comments || cResp?.data || cResp?.items || []);
+      const carr = Array.isArray(rawC) ? rawC : [];
+      if (!sampleKeys && carr[0] && typeof carr[0] === 'object') sampleKeys = Object.keys(carr[0]).slice(0, 20);
+      for (const c of carr) {
+        const cid = c?.id || c?._id || c?.commentId;
+        if (!cid || seenComments.has(String(cid))) continue;
+        seenComments.add(String(cid));
+        got++;
+        const platPostId = c?.postId || c?.platformPostId || pid;
+        pulled.push({
+          id:                `zc:${cid}`,
+          platform:          acct.platform,
+          platform_label:    acct.platform_label,
+          group:             'comment',
+          kind:              'comment.received',
+          account_id:        acct.id,
+          zernio_account_id: acct.zernio_account_id,
+          author:            c?.author?.username || (typeof c?.author === 'string' ? c.author : null) || c?.username || c?.from?.username || c?.authorName || null,
+          body:              c?.text || c?.content || c?.message || null,
+          post_id:           null,
+          platform_post_id:  platPostId,
+          conversation_id:   null,
+          direction:         null,
+          comment_id:        String(cid),
+          parent_comment_id: c?.parentCommentId || c?.parent_comment_id || null,
+          media:             normMedia(c?.media || c?.attachments),
+          received_at:       c?.timestamp || c?.createdTime || c?.createdAt || null,
+          external:          true,
+          reply_ctx:         { zernio_account_id: acct.zernio_account_id, platform_post_id: platPostId, comment_id: String(cid), platform: acct.platform },
+        });
+      }
+    }));
+    pullDebug.push({ platform: acct.platform, commentedPosts: posts.length, comments: got, sampleKeys });
   }));
   try { console.log('[conversations.pull]', JSON.stringify(pullDebug)); } catch { /* noop */ }
   if (pulled.length) {
