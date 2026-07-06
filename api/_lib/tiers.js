@@ -56,6 +56,50 @@ export function tierFor(workspace) {
   return TIERS[workspace?.tier] || TIERS.creator;
 }
 
+// Tier ordering for "at least tier X" checks.
+export const TIER_RANK = { creator: 1, pro_creator: 2, brand: 3, agency: 4 };
+export function meetsTier(tier, minTier) {
+  const a = TIER_RANK[String(tier || '').toLowerCase()] || 0;
+  const b = TIER_RANK[String(minTier || '').toLowerCase()] || 0;
+  return a >= b;
+}
+
+// ── Engage / Conversations access ────────────────────────────────────────
+// The Conversations inbox — read + reply-to-comment + comment→DM automations
+// (api/conversations.js, api/engage/*). The INTENDED floor is Pro Creator and
+// up. During launch we ALSO open it to the basic Creator tier so everyone can
+// try it and we can announce availability; trial workspaces preview it, and a
+// locked (expired, unconverted) trial is paywalled out.
+//
+// To restore the Pro-Creator+ gate later, empty ENGAGE_LAUNCH_TIERS (i.e. set
+// it to []) — nothing else changes; basic Creator then gets the upgrade prompt.
+export const ENGAGE_MIN_TIER = 'pro_creator';
+export const ENGAGE_LAUNCH_TIERS = ['creator']; // temporary launch access — remove to re-gate
+
+export function canUseEngage(workspace) {
+  if (!workspace) return false;
+  if (workspace.trial_locked) return false;                 // expired trial → must convert
+  if (workspace.trial_active) return true;                  // trial previews it
+  const tier = String(workspace.tier || 'creator').toLowerCase();
+  if (ENGAGE_LAUNCH_TIERS.includes(tier)) return true;      // temporary Creator access
+  return meetsTier(tier, ENGAGE_MIN_TIER);                  // the real floor: Pro Creator+
+}
+
+// 402 envelope for a workspace that can't use Engage. Mirrors
+// trialLockoutEnvelope()/assertRole() so routes have one calling pattern:
+//   const gate = engageGate(ws); if (gate) return json(res, gate.status, gate.body);
+export function engageGate(workspace) {
+  if (canUseEngage(workspace)) return null;
+  return {
+    status: 402,
+    body: {
+      error: 'Conversations unlocks on Pro Creator — upgrade to reply to comments and automate DMs.',
+      upgrade_tier: ENGAGE_MIN_TIER,
+      current_tier: String(workspace?.tier || 'creator').toLowerCase(),
+    },
+  };
+}
+
 // Trial caps — applied while workspace.trial_active is true regardless of
 // the workspace's tier (which is just the user's *intent* during trial).
 // Numbers come from the trial spec: 1 workspace / 2 own accounts /

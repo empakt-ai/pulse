@@ -262,6 +262,32 @@ export const zernio = {
     });
   },
 
+  // ── Comment→DM automations (Zernio-hosted) ──────────────────────────────
+  // Zernio hosts the keyword→DM automation for Instagram + Facebook: it
+  // watches for a keyword comment, sends the private reply (and optional
+  // public comment), and tracks stats. Mashal owns the config and syncs it
+  // here; these stay thin CRUD pass-throughs. `body` for create/update is the
+  // Zernio shape: { accountId, name, keywords[], matchMode, dmMessage,
+  // commentReply?, isActive? }.
+  //   POST   /v1/comment-automations
+  //   GET    /v1/comment-automations
+  //   PATCH  /v1/comment-automations/{id}
+  //   DELETE /v1/comment-automations/{id}
+  async createCommentAutomation(body) {
+    return call('/comment-automations', { method: 'POST', body: JSON.stringify(body) });
+  },
+  async listCommentAutomations() {
+    return call('/comment-automations');
+  },
+  async updateCommentAutomation(id, patch) {
+    return call(`/comment-automations/${encodeURIComponent(id)}`, {
+      method: 'PATCH', body: JSON.stringify(patch),
+    });
+  },
+  async deleteCommentAutomation(id) {
+    return call(`/comment-automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
   // Instagram-specific account insights
   async getInstagramInsights(accountId) {
     const params = new URLSearchParams({ accountId });
