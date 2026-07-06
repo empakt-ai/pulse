@@ -158,7 +158,15 @@ export default async function handler(req, res) {
   // tolerated — we just no-op the side-effect.
   const k = String(kind).toLowerCase();
 
-  if (k === 'post.published') {
+  // Post lifecycle. Zernio namespaces these as post.<action> OR
+  // post.platform.<action> (e.g. post.platform.published / post.platform.failed),
+  // so match on the trailing action, not the exact string — otherwise a
+  // published/failed webhook silently misses our status update. Non-status post
+  // events (post.external.*, post.tiktok.url.resolved) have other trailing words
+  // and fall through to be ignored below.
+  const postAction = k.startsWith('post.') ? k.split('.').pop() : null;
+
+  if (postAction === 'published') {
     if (postId) {
       await supabase.update('posts',
         { status: 'published', published_at: new Date().toISOString() },
@@ -168,15 +176,14 @@ export default async function handler(req, res) {
     return json(res, 200, { ok: true, kind: k, applied: !!postId });
   }
 
-  if (k === 'post.failed' || k === 'post.cancelled' || k === 'post.partial' || k === 'post.recycled') {
-    const status = k.split('.')[1]; // 'failed' | 'cancelled' | 'partial' | 'recycled'
+  if (postAction === 'failed' || postAction === 'cancelled' || postAction === 'partial' || postAction === 'recycled') {
     if (postId) {
-      await supabase.update('posts', { status }, { eq: { id: postId } }).catch(() => {});
+      await supabase.update('posts', { status: postAction }, { eq: { id: postId } }).catch(() => {});
     }
-    // post.failed deserves a row in inbox_events too — the user wants to
-    // see "your scheduled post broke". The other lifecycle states are
-    // silent state changes.
-    if (k === 'post.failed' && workspaceId) {
+    // A failed publish deserves a row in inbox_events too — the user wants to
+    // see "your scheduled post broke". The other lifecycle states are silent
+    // status changes.
+    if (postAction === 'failed' && workspaceId) {
       await supabase.insert('inbox_events', {
         workspace_id: workspaceId, account_id: accountId, zernio_account_id: zernioAccountId,
         platform, kind: 'post_failed',
@@ -228,9 +235,22 @@ export default async function handler(req, res) {
     return json(res, 200, { ok: true, kind: k, applied: !!accountId });
   }
 
-  // ─── Inbox/feed events: comment.received, message.received, review.new ──
-  // Everything else falls through to the generic inbox_events insert. The
-  // live-signals cron picks pending rows up and runs pattern detection.
+  // ─── Inbox/feed events: comment.received, message.received/edited, review.* ─
+  // Only genuine feed events become inbox rows. Everything else that reaches
+  // here — message.read/delivered/sent/failed/deleted, reaction.received,
+  // conversation.started, status.*, lead.*, post.external.*, post.tiktok.* — is
+  // ACKed without an insert so the newly-enabled webhooks don't pollute the
+  // feed. (First-class handling for reactions + externally-sent DMs comes once
+  // we've seen real payloads for them.)
+  const isFeedEvent =
+    (k.includes('comment') && !k.includes('delet') && !k.includes('hidden')) ||
+    k === 'message.received' || k === 'message.edited' ||
+    (k.includes('review') && !k.includes('delet'));
+  if (!isFeedEvent) {
+    return json(res, 200, { ok: true, kind: k, ignored: true });
+  }
+
+  // The live-signals cron picks pending rows up and runs pattern detection.
   const row = {
     workspace_id: workspaceId,
     account_id: accountId,
