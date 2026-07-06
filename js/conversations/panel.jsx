@@ -69,16 +69,13 @@ const MediaRow = ({ media }) => (!media || !media.length) ? null : (
   </div>
 );
 
-// One pill in the per-account switcher (All accounts + one per connected account).
-const AccountChip = ({ active, onClick, label, sub }) => (
-  <button onClick={onClick}
-    className={cls('flex-shrink-0 h-9 px-3 rounded-lg text-[12.5px] font-medium border transition whitespace-nowrap',
-      active
-        ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
-        : 'border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper')}>
-    {label}{sub && <span className={cls('ml-1.5 text-[10px] font-normal', active ? 'opacity-70' : 'opacity-60')}>{sub}</span>}
-  </button>
-);
+// Mashal's global top-bar account selector uses short platform keys; map them
+// to the inbox item's full platform name so Conversations scopes to the same
+// account the rest of the app is showing (one account per platform).
+const PLAT_KEY = {
+  ig: 'instagram', tt: 'tiktok', yt: 'youtube', li: 'linkedin',
+  fb: 'facebook', x: 'x', sc: 'snapchat', gb: 'google_business',
+};
 
 // Inline reply composer for a comment card. Comments can be replied to via
 // Zernio (POST /api/engage/reply); DMs stay read-only for now. Our own sent
@@ -398,13 +395,12 @@ const DmThread = ({ thread, onSent }) => {
   );
 };
 
-const ConversationsScreen = () => {
+const ConversationsScreen = ({ activePlatform }) => {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [locked, setLocked] = React.useState(false);
   const [filter, setFilter] = React.useState('all');
   const [view, setView] = React.useState('inbox');   // 'inbox' | 'automations'
-  const [account, setAccount] = React.useState('all'); // 'all' | zernio_account_id
 
   React.useEffect(() => {
     let alive = true;
@@ -444,8 +440,9 @@ const ConversationsScreen = () => {
   }
 
   const items = data?.items || [];
-  const accounts = data?.accounts || [];
-  const byAccount = account === 'all' ? items : items.filter(i => i.zernio_account_id === account);
+  // Scope to the globally-selected account (top AccountBar). 'all' → everything.
+  const wantPlatform = (activePlatform && activePlatform !== 'all') ? (PLAT_KEY[activePlatform] || activePlatform) : null;
+  const byAccount = wantPlatform ? items.filter(i => i.platform === wantPlatform) : items;
   const shown = filter === 'all' ? byAccount : byAccount.filter(i => i.group === filter);
 
   // Account-aware tiles + 7-day series (recomputed client-side so switching
@@ -506,18 +503,6 @@ const ConversationsScreen = () => {
       </div>
 
       {view === 'automations' ? <AutomationsView /> : (<>
-
-      {accounts.length > 1 && (
-        <div className="flex gap-1.5 mb-4 overflow-x-auto pb-1 -mx-1 px-1">
-          <AccountChip active={account === 'all'} onClick={() => setAccount('all')} label="All accounts" />
-          {accounts.map(ac => (
-            <AccountChip key={ac.zernio_account_id}
-              active={account === ac.zernio_account_id}
-              onClick={() => setAccount(ac.zernio_account_id)}
-              label={`@${ac.username}`} sub={ac.platform_label} />
-          ))}
-        </div>
-      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <StatTile label="Total" value={formatNum(counts.total || 0)} />

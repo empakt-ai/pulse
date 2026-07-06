@@ -6698,7 +6698,7 @@ function App() {
     Growth:   <GrowthScreen activePlatform={activePlatform} />,
     Content:  <ContentScreen activePlatform={activePlatform} activeBrand={activeBrand} />,
     Intel:    <IntelScreen activePlatform={activePlatform} />,
-    Conversations: (window.Conversations && window.Conversations.Panel) ? <window.Conversations.Panel /> : null,
+    Conversations: (window.Conversations && window.Conversations.Panel) ? <window.Conversations.Panel activePlatform={activePlatform} /> : null,
     Actions:  <ActionsScreen activePlatform={activePlatform} />,
     Reports:  <ReportsScreen />,
     Targets:  <TargetsScreen />,
