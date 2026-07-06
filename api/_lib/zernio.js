@@ -282,6 +282,19 @@ export const zernio = {
     });
   },
 
+  // List inbox comments Zernio holds for an account, across its recent posts.
+  // Used to PULL comments that never webhooked to us — YouTube is polling-only
+  // (no real-time webhooks), and a platform's comment webhook may also be
+  // newly enabled (webhooks are forward-only, so history won't backfill).
+  //   GET /v1/inbox/comments?accountId=…
+  //   → { comments: [ { id, text, author, postId, parentCommentId, timestamp, media } ] }
+  async listInboxComments(accountId, { cursor, limit } = {}) {
+    const params = new URLSearchParams({ accountId });
+    if (cursor) params.set('cursor', cursor);
+    if (limit) params.set('limit', String(limit));
+    return call(`/inbox/comments?${params.toString()}`);
+  },
+
   // ── Comment→DM automations (Zernio-hosted) ──────────────────────────────
   // Zernio hosts the keyword→DM automation for Instagram + Facebook: it
   // watches for a keyword comment, sends the private reply (and optional

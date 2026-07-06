@@ -13,6 +13,7 @@
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { engageGate } from './_lib/tiers.js';
+import { zernio } from './_lib/zernio.js';
 
 const PLATFORM_LABEL = {
   instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram',
@@ -153,6 +154,57 @@ export default async function handler(req, res) {
       username:          a.platform_username,
       zernio_account_id: a.zernio_account_id,
     }));
+
+  // ── Live pull: comments Zernio holds that never reached our webhook feed
+  // (YouTube is polling-only; a platform's comment webhook may also be newly
+  // enabled, and webhooks don't backfill history). Best-effort + time-bounded
+  // so a slow or failing account never blocks the (webhook-fed) IG feed. These
+  // are read-only for now (external:true) — replying to them comes next.
+  const withTimeout = (p, ms) => Promise.race([
+    Promise.resolve(p).catch(() => null),
+    new Promise(r => setTimeout(() => r(null), ms)),
+  ]);
+  const seenComments = new Set(
+    items.filter(i => i.group === 'comment' && i.comment_id).map(i => String(i.comment_id))
+  );
+  const pulled = [];
+  await Promise.all(accounts.map(async (acct) => {
+    const resp = await withTimeout(zernio.listInboxComments(acct.zernio_account_id, { limit: 100 }), 6000);
+    if (!resp) return;
+    const list = Array.isArray(resp) ? resp : (resp.comments || resp.data || []);
+    if (!Array.isArray(list)) return;
+    for (const c of list) {
+      const cid = c?.id || c?._id || c?.commentId;
+      if (!cid || seenComments.has(String(cid))) continue;
+      seenComments.add(String(cid));
+      const postId = c?.postId || c?.platformPostId || c?.post?.id || null;
+      pulled.push({
+        id:                `zc:${cid}`,
+        platform:          acct.platform,
+        platform_label:    acct.platform_label,
+        group:             'comment',
+        kind:              'comment.received',
+        account_id:        acct.id,
+        zernio_account_id: acct.zernio_account_id,
+        author:            c?.author || c?.username || c?.from?.username || null,
+        body:              c?.text || c?.message || null,
+        post_id:           null,
+        platform_post_id:  postId,
+        conversation_id:   null,
+        direction:         null,
+        comment_id:        String(cid),
+        parent_comment_id: c?.parentCommentId || c?.parent_comment_id || null,
+        media:             normMedia(c?.media || c?.attachments),
+        received_at:       c?.timestamp || c?.createdAt || c?.sentAt || null,
+        external:          true,
+        reply_ctx:         { zernio_account_id: acct.zernio_account_id, platform_post_id: postId, comment_id: String(cid), platform: acct.platform },
+      });
+    }
+  }));
+  if (pulled.length) {
+    items.push(...pulled);
+    items.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
+  }
 
   return json(res, 200, {
     items,
