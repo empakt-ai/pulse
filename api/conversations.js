@@ -167,8 +167,10 @@ export default async function handler(req, res) {
   const seenComments = new Set(
     items.filter(i => i.group === 'comment' && i.comment_id).map(i => String(i.comment_id))
   );
+  // NOTE: Facebook withholds commenter identity (comment.from = { isOwner }
+  // only — no name/id, a Meta privacy restriction), so FB comments fall back to
+  // a generic "Facebook user" label. YouTube gives from.name.
   const pulled = [];
-  const pullDebug = [];   // per-account diagnostics (admin-only in the response)
   await Promise.all(accounts.filter(a => !PULL_SKIP.has(a.platform)).map(async (acct) => {
     // 1) commented posts for this account
     const postsResp = await zcall(zernio.listInboxComments(acct.zernio_account_id, { limit: 50 }));
@@ -178,20 +180,19 @@ export default async function handler(req, res) {
       .sort((a, b) => String(b?.createdTime || '').localeCompare(String(a?.createdTime || '')))
       .slice(0, POSTS_PER_ACCOUNT);
     // 2) comments per post
-    let got = 0, sampleKeys = null, sampleFrom = null;
     await Promise.all(posts.map(async (post) => {
       const pid = post?.id || post?.postId || post?.platformPostId;
       if (!pid) return;
       const cResp = await zcall(zernio.listInboxComments(acct.zernio_account_id, { postId: pid }));
       const rawC = Array.isArray(cResp) ? cResp : (cResp?.comments || cResp?.data || cResp?.items || []);
       const carr = Array.isArray(rawC) ? rawC : [];
-      if (!sampleKeys && carr[0] && typeof carr[0] === 'object') { sampleKeys = Object.keys(carr[0]).slice(0, 20); sampleFrom = carr[0].from ?? null; }
       for (const c of carr) {
         const cid = c?.id || c?._id || c?.commentId;
         if (!cid || seenComments.has(String(cid))) continue;
         seenComments.add(String(cid));
-        got++;
         const platPostId = c?.postId || c?.platformPostId || pid;
+        const who = c?.from?.name || c?.from?.username || c?.author?.name || c?.author?.username
+          || (typeof c?.author === 'string' ? c.author : null) || c?.username || c?.authorName;
         pulled.push({
           id:                `zc:${cid}`,
           platform:          acct.platform,
@@ -200,7 +201,7 @@ export default async function handler(req, res) {
           kind:              'comment.received',
           account_id:        acct.id,
           zernio_account_id: acct.zernio_account_id,
-          author:            c?.from?.name || c?.from?.username || c?.from?.id || c?.author?.name || c?.author?.username || (typeof c?.author === 'string' ? c.author : null) || c?.username || c?.authorName || null,
+          author:            who || `${acct.platform_label} user`,
           body:              c?.text || c?.content || c?.message || null,
           post_id:           null,
           platform_post_id:  platPostId,
@@ -215,9 +216,7 @@ export default async function handler(req, res) {
         });
       }
     }));
-    pullDebug.push({ platform: acct.platform, commentedPosts: posts.length, comments: got, sampleKeys, sampleFrom });
   }));
-  try { console.log('[conversations.pull]', JSON.stringify(pullDebug)); } catch { /* noop */ }
   if (pulled.length) {
     items.push(...pulled);
     items.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
@@ -233,8 +232,5 @@ export default async function handler(req, res) {
       last_7d: last7.slice().reverse(), // oldest → today, for a left-to-right bar
     },
     tier: { key: tierKey },
-    // Admin-only pull diagnostics (per-account: error/shape/count). Temporary —
-    // remove once the FB/YouTube/TikTok pull is confirmed working.
-    ...(auth.isAdmin ? { _pull: pullDebug } : {}),
   });
 }
