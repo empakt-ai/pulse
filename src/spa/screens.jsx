@@ -742,8 +742,13 @@ const TopBar = React.memo(({ active, setActive, navigateToSettings, onSignOut, u
   // also hides Ads, while Brand/Agency-intent trials still see it.
   const tierKey = (D.tier?.key || 'creator').toLowerCase();
   const showAds = tierKey === 'brand' || tierKey === 'agency';
-  // Conversations (read-only inbox) is a Brand/Agency surface, same gate as Ads.
-  const showConv = tierKey === 'brand' || tierKey === 'agency';
+  // Conversations (inbox + reply + comment→DM automations). LAUNCH: open to ALL
+  // tiers so Creators can try it and we can announce it; the intended floor is
+  // Pro Creator. Mirrors the backend gate in api/_lib/tiers.js (canUseEngage /
+  // ENGAGE_LAUNCH_TIERS) — to re-gate to Pro Creator+, flip ENGAGE_LAUNCH_OPEN
+  // to false here AND empty ENGAGE_LAUNCH_TIERS there.
+  const ENGAGE_LAUNCH_OPEN = true;
+  const showConv = ENGAGE_LAUNCH_OPEN || ['pro_creator', 'brand', 'agency'].includes(tierKey);
   const tabs = ['Brief','Stats', ...(showAds ? ['Ads'] : []),'Content','Intel', ...(showConv ? ['Conversations'] : []),'Actions','Growth','Targets','Reports','Settings'];
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [wsOpen, setWsOpen]     = React.useState(false);

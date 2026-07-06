@@ -146,7 +146,7 @@ const AdsIntelRecommendations = () => {
                 'flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-mono font-bold mt-0.5',
                 rec.priority === 'high'
                   ? 'bg-ultra/15 text-ultra dark:text-limeDeep'
-                  : 'bg-line/60 dark:bg-lineDark text-mute dark:text-muteDark'
+                  : 'bg-ink/[0.06] dark:bg-lineDark text-mute dark:text-muteDark'
               )}>{i + 1}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -242,7 +242,7 @@ const AdsIntelContextChips = () => {
         'inline-flex items-center gap-1 px-2 h-5 rounded-full text-[10px] font-mono transition capitalize',
         key === 'goal'
           ? 'bg-ultra/10 text-ultra dark:text-lime hover:bg-ultra/20'
-          : 'bg-line/60 dark:bg-lineDark text-mute dark:text-muteDark hover:bg-line dark:hover:bg-lineDark/80'
+          : 'bg-ink/[0.06] dark:bg-lineDark text-mute dark:text-muteDark hover:bg-line dark:hover:bg-lineDark/80'
       )}
     >
       {label}

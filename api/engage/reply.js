@@ -15,6 +15,7 @@
 
 import { authenticate, json, trialLockoutEnvelope } from '../_lib/auth.js';
 import { assertRole } from '../_lib/permissions.js';
+import { engageGate } from '../_lib/tiers.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
 
@@ -47,16 +48,10 @@ export default async function handler(req, res) {
   const denied = assertRole(auth, 'member');
   if (denied) return json(res, denied.status, denied.body);
 
-  // TIER GATE — Conversations/Engage is a Brand/Agency surface. Trial
-  // workspaces preview it (mirrors api/conversations.js exactly).
-  const tierKey = String(ws.tier || 'creator').toLowerCase();
-  const allowed = tierKey === 'brand' || tierKey === 'agency' || !!ws.trial_active;
-  if (!allowed) {
-    return json(res, 402, {
-      error: 'Replying from Conversations unlocks on Brand and Agency.',
-      upgrade_tier: 'brand', current_tier: tierKey,
-    });
-  }
+  // TIER GATE — Pro Creator+ (basic Creator allowed during launch). Shared
+  // gate in api/_lib/tiers.js keeps all engage routes in lockstep.
+  const gate = engageGate(ws);
+  if (gate) return json(res, gate.status, gate.body);
 
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch { body = {}; } }

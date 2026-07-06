@@ -12,6 +12,7 @@
 
 import { authenticate, json } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
+import { engageGate } from './_lib/tiers.js';
 
 const PLATFORM_LABEL = {
   instagram: 'Instagram', facebook: 'Facebook', telegram: 'Telegram',
@@ -35,17 +36,12 @@ export default async function handler(req, res) {
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
-  // TIER GATE — Conversations is a Brand/Agency surface (a service/CRM view).
-  // Trial workspaces preview it; paid Creator/Pro Creator get the upgrade
-  // pointer (mirrors how Ads is gated).
+  // TIER GATE — Conversations (inbox + reply + automations). Intended floor is
+  // Pro Creator; during launch basic Creator is also allowed. Single source of
+  // truth in api/_lib/tiers.js so all engage routes agree.
   const tierKey = String(ws.tier || 'creator').toLowerCase();
-  const allowed = tierKey === 'brand' || tierKey === 'agency' || !!ws.trial_active;
-  if (!allowed) {
-    return json(res, 402, {
-      error: 'Conversations unlocks on Brand and Agency.',
-      upgrade_tier: 'brand', current_tier: tierKey,
-    });
-  }
+  const gate = engageGate(ws);
+  if (gate) return json(res, gate.status, gate.body);
 
   // Recent inbox events for this workspace (webhook-fed). Read-only.
   const rows = await supabase.select('inbox_events', {

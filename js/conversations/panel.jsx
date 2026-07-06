@@ -118,10 +118,10 @@ const ConversationsScreen = () => {
   if (locked) {
     return (
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-12 sm:py-16 text-center">
-        <Eyebrow color="text-ultra">Brand &amp; Agency feature</Eyebrow>
+        <Eyebrow color="text-ultra">Pro Creator feature</Eyebrow>
         <h1 className="font-display text-[28px] sm:text-[34px] font-semibold tracking-tightest mt-2 mb-3">Your inbox, in one place.</h1>
         <p className="text-[14.5px] text-mute dark:text-muteDark max-w-md mx-auto mb-7">
-          DMs, comments and reviews across Instagram, Facebook, Telegram, WhatsApp and Google Business — with volume and response analytics. Read-only.
+          DMs, comments and reviews across Instagram, Facebook, Telegram, WhatsApp and Google Business — reply to comments and automate comment→DM, right from Mashal.
         </p>
         <Btn variant="ink" onClick={() => window.dispatchEvent(new CustomEvent('pulse:openUpgrade'))}>Upgrade workspace</Btn>
       </div>
@@ -187,7 +187,7 @@ const ConversationsScreen = () => {
                   <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[13px] font-medium truncate">{it.author || 'Someone'}</span>
                     <span className="text-[11px] text-mute dark:text-muteDark">{it.platform_label}</span>
-                    <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-line/60 dark:bg-lineDark/60">{it.group}</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">{it.group}</span>
                     <span className="text-[11px] text-mute dark:text-muteDark ml-auto flex-shrink-0">{timeAgo(it.received_at)}</span>
                   </div>
                   <p className="text-[13px] text-mute dark:text-muteDark line-clamp-2">{it.body || <span className="italic opacity-70">(no text)</span>}</p>
