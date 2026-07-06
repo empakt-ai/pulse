@@ -194,18 +194,27 @@ export default async function handler(req, res) {
   const gate = engageGate(ws);
   if (gate) return json(res, gate.status, gate.body);
 
-  // ── GET: list ────────────────────────────────────────────────────────────
+  // ── GET: list (+ eligible IG/FB accounts so the form is self-contained) ──
   if (req.method === 'GET') {
     const denied = assertRole(auth, 'member');
     if (denied) return json(res, denied.status, denied.body);
-    const rows = await supabase.select('comment_automations', {
-      select: '*', eq: { workspace_id: ws.id }, order: 'created_at.desc',
-    }).catch(() => []);
+    const [rows, accts] = await Promise.all([
+      supabase.select('comment_automations', {
+        select: '*', eq: { workspace_id: ws.id }, order: 'created_at.desc',
+      }).catch(() => []),
+      supabase.select('connected_accounts', {
+        select: 'id,platform,platform_username,zernio_account_id',
+        eq: { workspace_id: ws.id, is_active: true },
+      }).catch(() => []),
+    ]);
     let list = rows || [];
     if (isTrue(req.query?.refresh) && list.length) {
       list = await refreshStats(list).catch(() => list);
     }
-    return json(res, 200, { automations: list.map(toPublic) });
+    const accounts = (accts || [])
+      .filter(a => AUTOMATION_PLATFORMS.includes(String(a.platform || '').toLowerCase()) && a.zernio_account_id)
+      .map(a => ({ id: a.id, platform: a.platform, username: a.platform_username }));
+    return json(res, 200, { automations: list.map(toPublic), accounts });
   }
 
   // Writes: block a locked trial, require member+ (viewers are read-only).

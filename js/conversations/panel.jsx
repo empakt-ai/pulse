@@ -90,11 +90,196 @@ const ReplyBox = ({ item }) => {
   );
 };
 
+// ─── Comment→DM automations (Step 2b) ─────────────────────────────────────
+// Mashal owns the rule; Zernio executes it. When someone comments a keyword on
+// an IG/FB post, Zernio auto-sends the DM (+ optional public reply). CRUD via
+// /api/engage/automations; the GET also returns eligible IG/FB accounts.
+const MATCH_LABEL = { contains: 'contains', exact: 'exact match' };
+const FIELD_CLS = 'w-full rounded-lg border border-line dark:border-lineDark bg-transparent px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-ultra';
+
+const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error }) => {
+  const editing = !!(initial && initial.id);
+  const [name, setName] = React.useState(initial?.name || '');
+  const [accountId, setAccountId] = React.useState(initial?.account_id || accounts[0]?.id || '');
+  const [keywords, setKeywords] = React.useState((initial?.keywords || []).join(', '));
+  const [matchMode, setMatchMode] = React.useState(initial?.match_mode || 'contains');
+  const [dmMessage, setDmMessage] = React.useState(initial?.dm_message || '');
+  const [commentReply, setCommentReply] = React.useState(initial?.comment_reply || '');
+
+  const kwList = keywords.split(',').map(s => s.trim()).filter(Boolean);
+  const valid = name.trim() && dmMessage.trim() && kwList.length && (editing || accountId);
+
+  const submit = () => {
+    if (!valid) return;
+    const payload = {
+      name: name.trim(),
+      keywords: kwList,
+      match_mode: matchMode,
+      dm_message: dmMessage.trim(),
+      comment_reply: commentReply.trim() || null,
+    };
+    if (!editing) payload.account_id = accountId;
+    onSave(payload, editing ? initial.id : null);
+  };
+
+  return (
+    <Card className="!p-4 space-y-3">
+      <div className="text-[13px] font-semibold">{editing ? 'Edit automation' : 'New comment→DM automation'}</div>
+      <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Link in bio)" className={FIELD_CLS} />
+      {!editing && (
+        <select value={accountId} onChange={e => setAccountId(e.target.value)} className={FIELD_CLS}>
+          {accounts.map(ac => <option key={ac.id} value={ac.id}>{ac.platform} · @{ac.username}</option>)}
+        </select>
+      )}
+      <div>
+        <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Keywords, comma-separated (e.g. link, price, guide)" className={FIELD_CLS} />
+        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-mute dark:text-muteDark">
+          <span>Trigger when the comment</span>
+          {['contains', 'exact'].map(m => (
+            <button key={m} onClick={() => setMatchMode(m)}
+              className={cls('px-2 py-0.5 rounded', matchMode === m ? 'bg-ultra/15 text-ultra font-medium' : 'hover:text-ink dark:hover:text-paper')}>
+              {MATCH_LABEL[m]}
+            </button>
+          ))}
+          <span>a keyword</span>
+        </div>
+      </div>
+      <textarea value={dmMessage} onChange={e => setDmMessage(e.target.value)} rows={3}
+        placeholder="DM to auto-send (e.g. Here's the link you asked for 👉 …)" className={FIELD_CLS + ' resize-y'} />
+      <textarea value={commentReply} onChange={e => setCommentReply(e.target.value)} rows={2}
+        placeholder="Optional public reply to the comment (leave blank for none)" className={FIELD_CLS + ' resize-y'} />
+      {error && <div className="text-[12px] text-magenta">{error}</div>}
+      <div className="flex items-center gap-2">
+        <Btn variant="ink" onClick={submit} disabled={saving || !valid}>
+          {saving ? 'Saving…' : (editing ? 'Save changes' : 'Create automation')}
+        </Btn>
+        <button onClick={onCancel} className="text-[12px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper">Cancel</button>
+      </div>
+    </Card>
+  );
+};
+
+const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
+  <Card className="!py-3.5">
+    <div className="flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <span className="text-[13px] font-medium truncate">{a.name}</span>
+          <span className="text-[11px] text-mute dark:text-muteDark capitalize">{a.platform}</span>
+          {!a.is_active && <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">paused</span>}
+          {a.last_sync_error && <span className="text-[10px] text-magenta" title={a.last_sync_error}>⚠ sync error</span>}
+        </div>
+        <div className="flex flex-wrap items-center gap-1 mb-1.5">
+          {(a.keywords || []).map((k, i) => <span key={i} className="text-[11px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra">{k}</span>)}
+          <span className="text-[11px] text-mute dark:text-muteDark">· {MATCH_LABEL[a.match_mode] || a.match_mode}</span>
+        </div>
+        <p className="text-[12.5px] text-mute dark:text-muteDark line-clamp-2"><span className="opacity-70">DM:</span> {a.dm_message}</p>
+        <div className="mt-2 flex items-center gap-4 text-[11px] text-mute dark:text-muteDark">
+          <span>Triggered {formatNum(a.stats?.triggered ?? 0)}</span>
+          <span>DMs sent {formatNum(a.stats?.dms_sent ?? 0)}</span>
+          <span>Contacts {formatNum(a.stats?.unique_contacts ?? 0)}</span>
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+        <button onClick={() => onToggle(a)} disabled={busy} className="text-[11px] font-medium text-ultra hover:underline disabled:opacity-50">{a.is_active ? 'Pause' : 'Resume'}</button>
+        <button onClick={() => onEdit(a)} className="text-[11px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper">Edit</button>
+        <button onClick={() => onDelete(a)} disabled={busy} className="text-[11px] text-magenta hover:underline disabled:opacity-50">Delete</button>
+      </div>
+    </div>
+  </Card>
+);
+
+const AutomationsView = () => {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  const [err, setErr] = React.useState(null);
+  const [editing, setEditing] = React.useState(null);   // null=closed | {}=new | {id,…}=edit
+  const [saving, setSaving] = React.useState(false);
+  const [formErr, setFormErr] = React.useState(null);
+  const [busyId, setBusyId] = React.useState(null);
+
+  const load = React.useCallback(async () => {
+    try { setData(await api('/engage/automations?refresh=1')); setErr(null); }
+    catch (e) { setErr(e?.message || 'Failed to load automations'); }
+    finally { setLoading(false); }
+  }, []);
+  React.useEffect(() => { load(); }, [load]);
+
+  const automations = data?.automations || [];
+  const accounts = data?.accounts || [];
+
+  const save = async (payload, id) => {
+    setSaving(true); setFormErr(null);
+    try {
+      if (id) await api(`/engage/automations?id=${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) });
+      else await api('/engage/automations', { method: 'POST', body: JSON.stringify(payload) });
+      setEditing(null);
+      await load();
+    } catch (e) { setFormErr(e?.message || 'Save failed'); }
+    finally { setSaving(false); }
+  };
+  const toggle = async (a) => {
+    setBusyId(a.id);
+    try { await api(`/engage/automations?id=${encodeURIComponent(a.id)}`, { method: 'PATCH', body: JSON.stringify({ is_active: !a.is_active }) }); await load(); }
+    catch (e) { setErr(e?.message || 'Update failed'); }
+    finally { setBusyId(null); }
+  };
+  const del = async (a) => {
+    if (!window.confirm(`Delete automation “${a.name}”? This removes it from Zernio too.`)) return;
+    setBusyId(a.id);
+    try { await api(`/engage/automations?id=${encodeURIComponent(a.id)}`, { method: 'DELETE' }); await load(); }
+    catch (e) { setErr(e?.message || 'Delete failed'); }
+    finally { setBusyId(null); }
+  };
+
+  if (loading) return <div className="py-10 text-center text-[13px] text-mute dark:text-muteDark">Loading automations…</div>;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[12.5px] text-mute dark:text-muteDark max-w-xl">
+          When someone comments a keyword on your Instagram or Facebook post, Zernio instantly sends them a DM with your message — and can post a public reply too.
+        </p>
+        {accounts.length > 0 && !editing && (
+          <Btn variant="ink" onClick={() => { setFormErr(null); setEditing({}); }}>New automation</Btn>
+        )}
+      </div>
+
+      {err && <div className="text-[12px] text-magenta">{err}</div>}
+
+      {accounts.length === 0 && (
+        <Card className="!p-6 text-center">
+          <p className="text-[13px] text-mute dark:text-muteDark">Connect an Instagram or Facebook account to create comment→DM automations.</p>
+        </Card>
+      )}
+
+      {editing && (
+        <AutomationForm accounts={accounts} initial={editing.id ? editing : null}
+          onSave={save} onCancel={() => setEditing(null)} saving={saving} error={formErr} />
+      )}
+
+      {automations.length === 0 && accounts.length > 0 && !editing && (
+        <Card className="!p-8 text-center">
+          <p className="text-[13px] text-mute dark:text-muteDark">No automations yet. Create one to auto-DM commenters who use your keywords.</p>
+        </Card>
+      )}
+
+      <div className="space-y-2">
+        {automations.map(a => (
+          <AutomationCard key={a.id} a={a} busy={busyId === a.id}
+            onToggle={toggle} onEdit={(x) => { setFormErr(null); setEditing(x); }} onDelete={del} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const ConversationsScreen = () => {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [locked, setLocked] = React.useState(false);
   const [filter, setFilter] = React.useState('all');
+  const [view, setView] = React.useState('inbox');   // 'inbox' | 'automations'
 
   React.useEffect(() => {
     let alive = true;
@@ -136,10 +321,25 @@ const ConversationsScreen = () => {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      <div className="mb-5">
-        <h1 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tightest">Conversations</h1>
-        <p className="text-[13.5px] text-mute dark:text-muteDark mt-1">Incoming DMs, comments and reviews across your connected accounts.</p>
+      <div className="mb-5 flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="font-display text-[24px] sm:text-[28px] font-semibold tracking-tightest">Conversations</h1>
+          <p className="text-[13.5px] text-mute dark:text-muteDark mt-1">Incoming DMs, comments and reviews — plus comment→DM automations.</p>
+        </div>
+        <div className="flex gap-1.5">
+          {['inbox', 'automations'].map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={cls('h-8 px-3.5 rounded-lg text-[12.5px] font-medium border transition capitalize',
+                view === v
+                  ? 'bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper'
+                  : 'border-line dark:border-lineDark text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper')}>
+              {v}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {view === 'automations' ? <AutomationsView /> : (<>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         <StatTile label="Total" value={formatNum(a.total || 0)} />
@@ -200,6 +400,8 @@ const ConversationsScreen = () => {
       )}
 
       <p className="text-[11px] text-mute dark:text-muteDark text-center mt-6">Reply to comments right here. Replying to DMs is coming soon.</p>
+
+      </>)}
     </div>
   );
 };
