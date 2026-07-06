@@ -116,9 +116,11 @@ function parseRule(body, { partial = false } = {}) {
 }
 
 // Our rule fields → Zernio's create/update body. Only includes provided keys
-// so PATCH stays partial.
-function toZernioBody({ zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active }) {
+// so PATCH stays partial. profileId is required by Zernio on create (the
+// account lives under a profile); update keys on the automation id in the URL.
+function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active }) {
   const b = {};
+  if (zernio_profile_id != null) b.profileId = zernio_profile_id;
   if (zernio_account_id != null) b.accountId = zernio_account_id;
   if (name != null) b.name = name;
   if (keywords != null) b.keywords = keywords;
@@ -235,11 +237,19 @@ export default async function handler(req, res) {
 
     const acct = await resolveAccount(ws.id, body.account_id, body.zernio_account_id);
     if (acct.error) return json(res, acct.status, { error: acct.error });
+    if (!ws.zernio_profile_id) {
+      return json(res, 400, { error: 'This workspace isn’t linked to a Zernio profile yet — reconnect the account and try again.' });
+    }
 
     // Create on Zernio first (the execution source of truth), then persist.
+    // Zernio requires profileId (the account's parent profile) on create.
     let zid = null;
     try {
-      const zres = await zernio.createCommentAutomation(toZernioBody({ zernio_account_id: acct.zernio_account_id, ...value }));
+      const zres = await zernio.createCommentAutomation(toZernioBody({
+        zernio_profile_id: ws.zernio_profile_id,
+        zernio_account_id: acct.zernio_account_id,
+        ...value,
+      }));
       zid = zres?.id || zres?._id || zres?.automation?.id || null;
     } catch (e) {
       return json(res, 502, { error: `Zernio automation create failed: ${e.message}`, zernio_status: e.status || null });
