@@ -22,12 +22,20 @@ const CONTENT_WINDOW_MS = 48 * 3600 * 1000;   // ±48h: identical-caption cross-
 // reworded pair, the FULL captions overlapped only ~0.35 Jaccard but the
 // opening HOOK (first ~60 chars) overlapped ~0.56: creators keep the hook
 // consistent across platforms even when they reword the body. So the fuzzy pass
-// matches on the TITLE: a platform the cluster lacks, posted within ±45min
-// (cross-posts land near-simultaneously), title-token Jaccard >= 0.45, and
-// never across different series numbers (Part 1 vs Part 2).
-const CROSSPOST_WINDOW_MS = 45 * 60 * 1000;   // ±45min for the fuzzy cross-platform pass
+// matches on the TITLE hook, never across different series numbers (Part 1 vs
+// Part 2), for a platform the cluster lacks.
+//
+// The window was ±45min, which missed the common real-world pattern the
+// operator flagged: the same upload cross-posted "the same day, within an
+// hour" — a reworded caption 50min apart split into two single-platform pieces
+// and the brief wrongly reported a "missed cross-post". Widened to ±90min so
+// "within an hour" cross-posts (plus scheduling/clock lag) are caught, while
+// still far tighter than the 48h identical-caption window so unrelated posts
+// that merely share a theme don't merge.
+const CROSSPOST_WINDOW_MS = 90 * 60 * 1000;   // ±90min for the fuzzy cross-platform pass
 const TITLE_PREFIX_CHARS = 60;                 // hook length compared for fuzzy matching
-const SIM_THRESHOLD = 0.45;                    // min Jaccard on title tokens for a fuzzy match
+const SIM_THRESHOLD = 0.45;                    // min Jaccard on title tokens (3+ token titles)
+const SHORT_TITLE_TOKENS = 3;                  // below this, Jaccard is too coarse — see below
 
 // ── Caption normalization ───────────────────────────────────────────────
 // Strip markers + emojis + punctuation + collapse whitespace + lowercase,
@@ -64,11 +72,17 @@ function contentTokens(fp) {
   return new Set(fp.split(' ').filter(t => t.length >= 3));
 }
 
+// Size of the intersection of two token sets: |A∩B|.
+function intersize(a, b) {
+  let inter = 0;
+  for (const t of a) if (b.has(t)) inter += 1;
+  return inter;
+}
+
 // Jaccard similarity of two token sets: |A∩B| / |A∪B|. 0 when either is empty.
 function jaccard(a, b) {
   if (!a.size || !b.size) return 0;
-  let inter = 0;
-  for (const t of a) if (b.has(t)) inter += 1;
+  const inter = intersize(a, b);
   return inter / (a.size + b.size - inter);
 }
 
@@ -107,18 +121,24 @@ export async function detectContentPieces(workspace) {
   if (!posts?.length) return { created: 0, linked: 0, pieces: 0 };
 
   // Single-pass, time-ordered clustering. Each post joins an existing cluster
-  // when it's the SAME content, otherwise it starts a new one. "Same content":
-  //   (a) identical caption fingerprint within ±48h — exact cross-posts and
-  //       re-uploads of the same caption; or
-  //   (b) a platform the cluster doesn't have yet, posted within ±45min, with a
-  //       TITLE-token Jaccard >= 0.45 against the cluster anchor, and NOT a
-  //       different series number (Part 1 vs Part 2).
-  // (b) is the fix for the same upload reworded per platform ("medicine tracking
-  // app" on IG vs "complete medication tracking app" on TikTok): the full
-  // captions diverge (~0.35) but the hooks match (~0.56), so an exact match
-  // split them into two single-platform pieces and the brief wrongly reported a
-  // "missed cross-post". The tight window + title focus + series guard keep it
-  // from merging distinct content that merely shares a series name or hashtags.
+  // when it's the SAME content, otherwise it starts a new one. "Same content"
+  // is decided by three tiers, strongest first — the time tolerance scales with
+  // how strong the caption match is:
+  //   Tier 1 — identical caption fingerprint within ±48h. Exact cross-posts and
+  //            re-uploads of the same caption; generous window (same day+).
+  //   Tier 2 — a platform the cluster lacks, within ±90min, no series clash,
+  //            and TITLE-token Jaccard >= 0.45 (both titles 3+ tokens). The
+  //            reworded-per-platform case ("medicine tracking app" on IG vs
+  //            "complete medication tracking app" on TikTok): the full captions
+  //            diverge (~0.35) but the hooks match (~0.56), so an exact match
+  //            alone split them into two single-platform pieces and the brief
+  //            wrongly reported a "missed cross-post".
+  //   Tier 3 — same gates as Tier 2 but for SHORT titles (< 3 tokens), where
+  //            Jaccard is too coarse: require the shorter title to sit entirely
+  //            inside the longer one (2+ shared tokens). Catches brief captions
+  //            ("new drop" ↔ "new drop today") the old 3-token floor dropped.
+  // The tight ±90min window + title focus + series guard keep Tiers 2–3 from
+  // merging distinct content that merely shares a series name or hashtags.
   const clusters = [];
   for (const p of posts) {
     const fp = fingerprint(p.caption);
@@ -128,13 +148,30 @@ export async function detectContentPieces(workspace) {
     let target = null;
     for (const c of clusters) {
       const dt = Math.abs(ts - c.anchorTs);
-      if (fp && fp === c.fp && dt <= CONTENT_WINDOW_MS) { target = c; break; }
+      // A different series entry number is never the same content — Part 1 and
+      // Part 2 must not fuse even when they share a fingerprint. fingerprint()
+      // strips the "Part N" marker on purpose (so series entries group under one
+      // series), which makes templated episodes collide; this guard keeps that
+      // stripping from bleeding into content-piece grouping. Applies to ALL
+      // tiers, including the exact-fingerprint match.
       const seriesClash = seriesNum != null && c.seriesNum != null && seriesNum !== c.seriesNum;
-      if (dt <= CROSSPOST_WINDOW_MS
-          && !c.platforms.has(p.platform)
-          && !seriesClash
-          && titleTokens.size >= 3
+
+      // Tier 1 — identical caption fingerprint. Wide window (same day+).
+      if (fp && fp === c.fp && !seriesClash && dt <= CONTENT_WINDOW_MS) { target = c; break; }
+
+      // Tiers 2 & 3 — reworded cross-post. Only for a platform the cluster
+      // lacks, and only within the tight cross-post window.
+      if (dt > CROSSPOST_WINDOW_MS || c.platforms.has(p.platform) || seriesClash) continue;
+
+      // Tier 2 — both titles have enough tokens to trust a Jaccard overlap.
+      if (titleTokens.size >= SHORT_TITLE_TOKENS
+          && c.titleTokens.size >= SHORT_TITLE_TOKENS
           && jaccard(titleTokens, c.titleTokens) >= SIM_THRESHOLD) { target = c; break; }
+
+      // Tier 3 — short caption: require the shorter title fully inside the
+      // longer one (containment == 1), with at least two shared tokens.
+      const minTokens = Math.min(titleTokens.size, c.titleTokens.size);
+      if (minTokens >= 2 && intersize(titleTokens, c.titleTokens) === minTokens) { target = c; break; }
     }
     if (target) {
       target.posts.push(p);
