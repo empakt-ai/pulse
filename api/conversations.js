@@ -178,14 +178,14 @@ export default async function handler(req, res) {
       .sort((a, b) => String(b?.createdTime || '').localeCompare(String(a?.createdTime || '')))
       .slice(0, POSTS_PER_ACCOUNT);
     // 2) comments per post
-    let got = 0, sampleKeys = null;
+    let got = 0, sampleKeys = null, sampleFrom = null;
     await Promise.all(posts.map(async (post) => {
       const pid = post?.id || post?.postId || post?.platformPostId;
       if (!pid) return;
       const cResp = await zcall(zernio.listInboxComments(acct.zernio_account_id, { postId: pid }));
       const rawC = Array.isArray(cResp) ? cResp : (cResp?.comments || cResp?.data || cResp?.items || []);
       const carr = Array.isArray(rawC) ? rawC : [];
-      if (!sampleKeys && carr[0] && typeof carr[0] === 'object') sampleKeys = Object.keys(carr[0]).slice(0, 20);
+      if (!sampleKeys && carr[0] && typeof carr[0] === 'object') { sampleKeys = Object.keys(carr[0]).slice(0, 20); sampleFrom = carr[0].from ?? null; }
       for (const c of carr) {
         const cid = c?.id || c?._id || c?.commentId;
         if (!cid || seenComments.has(String(cid))) continue;
@@ -200,7 +200,7 @@ export default async function handler(req, res) {
           kind:              'comment.received',
           account_id:        acct.id,
           zernio_account_id: acct.zernio_account_id,
-          author:            c?.author?.username || (typeof c?.author === 'string' ? c.author : null) || c?.username || c?.from?.username || c?.authorName || null,
+          author:            c?.from?.name || c?.from?.username || c?.from?.id || c?.author?.name || c?.author?.username || (typeof c?.author === 'string' ? c.author : null) || c?.username || c?.authorName || null,
           body:              c?.text || c?.content || c?.message || null,
           post_id:           null,
           platform_post_id:  platPostId,
@@ -215,7 +215,7 @@ export default async function handler(req, res) {
         });
       }
     }));
-    pullDebug.push({ platform: acct.platform, commentedPosts: posts.length, comments: got, sampleKeys });
+    pullDebug.push({ platform: acct.platform, commentedPosts: posts.length, comments: got, sampleKeys, sampleFrom });
   }));
   try { console.log('[conversations.pull]', JSON.stringify(pullDebug)); } catch { /* noop */ }
   if (pulled.length) {
