@@ -5,9 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/png" href="/images/mashal-favicon.png">
 <link rel="apple-touch-icon" href="/images/mashal-logo.png">
-<title>Mashal Integrations. Seven platforms, read-only, official APIs.</title>
+<title>Mashal Integrations. Seven platforms, official APIs, read-only by default.</title>
 <link rel="canonical" href="https://mashal.app/integrations">
-<meta name="description" content="Mashal reads from the official APIs of Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Read-only OAuth, no password sharing, no scrapers on your account. Disconnect anytime.">
+<meta name="description" content="Mashal reads from the official APIs of Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Read-only OAuth by default, no password sharing, no scrapers on your account. The optional Conversations module is the one opt-in that reads and sends comments and DMs. Disconnect anytime.">
 <meta property="og:title" content="Mashal Integrations. Seven platforms, one source of truth.">
 <meta property="og:description" content="The exact data Mashal fetches from each platform, how often, and what we deliberately don't touch. Read-only by design.">
 <meta property="og:type" content="website">
@@ -162,7 +162,7 @@
   <section class="hero wrap">
     <span class="hero-tag">Integrations</span>
     <h1 class="h1">Seven platforms, one source of truth.</h1>
-    <p class="lead">Mashal connects directly to the official API of every platform you publish on. Read-only by design — Mashal can see your numbers, but never your password, your messages, or your drafts. Disconnect from Settings at any time.</p>
+    <p class="lead">Mashal connects directly to the official API of every platform you publish on. Read-only by design for everything that powers your brief — Mashal sees your numbers, never your password or your drafts. The one part that reads and sends messages is the optional Conversations module, and only when you switch it on. Disconnect from Settings at any time.</p>
   </section>
 
   <section class="wrap">
@@ -345,11 +345,10 @@
     <h2 class="h2">What we deliberately don't fetch.</h2>
     <p class="prose">A short, honest list. If a category isn't here and isn't in the per-platform sections above, assume Mashal doesn't touch it.</p>
     <ul class="prose" style="max-width: 64ch;">
-      <li><strong>Your direct messages.</strong> Mashal can't read your DMs on any platform, ever. The OAuth scopes we request don't include them.</li>
-      <li><strong>Your inbox, replies queue, or comment moderation.</strong> The same scope rule applies; mod tools live in your scheduler or in each platform's own studio.</li>
+      <li><strong>Your DMs, comments, and inbox — unless you switch on Conversations.</strong> The analytics connection that powers your brief doesn't read any of them; those scopes aren't part of it. The optional Conversations module does read comments and DMs, but only on the accounts you connect to it, and only so you can reply to them from Mashal.</li>
       <li><strong>Your drafts and scheduled posts.</strong> We see published posts only. Anything sitting in a draft state on the platform is invisible to us.</li>
       <li><strong>Other people's accounts you don't own.</strong> Competitor tracking reads what's already public. We don't request OAuth on accounts that aren't yours.</li>
-      <li><strong>Anything we'd need to write back.</strong> Mashal cannot post, reply, comment, like, follow, unfollow, edit, or delete on your behalf. Publishing belongs to your publishing tool.</li>
+      <li><strong>Anything you didn't initiate.</strong> Outside Conversations, Mashal never posts, replies, comments, likes, follows, edits, or deletes. Inside Conversations, the only things that go out are the replies you type and the comment-to-DM automations you set up and can switch off. Publishing still belongs to your publishing tool.</li>
     </ul>
   </section>
 
