@@ -66,23 +66,21 @@ export function meetsTier(tier, minTier) {
 
 // ── Engage / Conversations access ────────────────────────────────────────
 // The Conversations inbox — read + reply-to-comment + comment→DM automations
-// (api/conversations.js, api/engage/*). The INTENDED floor is Pro Creator and
-// up. During launch we ALSO open it to the basic Creator tier so everyone can
-// try it and we can announce availability; trial workspaces preview it, and a
-// locked (expired, unconverted) trial is paywalled out.
-//
-// To restore the Pro-Creator+ gate later, empty ENGAGE_LAUNCH_TIERS (i.e. set
-// it to []) — nothing else changes; basic Creator then gets the upgrade prompt.
-export const ENGAGE_MIN_TIER = 'pro_creator';
-export const ENGAGE_LAUNCH_TIERS = ['creator']; // temporary launch access — remove to re-gate
+// (api/conversations.js, api/engage/*). Available on EVERY paid tier, from
+// Creator ($15) up. Comment-to-DM automation is our wedge against ManyChat, so
+// it has to be in reach at the entry plan, not paywalled to Pro Creator. Trial
+// workspaces preview it; a locked (expired, unconverted) trial is paywalled out
+// until they convert.
+export const ENGAGE_MIN_TIER = 'creator';
+export const ENGAGE_LAUNCH_TIERS = []; // (all tiers now qualify via the floor)
 
 export function canUseEngage(workspace) {
   if (!workspace) return false;
   if (workspace.trial_locked) return false;                 // expired trial → must convert
   if (workspace.trial_active) return true;                  // trial previews it
   const tier = String(workspace.tier || 'creator').toLowerCase();
-  if (ENGAGE_LAUNCH_TIERS.includes(tier)) return true;      // temporary Creator access
-  return meetsTier(tier, ENGAGE_MIN_TIER);                  // the real floor: Pro Creator+
+  if (ENGAGE_LAUNCH_TIERS.includes(tier)) return true;
+  return meetsTier(tier, ENGAGE_MIN_TIER);                  // floor: Creator (every paid tier)
 }
 
 // 402 envelope for a workspace that can't use Engage. Mirrors
@@ -93,7 +91,7 @@ export function engageGate(workspace) {
   return {
     status: 402,
     body: {
-      error: 'Conversations unlocks on Pro Creator — upgrade to reply to comments and automate DMs.',
+      error: 'Your trial has ended — pick a plan to keep using Conversations (reply to comments and automate DMs).',
       upgrade_tier: ENGAGE_MIN_TIER,
       current_tier: String(workspace?.tier || 'creator').toLowerCase(),
     },
