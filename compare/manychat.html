@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" type="image/png" href="/images/mashal-favicon.png">
+<link rel="apple-touch-icon" href="/images/mashal-logo.png">
+<title>Mashal vs ManyChat. Comment-to-DM automation, honestly compared.</title>
+<link rel="canonical" href="https://mashal.app/compare/manychat">
+<meta name="description" content="Mashal vs ManyChat — ManyChat is the deep chat-automation platform. Mashal bundles comment-to-DM automation and a reply inbox into the same $15 tool that reads your numbers. Pricing, features, and which to pick.">
+<meta property="og:title" content="Mashal vs ManyChat. Honest comparison.">
+<meta property="og:description" content="ManyChat automates DMs. Mashal does comment-to-DM too — plus it tells you what's working. The honest comparison, with pricing and features.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://mashal.app/compare/manychat">
+<meta property="og:site_name" content="Mashal by Empakt Financial Inc.">
+<meta property="og:image" content="https://mashal.app/images/og-card.png">
+<meta name="twitter:site" content="@getmashalapp">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Mashal vs ManyChat. Honest comparison.">
+<meta name="twitter:description" content="ManyChat automates DMs. Mashal does comment-to-DM too — plus it tells you what's working. The honest comparison.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/css/marketing.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Mashal", "item": "https://mashal.app/" },
+    { "@type": "ListItem", "position": 2, "name": "Compare", "item": "https://mashal.app/compare" },
+    { "@type": "ListItem", "position": 3, "name": "Mashal vs ManyChat", "item": "https://mashal.app/compare/manychat" }
+  ]
+}
+</script>
+<script>
+  (function(){try{if(localStorage.getItem('pulse_theme')==='dark')document.documentElement.classList.add('dark');}catch(_){} })();
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
+  window.addEventListener('load', () => window.scrollTo(0, 0));
+</script>
+<style>
+  .compare-tldr { margin: 28px 0 48px; padding: 24px 28px; border-radius: 18px; background: var(--chalk, rgba(10,10,11,0.03)); font-size: 15.5px; line-height: 1.65; }
+  html.dark .compare-tldr { background: rgba(245,241,232,0.04); }
+  .compare-tldr strong { color: var(--ultra, #6B5BFF); }
+  .compare-split { display: grid; grid-template-columns: 1fr; gap: 22px; margin: 32px 0; }
+  @media (min-width: 760px) { .compare-split { grid-template-columns: 1fr 1fr; gap: 28px; } }
+  .compare-half { padding: 26px; border-radius: 18px; border: 1px solid var(--line, rgba(10,10,11,0.08)); }
+  html.dark .compare-half { border-color: rgba(245,241,232,0.08); }
+  .compare-half h3 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 19px; font-weight: 600; letter-spacing: -0.012em; margin: 0 0 10px; }
+  .compare-half .eyebrow-mono { display: inline-block; font-family: 'Geist Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--mute); margin-bottom: 8px; }
+  .compare-half ul { margin: 12px 0 0; padding-left: 18px; }
+  .compare-half ul li { font-size: 14px; line-height: 1.55; margin-bottom: 7px; }
+  .compare-half.wins { background: rgba(107,91,255,0.04); border-color: rgba(107,91,255,0.20); }
+  html.dark .compare-half.wins { background: rgba(107,91,255,0.10); border-color: rgba(107,91,255,0.30); }
+  .pricing-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 28px 0 48px; }
+  .pricing-box { padding: 22px; border-radius: 16px; border: 1px solid var(--line, rgba(10,10,11,0.08)); }
+  html.dark .pricing-box { border-color: rgba(245,241,232,0.08); }
+  .pricing-box .label { font-family: 'Geist Mono', monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--mute); margin-bottom: 12px; }
+  .pricing-box .plan { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line, rgba(10,10,11,0.06)); font-size: 14px; }
+  html.dark .pricing-box .plan { border-top-color: rgba(245,241,232,0.08); }
+  .pricing-box .plan:first-of-type { border-top: none; }
+  .pricing-box .plan strong { font-family: 'Geist Mono', monospace; font-size: 13.5px; }
+  .pick-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 24px 0 32px; }
+  @media (min-width: 760px) { .pick-grid { grid-template-columns: 1fr 1fr; } }
+  .pick-card { padding: 22px; border-radius: 16px; background: var(--chalk, rgba(10,10,11,0.03)); }
+  html.dark .pick-card { background: rgba(245,241,232,0.04); }
+  .pick-card .top { font-family: 'Geist Mono', monospace; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ultra, #6B5BFF); margin-bottom: 10px; }
+  .pick-card h4 { font-family: 'Bricolage Grotesque', system-ui, sans-serif; font-size: 17px; font-weight: 600; letter-spacing: -0.012em; margin: 0 0 10px; }
+  .pick-card p { font-size: 14px; line-height: 1.55; margin: 0; }
+</style>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap row">
+    <a href="/" class="logo" aria-label="Mashal home"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
+    <nav class="nav-links" id="primary-nav">
+      <a href="/features">Features</a>
+      <a href="/integrations">Integrations</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/updates">Updates</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+    <div class="nav-actions">
+      <button type="button" class="theme-toggle" data-theme-toggle aria-label="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <a href="/?route=signin" class="nav-signin">Sign in</a>
+      <a href="/?route=signup" class="nav-cta">Start free trial</a>
+      <button type="button" class="nav-toggle" data-nav-toggle aria-label="Open menu" aria-expanded="false" aria-controls="primary-nav"><svg class="icon-menu"  viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6"  x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg><svg class="icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6"  y2="18"/><line x1="6"  y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="hero wrap">
+    <span class="hero-tag"><a href="/compare" style="color: inherit; text-decoration: none; opacity: 0.7;">Compare</a> · ManyChat</span>
+    <h1 class="h1">Mashal vs ManyChat.</h1>
+    <p class="lead">ManyChat built the category for comment-to-DM automation and multi-step chat funnels. Mashal now does comment-to-DM too — but bundled with the daily brief that tells you what's actually working. Here's the honest read on where each one fits, with the pricing and feature lists side by side.</p>
+  </section>
+
+  <section class="wrap" style="max-width: 880px; margin: 0 auto;">
+    <div class="compare-tldr">
+      <strong>Short answer.</strong> If your growth engine is complex, multi-step DM funnels and chatbot flows across Instagram, WhatsApp, and SMS, ManyChat is the specialist — Mashal isn't trying to out-build its flow engine. If what you want is to reply to comments and DMs in one place, turn comments into DMs automatically, and — in the same tool — know which posts and keywords are worth automating, Mashal does that from $15 flat, with no price that climbs as your audience grows. Most creators we talk to want the second thing.
+    </div>
+
+    <h2 class="h2">Pricing, side by side.</h2>
+    <p class="prose">The models are different in a way that matters. Mashal charges a flat rate per workspace — Conversations (the reply inbox plus comment-to-DM automations) is included from the $15 Creator plan, and the price never moves as your following grows. ManyChat has a genuinely useful free tier, but its paid Pro plan is priced by contact count, so the bill rises as your audience does. And ManyChat is automation-only: there's no analytics brief, competitor tracking, or scheduling in the box.</p>
+
+    <div class="pricing-pair">
+      <div class="pricing-box">
+        <div class="label">Mashal</div>
+        <div class="plan"><span>Creator</span><strong>$15 / mo</strong></div>
+        <div class="plan"><span>Pro Creator</span><strong>$29 / mo</strong></div>
+        <div class="plan"><span>Brand</span><strong>$99 / mo</strong></div>
+        <div class="plan"><span>Agency</span><strong>$449 / mo</strong></div>
+        <p style="margin: 14px 0 0; font-size: 12.5px; color: var(--mute); line-height: 1.55;">Flat per workspace. Conversations — reply inbox + comment-to-DM automations — is included from the $15 plan, plus the full intelligence brief and competitor tracking. Your price doesn't rise with your follower count. 7-day trial, no credit card.</p>
+      </div>
+      <div class="pricing-box">
+        <div class="label">ManyChat</div>
+        <div class="plan"><span>Free</span><strong>$0</strong></div>
+        <div class="plan"><span>Pro</span><strong>from ~$15 / mo</strong></div>
+        <div class="plan"><span>Elite</span><strong>Custom</strong></div>
+        <p style="margin: 14px 0 0; font-size: 12.5px; color: var(--mute); line-height: 1.55;">Free tier covers the basics up to ~1,000 contacts. Pro is priced by contact count and scales as your list grows. Automation-only — no daily brief, competitor intelligence, or post scheduling.</p>
+      </div>
+    </div>
+
+    <h2 class="h2">Where Mashal wins, where ManyChat wins.</h2>
+    <div class="compare-split">
+      <div class="compare-half wins">
+        <div class="eyebrow-mono">Mashal wins on</div>
+        <h3>Automation that comes with the intelligence.</h3>
+        <ul>
+          <li><strong>It tells you what to automate.</strong> Mashal is the only one of the two that also reads your numbers and writes a 6 AM brief — so you automate the posts and keywords you can see are working, instead of guessing. ManyChat automates; it doesn't tell you what's landing.</li>
+          <li><strong>Flat pricing.</strong> $15 to $449 per workspace, and it never climbs with your contact count. ManyChat's Pro price scales with audience size, so success makes it more expensive.</li>
+          <li><strong>Comment-to-DM + a real reply inbox from the $15 plan</strong> — not a separate subscription stacked on top of your analytics tool.</li>
+          <li><strong>Reads YouTube comments too</strong>, alongside Instagram and Facebook. ManyChat doesn't touch YouTube.</li>
+          <li><strong>A whole intelligence layer</strong> ManyChat has no equivalent for: competitor tracking, Meta Ad Library reads, ad benchmarking, and a multilingual, culturally-aware brief.</li>
+        </ul>
+      </div>
+      <div class="compare-half">
+        <div class="eyebrow-mono">ManyChat wins on</div>
+        <h3>Depth of automation.</h3>
+        <ul>
+          <li><strong>A full visual flow builder.</strong> Multi-step sequences, branching chatbots, drip campaigns, and A/B tests. Mashal's v1 is straightforward keyword-to-DM rules, not a flow engine.</li>
+          <li><strong>More channels.</strong> WhatsApp, SMS, Email, and Telegram automation. Mashal's Conversations is Instagram and Facebook DMs and comments (plus YouTube comments) today.</li>
+          <li><strong>E-commerce and integrations.</strong> Shopify flows, CRM syncs, Zapier, and a large template library. Mashal doesn't do commerce automation.</li>
+          <li><strong>Years of maturity</strong> as the category leader in chat marketing, with a deep template marketplace and community.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 class="h2">Who should pick which.</h2>
+    <div class="pick-grid">
+      <div class="pick-card">
+        <div class="top">Pick ManyChat if</div>
+        <h4>Your growth depends on multi-step DM funnels, chatbots, or WhatsApp/SMS automation.</h4>
+        <p>That depth is ManyChat's whole product, and it's very good at it. If you're building branching flows, drip sequences, or e-commerce automations, that's the specialist tool — Mashal's v1 automation isn't trying to match it.</p>
+      </div>
+      <div class="pick-card">
+        <div class="top">Pick Mashal if</div>
+        <h4>You want comment-to-DM automation and a reply inbox — and, in the same tool, to know what's working.</h4>
+        <p>Reply to comments and DMs, turn comments into DMs on a keyword, and get the 6 AM brief that tells you which posts to ride. Automation plus the intelligence, from $15 flat, at a price that doesn't scale with your following.</p>
+      </div>
+      <div class="pick-card">
+        <div class="top">Pick both if</div>
+        <h4>You run heavy ManyChat funnels but still want the daily intel.</h4>
+        <p>They don't conflict. Keep ManyChat for the funnels; add Mashal for the morning brief, the competitor reads, and the ad benchmarks ManyChat doesn't do. Mashal reads your accounts from a different angle entirely.</p>
+      </div>
+      <div class="pick-card">
+        <div class="top">Pick neither if</div>
+        <h4>You don't reply to your audience and don't measure performance.</h4>
+        <p>If nobody's answering comments and nobody's reading the numbers, neither tool earns its fee. Use the platform's native inbox until engagement is actually part of the plan.</p>
+      </div>
+    </div>
+
+    <h2 class="h2">A note on where Conversations is today.</h2>
+    <p class="prose">In the spirit of the rest of these pages: Mashal's Conversations is new. It does the essentials well — a unified comment and DM inbox, replies, and keyword comment-to-DM automation across Instagram, Facebook, and YouTube — but it isn't a multi-step flow builder, and it doesn't cover WhatsApp or SMS yet. Those are on the roadmap. We'd rather say that plainly than check a box we can't back up. What's genuinely different today is that the automation lives inside the same tool that tells you what to automate — and it's included from the entry plan, not billed by the size of your audience.</p>
+
+    <div class="card-dark" style="margin: 48px 0 64px;">
+      <span class="eyebrow" style="color: var(--limeDeep);">Automation and the brief, in one place</span>
+      <h2 class="h2" style="color: var(--paper); margin-top: 8px;">Set your first comment-to-DM rule tonight.</h2>
+      <p class="lead" style="color: rgba(245,241,232,0.7); max-width: 580px;">Connect an account, turn a keyword into an automatic DM, and get tomorrow's 6 AM brief while you're at it. 7 days free, no credit card.</p>
+      <a href="/?route=signup" class="btn btn-lime" style="margin-top: 20px;">Start free trial</a>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap inner">
+    <div>
+      <a href="/" class="logo" aria-label="Mashal home"><img src="/images/mashal-logo.png" alt="" class="logo-img" /><span>Mashal<span class="dot">.</span></span></a>
+      <p class="muted" style="font-size: 14px; margin-top: 12px; max-width: 280px;">Daily social intelligence for serious creators, brands and agencies.</p>
+      <nav class="social-row" aria-label="Follow Mashal">
+        <a href="https://instagram.com/getmashal" target="_blank" rel="noopener" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg></a>
+        <a href="https://tiktok.com/@getmashal" target="_blank" rel="noopener" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-.88-.05A6.33 6.33 0 0 0 5.8 20.1a6.34 6.34 0 0 0 10.86-4.43V8.05a8.16 8.16 0 0 0 4.77 1.52V6.11a4.85 4.85 0 0 1-1.84-.42z"/></svg></a>
+        <a href="https://facebook.com/getmashal" target="_blank" rel="noopener" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 22v-8h3l1-4h-4V7.5a1 1 0 0 1 1-1h3v-4h-3a5 5 0 0 0-5 5V10H5v4h4v8z"/></svg></a>
+        <a href="https://x.com/getmashalapp" target="_blank" rel="noopener" aria-label="X (Twitter)"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg></a>
+      </nav>
+    </div>
+    <div><h4>Product</h4><ul><li><a href="/features">Features</a></li><li><a href="/integrations">Integrations</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/updates">Updates</a></li><li><a href="/stack">In your stack</a></li><li><a href="/compare">Compare</a></li></ul></div>
+    <div><h4>Company</h4><ul><li><a href="/about">About</a></li><li><a href="/contact">Contact</a></li></ul></div>
+    <div><h4>Legal</h4><ul><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li></ul></div>
+  </div>
+  <div class="wrap"><div class="meta">
+    <span>© 2026 Empakt Financial Inc. All rights reserved.</span>
+    <span><a href="/privacy">Privacy</a> &nbsp;·&nbsp; <a href="/terms">Terms</a></span>
+  </div></div>
+</footer>
+
+<script src="/js/marketing.js" defer></script>
+</body>
+</html>
