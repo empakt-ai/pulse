@@ -222,83 +222,10 @@ export default async function handler(req, res) {
     items.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
   }
 
-  // ── Live pull: DM conversations Zernio holds that never reached our webhook
-  // feed (webhooks are forward-only; older thread history won't backfill).
-  // Two-level like comments: list conversations, then fetch messages per
-  // conversation. Bounded + best-effort. YouTube/TikTok have no DM inbox.
-  const DM_SKIP = new Set(['youtube', 'tiktok', 'google_business']);
-  const CONVOS_PER_ACCOUNT = 8;
-  // Dedupe pulled messages against webhook-delivered ones by the Zernio message
-  // id (which lives in the webhook payload, not as a column on the row).
-  const seenMsgIds = new Set();
-  for (const r of (rows || [])) {
-    if (groupFor(r.kind) !== 'dm') continue;
-    const mid = pick(r.payload || {}, 'message.id', 'message._id', 'message.mid', 'messageId');
-    if (mid) seenMsgIds.add(String(mid));
-  }
-  const pulledDm = [];
-  const dmDebug = [];   // per-account shape/count diagnostics (server logs)
-  await Promise.all(accounts.filter(a => !DM_SKIP.has(a.platform)).map(async (acct) => {
-    // 1) conversation list
-    const convResp = await zcall(zernio.listConversations(acct.zernio_account_id, { limit: 50 }));
-    const rawConvos = Array.isArray(convResp) ? convResp : (convResp?.data || convResp?.conversations || convResp?.items || []);
-    const convos = (Array.isArray(rawConvos) ? rawConvos : [])
-      .sort((a, b) => String(b?.lastMessageTime || b?.updatedTime || b?.updatedAt || b?.lastMessageAt || b?.timestamp || '')
-        .localeCompare(String(a?.lastMessageTime || a?.updatedTime || a?.updatedAt || a?.lastMessageAt || a?.timestamp || '')))
-      .slice(0, CONVOS_PER_ACCOUNT);
-    const convoSampleKeys = (convos[0] && typeof convos[0] === 'object') ? Object.keys(convos[0]).slice(0, 24) : null;
-    let msgSampleKeys = null, got = 0;
-    // 2) messages per conversation
-    await Promise.all(convos.map(async (cv) => {
-      const cid = cv?.id || cv?._id || cv?.conversationId;
-      if (!cid) return;
-      const participant = cv?.participant?.name || cv?.participant?.username
-        || cv?.participantName || cv?.participantUsername
-        || cv?.with?.name || cv?.with?.username || cv?.name || cv?.username || null;
-      const msgResp = await zcall(zernio.listConversationMessages(acct.zernio_account_id, cid, { limit: 50 }));
-      const rawMsgs = Array.isArray(msgResp) ? msgResp : (msgResp?.data || msgResp?.messages || msgResp?.items || []);
-      const msgs = Array.isArray(rawMsgs) ? rawMsgs : [];
-      if (!msgSampleKeys && msgs[0] && typeof msgs[0] === 'object') msgSampleKeys = Object.keys(msgs[0]).slice(0, 24);
-      for (const m of msgs) {
-        const mid = m?.id || m?._id || m?.messageId || m?.mid;
-        const key = mid ? String(mid) : `${cid}:${got}`;
-        if (seenMsgIds.has(key)) continue;
-        seenMsgIds.add(key);
-        got++;
-        const outgoing = m?.direction === 'outgoing' || m?.isFromMe === true || m?.fromMe === true || m?.outgoing === true
-          || (m?.from?.id != null && String(m.from.id) === String(acct.zernio_account_id));
-        const sender = m?.sender?.name || m?.sender?.username || m?.from?.name || m?.from?.username || participant || null;
-        pulledDm.push({
-          id:                `zm:${cid}:${mid || got}`,
-          platform:          acct.platform,
-          platform_label:    acct.platform_label,
-          group:             'dm',
-          kind:              outgoing ? 'message_sent' : 'message.received',
-          account_id:        acct.id,
-          zernio_account_id: acct.zernio_account_id,
-          author:            outgoing ? null : sender,
-          body:              m?.text || m?.message || m?.content || m?.body || null,
-          post_id:           null,
-          platform_post_id:  null,
-          conversation_id:   String(cid),
-          direction:         outgoing ? 'outgoing' : 'incoming',
-          comment_id:        null,
-          parent_comment_id: null,
-          media:             normMedia(m?.attachments || m?.media),
-          received_at:       m?.timestamp || m?.createdTime || m?.createdAt || m?.sentAt || null,
-          external:          true,
-          participant:       participant || null,
-          reply_ctx:         { zernio_account_id: acct.zernio_account_id, conversation_id: String(cid), platform: acct.platform },
-        });
-      }
-    }));
-    dmDebug.push({ platform: acct.platform, convos: convos.length, messages: got, convoSampleKeys, msgSampleKeys });
-  }));
-  try { console.log('[conversations.dmpull]', JSON.stringify(dmDebug)); } catch { /* noop */ }
-  if (pulledDm.length) {
-    items.push(...pulledDm);
-    items.sort((a, b) => String(b.received_at || '').localeCompare(String(a.received_at || '')));
-  }
+  // NOTE: the read-time DM-conversation pull was removed here — it fanned out
+  // too many Zernio calls on every inbox load. DM history now belongs to the
+  // background sync (hourly cron → inbox_events); zernio.listConversations /
+  // listConversationMessages stay in the wrapper for that job.
 
   return json(res, 200, {
     items,
