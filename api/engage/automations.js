@@ -21,6 +21,9 @@ import { assertRole } from '../_lib/permissions.js';
 import { engageGate } from '../_lib/tiers.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
+import { engineEnabled } from '../_lib/automation/flags.js';
+import { deriveEngine, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } from '../_lib/automation/flow-builder.js';
+import { syncAutomationToEngine, removeEngineFlow } from '../_lib/automation/sync.js';
 
 const MATCH_MODES = ['contains', 'exact'];
 const AUTOMATION_PLATFORMS = ['instagram', 'facebook'];
@@ -28,6 +31,7 @@ const MAX_KEYWORDS = 50;
 const MAX_DM_LEN = 1000;   // IG DM ceiling
 const MAX_REPLY_LEN = 2200;
 const MAX_NAME_LEN = 120;
+const DELAY_CEIL = 6 * 60 * 60;   // 6h — matches the flow-builder's cap
 
 const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const isTrue = (v) => /^(1|true)$/i.test(String(v ?? ''));
@@ -44,7 +48,15 @@ function toPublic(row) {
     dm_message: row.dm_message,
     comment_reply: row.comment_reply || null,
     is_active: row.is_active,
-    synced: !!row.zernio_automation_id,
+    // Execution surface + the two native-engine features.
+    engine: row.engine || 'zernio',
+    delay_enabled: !!(row.delay_min_seconds || row.delay_max_seconds),
+    delay_min_seconds: row.delay_min_seconds ?? null,
+    delay_max_seconds: row.delay_max_seconds ?? null,
+    require_follow: !!row.require_follow,
+    follow_prompt: row.follow_prompt || null,
+    reprompt: row.reprompt || null,
+    synced: row.engine === 'native' ? !!row.flow_id : !!row.zernio_automation_id,
     last_sync_error: row.last_sync_error || null,
     stats: {
       triggered: row.stat_triggered || 0,
@@ -111,6 +123,42 @@ function parseRule(body, { partial = false } = {}) {
   }
   if ('is_active' in body) out.is_active = !!body.is_active;
 
+  // ── P1: randomized send delay ────────────────────────────────────────────
+  // Accept a simple toggle (`delay_enabled`, defaulting to the 2–5 min window)
+  // or explicit `delay_min_seconds`/`delay_max_seconds`. Off → columns nulled.
+  if ('delay_enabled' in body || 'delay_min_seconds' in body || 'delay_max_seconds' in body) {
+    const enabled = 'delay_enabled' in body ? !!body.delay_enabled
+      : (body.delay_min_seconds != null || body.delay_max_seconds != null);
+    if (!enabled) {
+      out.delay_min_seconds = null;
+      out.delay_max_seconds = null;
+    } else {
+      let mn = Number(body.delay_min_seconds);
+      let mx = Number(body.delay_max_seconds);
+      if (!Number.isFinite(mn)) mn = DEFAULT_DELAY_MIN;
+      if (!Number.isFinite(mx)) mx = DEFAULT_DELAY_MAX;
+      if (mn < 0) mn = 0;
+      if (mx < mn) mx = mn;
+      mn = Math.min(Math.round(mn), DELAY_CEIL);
+      mx = Math.min(Math.round(mx), DELAY_CEIL);
+      out.delay_min_seconds = mn;
+      out.delay_max_seconds = mx;
+    }
+  }
+
+  // ── P2: verified follow-gate (Instagram only — enforced after account resolve) ──
+  if ('require_follow' in body) out.require_follow = !!body.require_follow;
+  if ('follow_prompt' in body) {
+    const fp = body.follow_prompt == null ? null : String(body.follow_prompt).trim();
+    if (fp && fp.length > MAX_DM_LEN) errors.push(`follow_prompt exceeds ${MAX_DM_LEN} chars`);
+    else out.follow_prompt = fp || null;
+  }
+  if ('reprompt' in body) {
+    const rp = body.reprompt == null ? null : String(body.reprompt).trim();
+    if (rp && rp.length > MAX_DM_LEN) errors.push(`reprompt exceeds ${MAX_DM_LEN} chars`);
+    else out.reprompt = rp || null;
+  }
+
   if (errors.length) return { error: errors.join('; ') };
   return { value: out };
 }
@@ -152,6 +200,84 @@ async function resolveAccount(workspaceId, accountId, zernioAccountId) {
   }
   if (!acct.zernio_account_id) return { error: 'That account is not linked to Zernio yet.', status: 400 };
   return { account_id: acct.id, zernio_account_id: acct.zernio_account_id, platform };
+}
+
+// Make the right execution surface live for a rule and tear down the other, so
+// a comment is never answered twice. Given the DESIRED merged config (+ the
+// resolved account + workspace), returns the fields to persist:
+//   { engine, flow_id, zernio_automation_id, last_sync_error }
+//
+//   native  (delay and/or follow-gate) → our engine runs it; NO Zernio twin.
+//   zernio  (plain comment→DM)         → Zernio's instant hosted automation.
+//
+// Handles every transition: create on either surface, and flip native⇄zernio on
+// edit (deleting the Zernio twin when going native, deactivating the flow when
+// going back). Best-effort on the far side — surfaced via last_sync_error.
+async function reconcileExecution(desired, acct, ws, { createdBy = null } = {}) {
+  const engine = deriveEngine({
+    delay: { min_seconds: desired.delay_min_seconds, max_seconds: desired.delay_max_seconds },
+    requireFollow: desired.require_follow,
+  });
+
+  if (engine === 'native') {
+    // Tear down any Zernio twin first — if it lingered, both would fire.
+    let zerr = null;
+    if (desired.zernio_automation_id) {
+      try { await zernio.deleteCommentAutomation(desired.zernio_automation_id); }
+      catch (e) { zerr = `Zernio twin teardown failed: ${e.message}`; }
+    }
+    const { flowId } = await syncAutomationToEngine(desired, {
+      workspaceId: ws.id, accountId: acct.account_id, zernioAccountId: acct.zernio_account_id,
+      platform: acct.platform, createdBy,
+    });
+    return {
+      engine: 'native',
+      flow_id: flowId,
+      zernio_automation_id: null,
+      last_sync_error: flowId ? zerr : 'Native flow compile failed',
+    };
+  }
+
+  // engine === 'zernio' — deactivate any native flow, ensure the hosted twin.
+  if (desired.flow_id) await removeEngineFlow(desired);
+  let zid = desired.zernio_automation_id || null;
+  let zerr = null;
+  const zbody = toZernioBody({
+    zernio_profile_id: zid ? undefined : ws.zernio_profile_id,   // profileId only on create
+    zernio_account_id: acct.zernio_account_id,
+    name: desired.name, keywords: desired.keywords, match_mode: desired.match_mode,
+    dm_message: desired.dm_message, comment_reply: desired.comment_reply, is_active: desired.is_active,
+  });
+  try {
+    if (zid) await zernio.updateCommentAutomation(zid, zbody);
+    else { const zres = await zernio.createCommentAutomation(zbody); zid = zres?.id || zres?._id || zres?.automation?.id || null; }
+  } catch (e) {
+    zerr = `Zernio sync failed: ${e.message}`;
+  }
+  return {
+    engine: 'zernio',
+    flow_id: null,
+    zernio_automation_id: zid,
+    last_sync_error: zid ? zerr : (zerr || 'Zernio did not return an automation id'),
+  };
+}
+
+// Guard: native features (delay/follow-gate) require the engine flag on, and the
+// follow-gate is Instagram-only (isFollower is IG-only). Returns an error string
+// or null. `cfg` is the merged desired config; `platform` the account platform.
+function nativeGuard(cfg, platform) {
+  const wantsNative = deriveEngine({
+    delay: { min_seconds: cfg.delay_min_seconds, max_seconds: cfg.delay_max_seconds },
+    requireFollow: cfg.require_follow,
+  }) === 'native';
+  if (!wantsNative) return null;
+  if (!engineEnabled()) {
+    return 'The delay and follow-gate options aren’t enabled yet on your workspace.';
+  }
+  if (cfg.require_follow && String(platform).toLowerCase() !== 'instagram') {
+    return 'The follow-gate is Instagram-only — Instagram is the only platform that reports whether a commenter follows you.';
+  }
+  return null;
 }
 
 // Pull fresh stats from Zernio's list and persist onto the local rows.
@@ -216,7 +342,14 @@ export default async function handler(req, res) {
     const accounts = (accts || [])
       .filter(a => AUTOMATION_PLATFORMS.includes(String(a.platform || '').toLowerCase()) && a.zernio_account_id)
       .map(a => ({ id: a.id, platform: a.platform, username: a.platform_username }));
-    return json(res, 200, { automations: list.map(toPublic), accounts });
+    // engine_available gates the delay + follow-gate controls in the UI; the
+    // default window lets the form preselect 2–5 min.
+    return json(res, 200, {
+      automations: list.map(toPublic),
+      accounts,
+      engine_available: engineEnabled(),
+      delay_defaults: { min_seconds: DEFAULT_DELAY_MIN, max_seconds: DEFAULT_DELAY_MAX },
+    });
   }
 
   // Writes: block a locked trial, require member+ (viewers are read-only).
@@ -237,29 +370,25 @@ export default async function handler(req, res) {
 
     const acct = await resolveAccount(ws.id, body.account_id, body.zernio_account_id);
     if (acct.error) return json(res, acct.status, { error: acct.error });
-    if (!ws.zernio_profile_id) {
+
+    // Native features (delay / follow-gate) need the engine on; the gate is IG-only.
+    const guardErr = nativeGuard(value, acct.platform);
+    if (guardErr) return json(res, 400, { error: guardErr });
+
+    const engine = deriveEngine({
+      delay: { min_seconds: value.delay_min_seconds, max_seconds: value.delay_max_seconds },
+      requireFollow: value.require_follow,
+    });
+    if (engine === 'zernio' && !ws.zernio_profile_id) {
       return json(res, 400, { error: 'This workspace isn’t linked to a Zernio profile yet — reconnect the account and try again.' });
     }
 
-    // Create on Zernio first (the execution source of truth), then persist.
-    // Zernio requires profileId (the account's parent profile) on create.
-    let zid = null;
-    try {
-      const zres = await zernio.createCommentAutomation(toZernioBody({
-        zernio_profile_id: ws.zernio_profile_id,
-        zernio_account_id: acct.zernio_account_id,
-        ...value,
-      }));
-      zid = zres?.id || zres?._id || zres?.automation?.id || null;
-    } catch (e) {
-      return json(res, 502, { error: `Zernio automation create failed: ${e.message}`, zernio_status: e.status || null });
-    }
-
+    // Insert the config first (so a native flow can link back to its id), then
+    // reconcile the execution surface (Zernio hosted twin OR native flow).
     const row = {
       workspace_id: ws.id,
       account_id: acct.account_id,
       zernio_account_id: acct.zernio_account_id,
-      zernio_automation_id: zid,
       platform: acct.platform,
       name: value.name,
       keywords: value.keywords,
@@ -267,19 +396,30 @@ export default async function handler(req, res) {
       dm_message: value.dm_message,
       comment_reply: value.comment_reply ?? null,
       is_active: value.is_active ?? true,
+      delay_min_seconds: value.delay_min_seconds ?? null,
+      delay_max_seconds: value.delay_max_seconds ?? null,
+      require_follow: value.require_follow ?? false,
+      follow_prompt: value.follow_prompt ?? null,
+      reprompt: value.reprompt ?? null,
+      engine,
       created_by: auth.user.id,
-      last_sync_error: zid ? null : 'Zernio did not return an automation id',
     };
     const inserted = await supabase.insert('comment_automations', row).catch((e) => ({ _err: e.message }));
     if (!Array.isArray(inserted)) {
-      // Zernio has the automation but our local save failed — surface the
-      // zernio id so it isn't silently orphaned.
-      return json(res, 500, {
-        error: `Automation created on Zernio (${zid}) but the local save failed: ${inserted?._err || 'unknown'}`,
-        zernio_automation_id: zid,
-      });
+      return json(res, 500, { error: `Automation save failed: ${inserted?._err || 'unknown'}` });
     }
-    return json(res, 200, { automation: toPublic(inserted[0]) });
+    const saved = inserted[0];
+
+    const recon = await reconcileExecution({ ...saved }, acct, ws, { createdBy: auth.user.id });
+    const finalUpd = await supabase.update('comment_automations', {
+      engine: recon.engine,
+      flow_id: recon.flow_id,
+      zernio_automation_id: recon.zernio_automation_id,
+      last_sync_error: recon.last_sync_error,
+      updated_at: new Date().toISOString(),
+    }, { eq: { id: saved.id } }).catch(() => null);
+    const finalRow = (Array.isArray(finalUpd) && finalUpd[0]) ? finalUpd[0] : { ...saved, ...recon };
+    return json(res, 200, { automation: toPublic(finalRow), sync_error: recon.last_sync_error || null });
   }
 
   // ── PATCH / DELETE need a target id ───────────────────────────────────────
@@ -297,22 +437,27 @@ export default async function handler(req, res) {
     const value = parsed.value;
     if (!Object.keys(value).length) return json(res, 400, { error: 'No fields to update' });
 
-    let syncErr = null;
-    if (existing.zernio_automation_id) {
-      try {
-        await zernio.updateCommentAutomation(existing.zernio_automation_id, toZernioBody(value));
-      } catch (e) {
-        // Keep the local edit but flag Zernio as out of sync so the UI can
-        // show it and a later save can reconcile.
-        syncErr = `Zernio update failed: ${e.message}`;
-      }
-    } else {
-      syncErr = 'Not synced to Zernio (no automation id)';
-    }
-    const patch = { ...value, updated_at: new Date().toISOString(), last_sync_error: syncErr };
+    // Merge the patch over the saved config to get the DESIRED end state, then
+    // reconcile the execution surface — this is what flips a rule native⇄zernio
+    // when a delay or follow-gate is toggled on or off.
+    const desired = { ...existing, ...value };
+    const acct = { account_id: existing.account_id, zernio_account_id: existing.zernio_account_id, platform: existing.platform };
+
+    const guardErr = nativeGuard(desired, acct.platform);
+    if (guardErr) return json(res, 400, { error: guardErr });
+
+    const recon = await reconcileExecution(desired, acct, ws, { createdBy: existing.created_by });
+    const patch = {
+      ...value,
+      engine: recon.engine,
+      flow_id: recon.flow_id,
+      zernio_automation_id: recon.zernio_automation_id,
+      last_sync_error: recon.last_sync_error,
+      updated_at: new Date().toISOString(),
+    };
     const updated = await supabase.update('comment_automations', patch, { eq: { id } }).catch(() => null);
-    const rowOut = Array.isArray(updated) && updated[0] ? updated[0] : { ...existing, ...patch };
-    return json(res, 200, { automation: toPublic(rowOut), sync_error: syncErr });
+    const rowOut = Array.isArray(updated) && updated[0] ? updated[0] : { ...desired, ...patch };
+    return json(res, 200, { automation: toPublic(rowOut), sync_error: recon.last_sync_error || null });
   }
 
   // ── DELETE ────────────────────────────────────────────────────────────────
@@ -331,6 +476,9 @@ export default async function handler(req, res) {
         }
       }
     }
+    // Stop the native flow too (soft-deactivate — the flow row survives for
+    // audit; the FK is ON DELETE SET NULL so it doesn't block the delete).
+    if (existing.flow_id) await removeEngineFlow(existing).catch(() => {});
     await supabase.delete('comment_automations', { eq: { id } }).catch(() => {});
     return json(res, 200, { ok: true, deleted: id });
   }
