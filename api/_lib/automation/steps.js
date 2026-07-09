@@ -60,11 +60,13 @@ function toSeconds(step) {
 // ── handlers ────────────────────────────────────────────────────────────────
 
 // send_dm — deliver a direct message.
-//   { text, tag?, via?: 'conversation' | 'private_reply' }
-// 'conversation' replies into an existing thread (contact.conversation_id) and
-// is the verified path. 'private_reply' is the first-touch DM to a commenter
-// with no open thread (the follow-gate opener); its Zernio endpoint is not yet
-// confirmed (spec §9), so it fails loud rather than mis-sending silently.
+//   { text, tag?, via?: 'conversation' | 'private_reply', buttons?, quick_replies? }
+// 'conversation' replies into an existing thread (contact.conversation_id).
+// 'private_reply' is the first-touch DM to a commenter with no open thread —
+// the comment→DM / follow-gate opener — via Zernio's verified
+// sendPrivateReply (IG/FB only, 1 per comment, within 7 days). For cold reach
+// the DM lands in IG's Message Requests folder where quick-reply chips don't
+// render, so pass `buttons` (not `quick_replies`) for any tappable element.
 async function send_dm(step, ctx) {
   const message = renderTemplate(step.text, ctx);
   if (!message) return { fail: 'send_dm: empty text' };
@@ -72,12 +74,24 @@ async function send_dm(step, ctx) {
   const via = step.via || 'conversation';
 
   try {
+    let res;
     if (via === 'private_reply') {
-      throw new Error('send_dm via private_reply is not wired yet — verify the Zernio comment→DM private-reply endpoint before enabling the follow-gate opener (spec §9)');
+      // Needs the triggering comment's post + comment ids (captured in run
+      // context at trigger time). The opener has no conversationId yet — it
+      // arrives on the reply's message.received webhook, which resumes the run.
+      const postId = ctx.context?.platform_post_id;
+      const commentId = ctx.context?.comment_id;
+      if (!postId || !commentId) return { fail: 'send_dm(private_reply): missing post/comment id in context' };
+      res = await zernio.sendPrivateReply({
+        accountId, postId, commentId, message,
+        buttons: step.buttons || null, quickReplies: step.quick_replies || null,
+      });
+      if (res?.messageId) ctx.context.private_reply_message_id = res.messageId;
+    } else {
+      const conversationId = ctx.contact?.conversation_id || ctx.context?.conversation_id;
+      if (!conversationId) return { fail: 'send_dm: no conversation_id on contact' };
+      res = await zernio.sendDirectMessage({ accountId, conversationId, message, tag: step.tag || null });
     }
-    const conversationId = ctx.contact?.conversation_id || ctx.context?.conversation_id;
-    if (!conversationId) return { fail: 'send_dm: no conversation_id on contact' };
-    await zernio.sendDirectMessage({ accountId, conversationId, message, tag: step.tag || null });
     await bumpFlowStat(ctx.flow.id, 'stat_dms_sent');
     await logEvent({ workspaceId: ctx.flow.workspace_id, flowId: ctx.flow.id, runId: ctx.run.id, contactId: ctx.contact?.id, kind: 'dm_sent', meta: { via, chars: message.length } });
     return { next: true };

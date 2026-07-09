@@ -31,6 +31,7 @@ Everything below is confirmed against Zernio's docs / our own code; the engine i
 | Follow check timing | **Not available at comment time** — "only exposed on received conversations or when participants engage first." So a real gate is inherently **two-step** (open DM → verify on their reply). | docs.zernio.com/platforms/instagram |
 | Hosted automation | Create fields: `profileId, accountId, trigger, platformPostId, postId, name, keywords, matchMode, dmMessage, buttons, commentReply, linkTracking, clickTag`. **No delay, no follow field.** Sends in 1–3 s. | docs.zernio.com/comment-automations |
 | Send DM | `POST /inbox/conversations/{conversationId}/messages` `{accountId, message}`. 24 h window; `HUMAN_AGENT` tag extends it but **needs FB App Review (we don't have it)** → sends are 24 h-window only. | api/_lib/zernio.js |
+| First-touch DM (private reply) | **VERIFIED** (Zernio SDK `CommentsApi.sendPrivateReplyToComment`): `POST /inbox/comments/{postId}/{commentId}/private-reply` `{accountId, message, buttons?, quickReplies?}` → `{status, messageId, commentId, platform}`. Opens a DM thread **from a comment** (the follow-gate opener; `sendDirectMessage` only continues an existing thread). **IG+FB only, 1 per comment, within 7 days, must own the post.** No `conversationId` returned — it arrives on the reply's `message.received` webhook. Cold reach lands in IG **Message Requests** where `quickReplies` don't render → use `buttons` (1–3). `buttons`/`quickReplies` mutually exclusive. | Zernio SDK / zernio.js `sendPrivateReply` |
 | Comment reply | `POST /inbox/comments/{postId}` `{accountId, commentId, message}`. On IG you **can only reply to an existing comment**, not post a new top-level one. | zernio.js / IG platform doc |
 | Comment trigger | `comment.received` webhook already lands in `inbox_events` (Meta real-time for IG/FB; FB delivery has been flaky — see §9). | api/webhooks/zernio.js |
 | Buttons / link tracking | Zernio supports `buttons` + `linkTracking`/`clickTag` on messages. | comment-automations doc |
@@ -198,8 +199,14 @@ how ManyChat's gate behaves.
 
 ## 9. Open items / dependencies / risks
 
-1. **Cron frequency.** Need a sub-hourly worker (~2 min). Confirm the Vercel plan allows `*/2 * * * *`
-   (Hobby is limited; Pro allows frequent crons). Fallback: Vercel Queues (beta) or a 1-min cron.
+0. **✅ RESOLVED — First-touch DM endpoint.** The comment→DM opener is `POST /inbox/comments/{postId}/{commentId}/private-reply`
+   (verified against the official Zernio SDK; see §1). Wired as `zernio.sendPrivateReply` and used by the
+   `send_dm` step's `via:'private_reply'` path. **IG+FB only, 1/comment, 7-day window.** Design consequence:
+   the follow-gate opener to a non-follower lands in IG Message Requests, so any tappable "Follow us" element
+   must use `buttons`, not `quickReplies`.
+1. **✅ RESOLVED — Cron frequency.** `*/2 * * * *` is deployed and accepted (the pre-existing hourly cron
+   already proves the project is Pro-tier; the worker showed up as the +1 function on the deploy). Worker is
+   dormant behind `AUTOMATION_ENGINE` until cutover.
 2. **`isFollower` freshness.** `instagramProfile` has a `fetchedAt`; confirm the value on `message.received`
    reflects the follow *at reply time* (inspect one real payload before shipping P2).
 3. **Comment-webhook reliability vs hosted.** Zernio-hosted was 1–3 s reliable; our webhook adds hops, and

@@ -282,6 +282,32 @@ export const zernio = {
     });
   },
 
+  // Private reply — the FIRST-TOUCH DM to a commenter who has no open thread
+  // yet. This is what opens a conversation from a comment (Meta's "Private
+  // Replies"); sendDirectMessage can only continue an EXISTING thread. It's the
+  // opener for the comment→DM / follow-gate flows.
+  //   POST /v1/inbox/comments/{postId}/{commentId}/private-reply
+  //   body { accountId, message, buttons?, quickReplies? }
+  //   → { status, messageId, commentId, platform }   (no conversationId — the
+  //     thread's conversationId arrives on the reply's message.received webhook)
+  // Verified against the official Zernio SDK (CommentsApi.sendPrivateReplyToComment):
+  //   • Instagram + Facebook ONLY.
+  //   • ONE reply per comment, within 7 DAYS of the comment, on a post you own.
+  //   • Cold reach lands in IG's Message Requests folder, where quickReplies
+  //     chips do NOT render — use `buttons` (1-3, Meta button_template) for any
+  //     interactive element. `buttons` and `quickReplies` are mutually exclusive.
+  // `postId` is the platform media/post id (inbox_events.platform_post_id);
+  // `commentId` is the platform comment id.
+  async sendPrivateReply({ accountId, postId, commentId, message, buttons = null, quickReplies = null }) {
+    const body = { accountId, message };
+    if (buttons && buttons.length) body.buttons = buttons;
+    else if (quickReplies && quickReplies.length) body.quickReplies = quickReplies;
+    return call(
+      `/inbox/comments/${encodeURIComponent(postId)}/${encodeURIComponent(commentId)}/private-reply`,
+      { method: 'POST', body: JSON.stringify(body) }
+    );
+  },
+
   // Zernio's inbox comments API is TWO-LEVEL (confirmed from live responses):
   //   GET /inbox/comments?accountId        → COMMENTED POSTS, not comments:
   //       { data: [ { id, accountUsername, content, createdTime, permalink,
