@@ -959,24 +959,78 @@ const AccountBar = React.memo(({ activePlatform, setActivePlatform, activeBrand,
 const MobileNav = React.memo(({ active, setActive }) => {
   const tierKey = (D.tier?.key || 'creator').toLowerCase();
   const showAds = tierKey === 'brand' || tierKey === 'agency';
-  const tabs = [
+  // Mirror the header / backend engage gate so Conversations shows on phones too.
+  const ENGAGE_LAUNCH_OPEN = true;
+  const showConv = ENGAGE_LAUNCH_OPEN || ['pro_creator', 'brand', 'agency'].includes(tierKey);
+  const [moreOpen, setMoreOpen] = React.useState(false);
+
+  // The bottom bar only fits ~6–7 cells, so it carries the most-used screens
+  // plus a "More" button. Everything else (previously unreachable on mobile —
+  // Conversations, Actions, Targets, Reports, Settings) lives in the More sheet
+  // so no screen is ever stranded off-navigation on a phone. Conversations gets
+  // a primary slot since it's an active workflow; Growth moves into More.
+  const primary = [
     { id: 'Brief', icon: 'sun' }, { id: 'Stats', icon: 'grid' },
     ...(showAds ? [{ id: 'Ads', icon: 'bolt' }] : []),
     { id: 'Content', icon: 'play' },
-    { id: 'Intel', icon: 'sparkle' }, { id: 'Growth', icon: 'trending' },
-    { id: 'Reports', icon: 'layers' }
+    { id: 'Intel', icon: 'sparkle' },
+    ...(showConv ? [{ id: 'Conversations', icon: 'message' }] : [{ id: 'Growth', icon: 'trending' }]),
   ];
+  const overflow = [
+    ...(showConv ? [{ id: 'Growth', icon: 'trending' }] : []),
+    { id: 'Actions', icon: 'check' },
+    { id: 'Targets', icon: 'target' },
+    { id: 'Reports', icon: 'layers' },
+    { id: 'Settings', icon: 'settings' },
+  ];
+  const inOverflow = overflow.some(t => t.id === active);
+  const go = (id) => { setActive(id); setMoreOpen(false); };
+
   return (
-    <nav className="md:hidden fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
-      <div className={cls('grid px-1 py-1.5', showAds ? 'grid-cols-7' : 'grid-cols-6')}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setActive(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
-            <Icon name={t.icon} className="w-4 h-4" />
-            <span className="text-[10px] font-medium">{t.id}</span>
+    <>
+      {moreOpen && (
+        <div className="md:hidden fixed inset-0 z-30" onClick={() => setMoreOpen(false)}>
+          <div className="absolute inset-0 bg-ink/40 dark:bg-black/50 backdrop-blur-[2px]" />
+          <div
+            className="absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+60px)] px-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="rounded-2xl border border-line dark:border-lineDark bg-paper dark:bg-coalsoft shadow-pop p-2">
+              <div className="grid grid-cols-3 gap-1">
+                {overflow.map(t => (
+                  <button
+                    key={t.id}
+                    onClick={() => go(t.id)}
+                    className={cls('flex flex-col items-center gap-1.5 py-3 rounded-xl transition', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-ink dark:text-paper hover:bg-ink/5 dark:hover:bg-paper/5')}
+                  >
+                    <Icon name={t.icon} className="w-5 h-5" />
+                    <span className="text-[11px] font-medium">{t.id}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 backdrop-blur-xl bg-paper/95 dark:bg-ink/95 border-t border-line dark:border-lineDark pb-[env(safe-area-inset-bottom)]">
+        <div className={cls('grid px-1 py-1.5', showAds ? 'grid-cols-7' : 'grid-cols-6')}>
+          {primary.map(t => (
+            <button key={t.id} onClick={() => go(t.id)} className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', active === t.id ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}>
+              <Icon name={t.icon} className="w-4 h-4" />
+              <span className="text-[10px] font-medium">{t.id}</span>
+            </button>
+          ))}
+          <button
+            onClick={() => setMoreOpen(o => !o)}
+            aria-expanded={moreOpen}
+            className={cls('flex flex-col items-center gap-1 py-1.5 rounded-lg', (moreOpen || inOverflow) ? 'bg-ink text-paper dark:bg-lime dark:text-ink' : 'text-mute dark:text-muteDark')}
+          >
+            <Icon name="menu" className="w-4 h-4" />
+            <span className="text-[10px] font-medium">More</span>
           </button>
-        ))}
-      </div>
-    </nav>
+        </div>
+      </nav>
+    </>
   );
 });
 
