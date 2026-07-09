@@ -23,6 +23,7 @@
     { "source": "/((?!api/|features|integrations|pricing|updates|about|contact|privacy|terms|stack|compare|admin|demo).*)", "destination": "/index.html" }
   ],
   "crons": [
-    { "path": "/api/cron/hourly", "schedule": "0 * * * *" }
+    { "path": "/api/cron/hourly", "schedule": "0 * * * *" },
+    { "path": "/api/cron/automation", "schedule": "*/2 * * * *" }
   ]
 }

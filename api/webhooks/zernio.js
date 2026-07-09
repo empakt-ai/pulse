@@ -18,6 +18,7 @@
 import crypto from 'node:crypto';
 import { supabase } from '../_lib/supabase.js';
 import { json } from '../_lib/auth.js';
+import { ingestFromWebhook } from '../_lib/automation/index.js';
 
 // Disable Vercel's automatic body parsing so we can read the EXACT raw bytes
 // Zernio signed. @vercel/node does NOT populate req.rawBody, so the old
@@ -275,5 +276,25 @@ export default async function handler(req, res) {
     return json(res, 500, { error: e.message });
   }
 
-  return json(res, 200, { ok: true });
+  // Automation engine seam — FLAG-GATED. Returns { disabled:true } instantly
+  // while AUTOMATION_ENGINE is off (the P0 default), so this changes nothing in
+  // production until we deliberately cut over from Zernio's hosted automations.
+  // We await it (rather than fire-and-forget) because Vercel may freeze the
+  // function after the response — but when disabled that await is a no-op, and
+  // when enabled a keyword flow that leads with a delay only does quick DB work
+  // synchronously (the actual DM is scheduled for later by the worker).
+  let engine = null;
+  try {
+    engine = await ingestFromWebhook({
+      kind,
+      workspaceId, accountId, zernioAccountId, platform,
+      platformPostId: platformPostId ? String(platformPostId) : null,
+      postId, authorHandle, text,
+      payload: body,
+    });
+  } catch (e) {
+    engine = { error: e.message };
+  }
+
+  return json(res, 200, { ok: true, ...(engine && !engine.disabled ? { engine } : {}) });
 }
