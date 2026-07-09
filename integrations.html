@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/png" href="/images/mashal-favicon.png">
 <link rel="apple-touch-icon" href="/images/mashal-logo.png">
-<title>Mashal Integrations. Seven platforms, official APIs, read-only by default.</title>
+<title>Mashal Integrations. Seven platforms, official APIs, one secure connection.</title>
 <link rel="canonical" href="https://mashal.app/integrations">
-<meta name="description" content="Mashal reads from the official APIs of Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. Read-only OAuth by default, no password sharing, no scrapers on your account. The optional Conversations module is the one opt-in that reads and sends comments and DMs. Disconnect anytime.">
+<meta name="description" content="Mashal reads from the official APIs of Instagram, TikTok, YouTube, LinkedIn, Facebook, X, and Snapchat. A least-privilege analytics scope, no password sharing, no scrapers on your account. Turn on Conversations and Mashal also reads and replies to comments and DMs on the accounts you connect. Disconnect anytime.">
 <meta property="og:title" content="Mashal Integrations. Seven platforms, one source of truth.">
-<meta property="og:description" content="The exact data Mashal fetches from each platform, how often, and what we deliberately don't touch. Read-only by design.">
+<meta property="og:description" content="The exact data Mashal fetches from each platform, how often, and what it leaves alone. A least-privilege connection you can revoke anytime.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://mashal.app/integrations">
 <meta property="og:site_name" content="Mashal by Empakt Financial Inc.">
@@ -19,7 +19,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://mashal.app/images/og-card.png">
 <meta name="twitter:title" content="Mashal Integrations. Seven platforms, one source of truth.">
-<meta name="twitter:description" content="The exact data Mashal fetches from each platform, how often, and what we deliberately don't touch.">
+<meta name="twitter:description" content="The exact data Mashal fetches from each platform, how often, and what it leaves alone.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -162,17 +162,17 @@
   <section class="hero wrap">
     <span class="hero-tag">Integrations</span>
     <h1 class="h1">Seven platforms, one source of truth.</h1>
-    <p class="lead">Mashal connects directly to the official API of every platform you publish on. Read-only by design for everything that powers your brief — Mashal sees your numbers, never your password or your drafts. The one part that reads and sends messages is the optional Conversations module, and only when you switch it on. Disconnect from Settings at any time.</p>
+    <p class="lead">Mashal connects directly to the official API of every platform you publish on. The connection that powers your brief uses a least-privilege analytics scope — Mashal sees your numbers, never your password. Turn on Conversations and Mashal also reads and replies to comments and DMs on the accounts you connect. Disconnect from Settings at any time.</p>
   </section>
 
   <section class="wrap">
     <h2 class="h2">How the connection works.</h2>
-    <p class="prose">You click Connect on a platform tile in Settings. The platform opens its own login page, you approve a read-only scope, and you're back on Mashal a few seconds later. We never see your password. We never store an access token your browser hasn't been told to give us. Every sync runs nightly against the same API any approved third-party app would use.</p>
+    <p class="prose">You click Connect on a platform tile in Settings. The platform opens its own login page, you approve the access Mashal requests, and you're back on Mashal a few seconds later. We never see your password. We never store an access token your browser hasn't been told to give us. Every sync runs nightly against the same API any approved third-party app would use.</p>
 
     <div class="principle-grid">
       <div class="principle">
-        <h4>Read-only OAuth.</h4>
-        <p>Every connection is scoped to "read insights." Mashal can fetch your posts and your numbers; it cannot publish, edit, comment, or delete anything. Posting tools live in your scheduler.</p>
+        <h4>Least-privilege OAuth.</h4>
+        <p>The connection that powers your brief is scoped to read insights — it fetches your posts and your numbers, nothing more. Conversations, when you enable it, adds a separate messaging scope so you can reply to comments and DMs from Mashal. You grant each capability explicitly.</p>
       </div>
       <div class="principle">
         <h4>No password sharing.</h4>
@@ -249,7 +249,7 @@
           <li><strong>Channel level:</strong> subscriber count, subscriber growth, video count, channel-wide watch-time, upload cadence.</li>
           <li><strong>Direct integration</strong> via Google's official Data API. No third-party scraping layer between Mashal and your channel.</li>
         </ul>
-        <div class="footnote">Connects via Google sign-in. The scope we request is the read-only YouTube Analytics scope; we can read your videos and their numbers, never edit or publish.</div>
+        <div class="footnote">Connects via Google sign-in. The scope we request is the read-only YouTube Analytics scope — it reads your videos and their numbers to power your brief.</div>
       </div>
 
       <div class="platform-card">
@@ -342,13 +342,13 @@
   </section>
 
   <section class="wrap">
-    <h2 class="h2">What we deliberately don't fetch.</h2>
-    <p class="prose">A short, honest list. If a category isn't here and isn't in the per-platform sections above, assume Mashal doesn't touch it.</p>
+    <h2 class="h2">What powers your brief, and what it leaves alone.</h2>
+    <p class="prose">A short, honest list of what the analytics connection does and doesn't reach. If a category isn't here and isn't in the per-platform sections above, assume Mashal doesn't touch it.</p>
     <ul class="prose" style="max-width: 64ch;">
-      <li><strong>Your DMs, comments, and inbox — unless you switch on Conversations.</strong> The analytics connection that powers your brief doesn't read any of them; those scopes aren't part of it. The optional Conversations module does read comments and DMs, but only on the accounts you connect to it, and only so you can reply to them from Mashal.</li>
-      <li><strong>Your drafts and scheduled posts.</strong> We see published posts only. Anything sitting in a draft state on the platform is invisible to us.</li>
+      <li><strong>Your DMs, comments, and inbox — unless you switch on Conversations.</strong> The analytics connection that powers your brief doesn't read any of them; those scopes aren't part of it. Conversations does read comments and DMs, but only on the accounts you connect to it, and only so you can reply to them from Mashal.</li>
+      <li><strong>Your drafts.</strong> The analytics connection reads published posts only — anything sitting in a draft state on the platform isn't part of what it pulls.</li>
       <li><strong>Other people's accounts you don't own.</strong> Competitor tracking reads what's already public. We don't request OAuth on accounts that aren't yours.</li>
-      <li><strong>Anything you didn't initiate.</strong> Outside Conversations, Mashal never posts, replies, comments, likes, follows, edits, or deletes. Inside Conversations, the only things that go out are the replies you type and the comment-to-DM automations you set up and can switch off. Publishing still belongs to your publishing tool.</li>
+      <li><strong>Anything you didn't initiate.</strong> Mashal only acts when you tell it to — the replies you type and the comment-to-DM automations you set up and can switch off at any time. Nothing goes out on your accounts without your say-so.</li>
     </ul>
   </section>
 

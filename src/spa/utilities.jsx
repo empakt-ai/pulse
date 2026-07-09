@@ -1309,7 +1309,7 @@ const Integrations = () => (
       <div className="lg:col-span-5">
         <Eyebrow>Integrations</Eyebrow>
         <h2 className="font-display text-[32px] sm:text-[44px] leading-[0.98] font-semibold tracking-tightest mt-3 mb-4">Seven platforms.<br/>One source of truth.</h2>
-        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Mashal reads from official APIs only. Read-only OAuth, no password sharing, no scrapers on your account. Disconnect anytime.</p>
+        <p className="text-[15px] text-mute dark:text-muteDark mb-6">Mashal connects through official APIs only. A least-privilege scope, no password sharing, no scrapers on your account. Disconnect anytime.</p>
         <a href="/integrations" className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border border-line dark:border-lineDark text-[13px] font-medium hover:bg-ink/5 dark:hover:bg-paper/5 transition">
           See all integrations <Icon name="arrowRight" className="w-4 h-4" />
         </a>
