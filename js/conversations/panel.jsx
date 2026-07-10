@@ -381,6 +381,66 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
   );
 };
 
+// Read-only delivery diagnostic for a Zernio-hosted rule: fetches recent fire
+// logs on demand (?logs=1) so you can see whether the DM and the public comment
+// reply actually went out — Zernio SKIPS the reply when the DM fails. Purely
+// additive; never touches the create/edit/toggle/delete flows.
+const STATUS_CLS = { sent: 'bg-ultra/10 text-ultra', failed: 'bg-magenta/10 text-magenta' };
+const statusChipCls = (k) => 'text-[10px] px-1.5 py-0.5 rounded ' + (STATUS_CLS[k] || 'bg-ink/[0.06] dark:bg-paper/[0.08] text-mute dark:text-muteDark');
+
+const DeliveryLog = ({ automationId }) => {
+  const [open, setOpen] = React.useState(false);
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  const fetchLogs = async () => {
+    setLoading(true); setErr(null);
+    try { setData(await api(`/engage/automations?logs=1&id=${encodeURIComponent(automationId)}`)); }
+    catch (e) { setErr(e.message || 'Failed to load delivery log'); }
+    setLoading(false);
+  };
+  const toggle = () => { const next = !open; setOpen(next); if (next && !data && !loading) fetchLogs(); };
+
+  return (
+    <div className="mt-2">
+      <button onClick={toggle} className="text-[11px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper">
+        {open ? '▾' : '▸'} Delivery log
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded-lg border border-line dark:border-lineDark p-2.5 space-y-2">
+          {loading && <p className="text-[11px] text-mute dark:text-muteDark">Loading…</p>}
+          {err && <p className="text-[11px] text-magenta">{err}</p>}
+          {data?.note && <p className="text-[11px] text-mute dark:text-muteDark">{data.note}</p>}
+          {data && data.count > 0 && (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark">DM</span>
+                {Object.entries(data.summary?.dm || {}).map(([k, v]) => <span key={k} className={statusChipCls(k)}>{k} {v}</span>)}
+                <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark ml-2">Reply</span>
+                {Object.entries(data.summary?.comment_reply || {}).map(([k, v]) => <span key={k} className={statusChipCls(k)}>{k} {v}</span>)}
+              </div>
+              <div className="space-y-1 pt-1">
+                {data.logs.slice(0, 6).map((l, i) => (
+                  <div key={i} className="text-[11px] text-mute dark:text-muteDark flex items-start gap-2">
+                    <span className="opacity-70 shrink-0 w-14">{l.at ? timeAgo(l.at) : ''}</span>
+                    <span className="min-w-0">
+                      DM <b className={l.dm_status === 'failed' ? 'text-magenta' : ''}>{l.dm_status || '?'}</b>
+                      {' · '}reply <b className={l.comment_reply_status === 'failed' ? 'text-magenta' : ''}>{l.comment_reply_status || '?'}</b>
+                      {(l.dm_error || l.comment_reply_error) && <span className="block opacity-70">{l.comment_reply_error || l.dm_error}</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {data && data.count === 0 && !data.note && <p className="text-[11px] text-mute dark:text-muteDark">No fires recorded yet.</p>}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
   <Card className="!py-3.5">
     <div className="flex items-start gap-3">
@@ -406,6 +466,7 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
           <span>DMs sent {formatNum(a.stats?.dms_sent ?? 0)}</span>
           <span>Contacts {formatNum(a.stats?.unique_contacts ?? 0)}</span>
         </div>
+        {a.engine !== 'native' && <DeliveryLog automationId={a.id} />}
       </div>
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
         <button onClick={() => onToggle(a)} disabled={busy} className="text-[11px] font-medium text-ultra hover:underline disabled:opacity-50">{a.is_active ? 'Pause' : 'Resume'}</button>

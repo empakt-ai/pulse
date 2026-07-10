@@ -373,6 +373,21 @@ export const zernio = {
   async deleteCommentAutomation(id) {
     return call(`/comment-automations/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
+  // Per-fire logs for a hosted comment-automation. Ground truth for "did the
+  // comment reply go out, and if not, why": each entry has the DM outcome
+  // (`status`/`error`) AND the public reply outcome (`commentReplyStatus`/
+  // `commentReplyError`). Note Zernio SKIPS the public reply when the DM fails.
+  //   GET /v1/comment-automations/{id}/logs?status=&limit=&skip=
+  //   → { success, logs: [{ commentText, commenterName, status, error,
+  //        commentReplyStatus, commentReplyError, createdAt }], pagination }
+  async getCommentAutomationLogs(id, { status = null, limit = 25, skip = 0 } = {}) {
+    const q = new URLSearchParams();
+    if (status) q.set('status', status);
+    if (limit != null) q.set('limit', String(limit));
+    if (skip) q.set('skip', String(skip));
+    const qs = q.toString();
+    return call(`/comment-automations/${encodeURIComponent(id)}/logs${qs ? `?${qs}` : ''}`);
+  },
 
   // Instagram-specific account insights
   async getInstagramInsights(accountId) {

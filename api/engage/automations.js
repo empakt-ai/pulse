@@ -416,6 +416,49 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const denied = assertRole(auth, 'member');
     if (denied) return json(res, denied.status, denied.body);
+
+    // Diagnostic: recent Zernio fire logs for one automation — the ground truth
+    // for "did the public comment reply go out, and if not, why". Read-only,
+    // workspace-scoped, opt-in via ?logs=1&id=<id>. Zernio SKIPS the comment
+    // reply when the DM fails, so this surfaces both outcomes side by side.
+    if (isTrue(req.query?.logs) && req.query?.id) {
+      const row = await supabase.select('comment_automations', {
+        select: 'id,name,engine,zernio_automation_id',
+        eq: { id: req.query.id, workspace_id: ws.id }, limit: 1, single: true,
+      }).catch(() => null);
+      if (!row) return json(res, 404, { error: 'Automation not found' });
+      if (row.engine === 'native') {
+        return json(res, 200, { automation_id: row.id, name: row.name, engine: 'native', logs: [],
+          note: 'Native-engine rule — it has no Zernio hosted logs; its history lives in automation_events.' });
+      }
+      if (!row.zernio_automation_id) {
+        return json(res, 200, { automation_id: row.id, name: row.name, logs: [], note: 'Not synced to Zernio yet.' });
+      }
+      let raw;
+      try {
+        raw = await zernio.getCommentAutomationLogs(row.zernio_automation_id, { limit: Number(req.query.limit) || 25 });
+      } catch (e) {
+        return json(res, 502, { error: `Zernio logs fetch failed: ${e.message}`, zernio_status: e.status || null });
+      }
+      const entries = Array.isArray(raw?.logs) ? raw.logs : (Array.isArray(raw) ? raw : []);
+      const logs = entries.map(l => ({
+        at: l.createdAt || null,
+        commenter: l.commenterName || l.commenterId || null,
+        comment: l.commentText || null,
+        dm_status: l.status || null,
+        dm_error: l.error || null,
+        comment_reply_status: l.commentReplyStatus || null,
+        comment_reply_error: l.commentReplyError || null,
+      }));
+      // Roll up so "are comment replies going out?" is answerable at a glance.
+      const tally = (key) => logs.reduce((m, l) => { const k = l[key] || 'unknown'; m[k] = (m[k] || 0) + 1; return m; }, {});
+      return json(res, 200, {
+        automation_id: row.id, name: row.name, engine: row.engine, count: logs.length,
+        summary: { dm: tally('dm_status'), comment_reply: tally('comment_reply_status') },
+        logs,
+      });
+    }
+
     const [rows, accts] = await Promise.all([
       supabase.select('comment_automations', {
         select: '*', eq: { workspace_id: ws.id }, order: 'created_at.desc',
