@@ -168,18 +168,38 @@ client (one provider seam).
 
 ## 7. Phased build order (one feature at a time)
 
-- **P0 — Runtime + parity.** Tables, ingest, runner, worker cron, contact upsert. Migrate the existing
-  keyword→DM rule onto the engine at **instant** send (feature-parity), disable its Zernio-hosted twin,
-  verify parity behind a flag. *Nothing user-visible changes yet — this is the foundation.*
-- **P1 — Randomized delay** (ask #1) + public comment reply + post scoping. First visible behavior change.
-- **P2 — Verified follow-gate (IG)** (ask #2): open-DM → `wait_for_reply` → check `isFollower` → deliver
-  after the delay, or re-prompt. FB has no follow field, so FB flows get the delay only.
-- **P3 — Buttons/quick replies + in-DM keyword trigger.**
+- **✅ P0 — Runtime + parity.** Tables, ingest, runner, worker cron, contact upsert — built + deployed,
+  dormant behind `AUTOMATION_ENGINE`. (No big-bang cutover: instead of migrating existing rules, native
+  rules simply carry no Zernio twin — see Go-live below.)
+- **✅ P1 — Randomized delay** (ask #1). `delay {120,300}` step; config `delay_enabled`; UI toggle. Built +
+  offline-tested (`scripts/test-automation-engine.mjs`).
+- **✅ P2 — Verified follow-gate (IG)** (ask #2): open-DM (verified `sendPrivateReply`) → `wait_for_reply`
+  → check `isFollower` → deliver after the delay, or re-prompt once. FB has no follow field, so the gate is
+  IG-only (enforced in the API). Built + offline-tested. *One live check outstanding — see Go-live.*
+- **P3 — Buttons/quick replies + in-DM keyword trigger.** (`sendPrivateReply` already accepts `buttons`.)
 - **P4 — Contact maturity:** tags, custom fields, conditions/branching, new-follower trigger.
 - **P5 — Sequences/drips. P6 — Broadcasts + live-chat handoff. P7 — Analytics + click tracking.**
 - **Future — AI step, multi-channel, deep integrations.**
 
 Each phase is shippable on its own and only *adds* step/trigger types — no core rewrite.
+
+### Go-live (activating P1 + P2)
+
+The engine is built, tested, and deployed but **dormant** (`AUTOMATION_ENGINE` unset). Because a native
+rule carries **no Zernio twin** and there are **zero native flows** until a user opts into delay/gate,
+turning the engine on is inert until first use — no risky bulk cutover.
+
+1. **Flip `AUTOMATION_ENGINE=1`** in the Vercel env. This activates the webhook ingest, the `*/2` worker,
+   and the API's acceptance of delay/gate config (the UI's `engine_available` flag flips on). Plain rules
+   keep running on Zernio's instant hosted automation exactly as before.
+2. **Before trusting the follow-gate (P2):** inspect one real `message.received` payload and confirm
+   `message.sender.instagramProfile.isFollower` reflects the follow at reply time (§9.2). P1 (delay) has no
+   such dependency and is safe to use immediately.
+3. **Backstop (recommended alongside heavy use):** the reconciliation `sweep` that pulls recent comments to
+   catch any the webhook missed (§9.3) — a safety net for native comment triggers, not the primary path.
+
+Rollback is a single env flip: unset `AUTOMATION_ENGINE`. In-flight native runs pause (no worker); new
+native config is refused; plain Zernio rules are unaffected throughout.
 
 ## 8. The two asks, concretely (P1 + P2)
 

@@ -142,7 +142,7 @@ const ReplyBox = ({ item }) => {
 const MATCH_LABEL = { contains: 'contains', exact: 'exact match' };
 const FIELD_CLS = 'w-full rounded-lg border border-line dark:border-lineDark bg-transparent px-3 py-2 text-[13px] focus:outline-none focus:ring-1 focus:ring-ultra';
 
-const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error }) => {
+const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, engineAvailable }) => {
   const editing = !!(initial && initial.id);
   const [name, setName] = React.useState(initial?.name || '');
   const [accountId, setAccountId] = React.useState(initial?.account_id || accounts[0]?.id || '');
@@ -150,6 +150,18 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error }) 
   const [matchMode, setMatchMode] = React.useState(initial?.match_mode || 'contains');
   const [dmMessage, setDmMessage] = React.useState(initial?.dm_message || '');
   const [commentReply, setCommentReply] = React.useState(initial?.comment_reply || '');
+  // Native-engine delivery options (shown only when the engine is available).
+  const [delayEnabled, setDelayEnabled] = React.useState(!!initial?.delay_enabled);
+  const [requireFollow, setRequireFollow] = React.useState(!!initial?.require_follow);
+  const [followPrompt, setFollowPrompt] = React.useState(initial?.follow_prompt || '');
+
+  // The follow-gate is Instagram-only (only IG reports whether a commenter
+  // follows you), so it keys off the selected account's platform.
+  const selectedPlatform = String(
+    (accounts.find(a => a.id === accountId)?.platform) || initial?.platform || accounts[0]?.platform || ''
+  ).toLowerCase();
+  const isIG = selectedPlatform === 'instagram';
+  const gateOn = requireFollow && isIG;
 
   const kwList = keywords.split(',').map(s => s.trim()).filter(Boolean);
   const valid = name.trim() && dmMessage.trim() && kwList.length && (editing || accountId);
@@ -163,6 +175,11 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error }) 
       dm_message: dmMessage.trim(),
       comment_reply: commentReply.trim() || null,
     };
+    if (engineAvailable) {
+      payload.delay_enabled = delayEnabled;
+      payload.require_follow = gateOn;
+      if (gateOn) payload.follow_prompt = followPrompt.trim() || null;
+    }
     if (!editing) payload.account_id = accountId;
     onSave(payload, editing ? initial.id : null);
   };
@@ -193,6 +210,42 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error }) 
         placeholder="DM to auto-send (e.g. Here's the link you asked for 👉 …)" className={FIELD_CLS + ' resize-y'} />
       <textarea value={commentReply} onChange={e => setCommentReply(e.target.value)} rows={2}
         placeholder="Optional public reply to the comment (leave blank for none)" className={FIELD_CLS + ' resize-y'} />
+
+      {engineAvailable && (
+        <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-3">
+          <div className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark">Delivery</div>
+
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={delayEnabled} onChange={e => setDelayEnabled(e.target.checked)}
+              className="mt-0.5 accent-ultra w-3.5 h-3.5" />
+            <span className="text-[12.5px]">
+              <span className="font-medium">Wait a few minutes before sending</span>
+              <span className="block text-[11px] text-mute dark:text-muteDark mt-0.5">Delivers 2–5 minutes later, at a random time, so it reads like a person — not an instant bot.</span>
+            </span>
+          </label>
+
+          <label className={cls('flex items-start gap-2.5', isIG ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed')}>
+            <input type="checkbox" checked={gateOn} disabled={!isIG} onChange={e => setRequireFollow(e.target.checked)}
+              className="mt-0.5 accent-ultra w-3.5 h-3.5" />
+            <span className="text-[12.5px]">
+              <span className="font-medium">Only send to followers{' '}
+                <span className="text-[9px] font-mono uppercase tracking-wide text-ultra align-middle">Instagram</span>
+              </span>
+              <span className="block text-[11px] text-mute dark:text-muteDark mt-0.5">
+                {isIG
+                  ? 'If they’re not following you yet, Mashal asks them to follow first, then delivers once they do — a verified follow check, like ManyChat.'
+                  : 'Available on Instagram only — it’s the one platform that reports whether a commenter follows you.'}
+              </span>
+            </span>
+          </label>
+
+          {gateOn && (
+            <textarea value={followPrompt} onChange={e => setFollowPrompt(e.target.value)} rows={2}
+              placeholder="Follow-request DM (optional — leave blank for a friendly default)" className={FIELD_CLS + ' resize-y'} />
+          )}
+        </div>
+      )}
+
       {error && <div className="text-[12px] text-magenta">{error}</div>}
       <div className="flex items-center gap-2">
         <Btn variant="ink" onClick={submit} disabled={saving || !valid}>
@@ -212,6 +265,8 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
           <span className="text-[13px] font-medium truncate">{a.name}</span>
           <span className="text-[11px] text-mute dark:text-muteDark capitalize">{a.platform}</span>
           {!a.is_active && <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">paused</span>}
+          {a.delay_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Sends 2–5 minutes later">⏱ delayed</span>}
+          {a.require_follow && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Only delivers once they follow you">✓ followers only</span>}
           {a.last_sync_error && <span className="text-[10px] text-magenta" title={a.last_sync_error}>⚠ sync error</span>}
         </div>
         <div className="flex flex-wrap items-center gap-1 mb-1.5">
@@ -270,7 +325,7 @@ const AutomationsView = () => {
     finally { setBusyId(null); }
   };
   const del = async (a) => {
-    if (!window.confirm(`Delete automation “${a.name}”? This removes it from Zernio too.`)) return;
+    if (!window.confirm(`Delete automation “${a.name}”? This turns it off and removes it for good.`)) return;
     setBusyId(a.id);
     try { await api(`/engage/automations?id=${encodeURIComponent(a.id)}`, { method: 'DELETE' }); await load(); }
     catch (e) { setErr(e?.message || 'Delete failed'); }
@@ -283,7 +338,8 @@ const AutomationsView = () => {
     <div className="space-y-3">
       <div className="flex items-start justify-between gap-3">
         <p className="text-[12.5px] text-mute dark:text-muteDark max-w-xl">
-          When someone comments a keyword on your Instagram or Facebook post, Zernio instantly sends them a DM with your message — and can post a public reply too.
+          When someone comments a keyword on your Instagram or Facebook post, Mashal sends them a DM with your message — and can post a public reply too.
+          {data?.engine_available && ' Add a human-like send delay, or only deliver once they follow you.'}
         </p>
         {accounts.length > 0 && !editing && (
           <Btn variant="ink" onClick={() => { setFormErr(null); setEditing({}); }}>New automation</Btn>
@@ -300,7 +356,8 @@ const AutomationsView = () => {
 
       {editing && (
         <AutomationForm accounts={accounts} initial={editing.id ? editing : null}
-          onSave={save} onCancel={() => setEditing(null)} saving={saving} error={formErr} />
+          onSave={save} onCancel={() => setEditing(null)} saving={saving} error={formErr}
+          engineAvailable={!!data?.engine_available} />
       )}
 
       {automations.length === 0 && accounts.length > 0 && !editing && (
