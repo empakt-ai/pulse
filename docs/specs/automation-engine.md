@@ -243,8 +243,14 @@ how ManyChat's gate behaves.
 1. **✅ RESOLVED — Cron frequency.** `*/2 * * * *` is deployed and accepted (the pre-existing hourly cron
    already proves the project is Pro-tier; the worker showed up as the +1 function on the deploy). Worker is
    dormant behind `AUTOMATION_ENGINE` until cutover.
-2. **`isFollower` freshness.** `instagramProfile` has a `fetchedAt`; confirm the value on `message.received`
-   reflects the follow *at reply time* (inspect one real payload before shipping P2).
+2. **✅ RESOLVED (spec-level) — `isFollower` freshness.** Corrected: Zernio's OpenAPI shows
+   `message.sender.instagramProfile` = `{ isFollower, isFollowing, followerCount, isVerified }` — there is
+   **no `fetchedAt`** (an earlier assumption). So `isFollower` is simply the follow state carried on the
+   received message (i.e. reply-time by construction); it can be `null` when unknown (we skip non-booleans),
+   and we stamp our own `follower_checked_at` in `contacts.applyFollowerFromMessage`. `metadata` (button/chip
+   taps) sits at the payload **root** — `message.received` = `{ id, event, message:{…,direction,sender}, conversation, account, metadata, timestamp }` — which is exactly what ingest reads. The only remaining check
+   is a live sanity look (does `isFollower` actually populate for our IG account, do real taps carry
+   `metadata.postbackPayload`) — surfaced by the read-only **Webhook signals** inspector (`?signals=1`).
 3. **Comment-webhook reliability vs hosted.** Zernio-hosted was 1–3 s reliable; our webhook adds hops, and
    FB comment delivery has been flaky. Mitigation: a periodic **`sweep`** that pulls recent comments
    (`GET /inbox/comments/{postId}`) and back-fills missed triggers — a backstop, not the primary path.

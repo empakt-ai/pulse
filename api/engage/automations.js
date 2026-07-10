@@ -459,6 +459,40 @@ export default async function handler(req, res) {
       });
     }
 
+    // Diagnostic: recent inbound-message webhook signals — confirms, from real
+    // payloads (the inbox_events we already store), that isFollower and
+    // interactive-tap metadata actually populate for this account. Read-only.
+    if (isTrue(req.query?.signals)) {
+      const limit = Math.min(Number(req.query?.limit) || 20, 50);
+      const events = await supabase.select('inbox_events', {
+        select: 'id,platform,author_handle,created_at,payload',
+        eq: { workspace_id: ws.id, kind: 'message.received' },
+        order: 'created_at.desc', limit,
+      }).catch(() => []);
+      const at = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
+      const signals = (events || []).map(e => {
+        const p = e.payload || {};
+        const ig = at(p, 'message.sender.instagramProfile') || at(p, 'sender.instagramProfile') || null;
+        const meta = p.metadata || at(p, 'message.metadata') || {};
+        const tapKind = meta.postbackPayload != null ? 'postback' : (meta.quickReplyPayload != null ? 'quick_reply' : null);
+        return {
+          at: e.created_at, platform: e.platform, from: e.author_handle,
+          ig_profile_present: !!ig,
+          is_follower: ig && typeof ig.isFollower === 'boolean' ? ig.isFollower : (ig ? null : undefined),
+          tap: tapKind ? { kind: tapKind, payload: (tapKind === 'postback' ? meta.postbackPayload : meta.quickReplyPayload) || null, title: meta.postbackTitle || null } : null,
+        };
+      });
+      return json(res, 200, {
+        summary: {
+          total: signals.length,
+          with_ig_profile: signals.filter(s => s.ig_profile_present).length,
+          with_isfollower_bool: signals.filter(s => typeof s.is_follower === 'boolean').length,
+          with_tap: signals.filter(s => s.tap).length,
+        },
+        signals,
+      });
+    }
+
     const [rows, accts] = await Promise.all([
       supabase.select('comment_automations', {
         select: '*', eq: { workspace_id: ws.id }, order: 'created_at.desc',

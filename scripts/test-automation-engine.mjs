@@ -138,7 +138,7 @@ const messageEvent = (over = {}) => ({
   kind: 'message.received', workspaceId: WS, accountId: ACC, zernioAccountId: ZACC,
   platform: 'instagram',
   payload: {
-    message: { conversationId: over.conversationId || 'conv1', text: over.text != null ? over.text : (over.metadata ? '' : 'done'), sender: { id: over.userId || 'user1', username: over.handle || 'alice', instagramProfile: { isFollower: !!over.isFollower } } },
+    message: { conversationId: over.conversationId || 'conv1', direction: over.direction || 'incoming', text: over.text != null ? over.text : (over.metadata ? '' : 'done'), sender: { id: over.userId || 'user1', username: over.handle || 'alice', instagramProfile: { isFollower: !!over.isFollower } } },
     ...(over.metadata ? { metadata: over.metadata } : {}),   // interactive tap (postback/quick-reply)
   },
 });
@@ -360,6 +360,13 @@ async function testMessageTrigger() {
   await ingestFromWebhook(messageEvent({ userId: 'fred', handle: 'fred', conversationId: 'conv_fred', text: 'just saying hi' }));
   assert.equal(calls.length, before2, 'a non-matching DM does not trigger a reply');
   ok('a DM without the keyword does not fire');
+
+  // An outgoing (echoed) message with the keyword must NOT fire — the engine
+  // sends DMs, so a self-reply loop would be catastrophic. Guarded on direction.
+  const beforeOut = calls.length;
+  await ingestFromWebhook(messageEvent({ userId: 'zoe', handle: 'zoe', conversationId: 'conv_zoe', text: 'whats the price?', direction: 'outgoing' }));
+  assert.equal(calls.length, beforeOut, 'an outgoing/echoed message does not trigger a flow');
+  ok('outgoing messages are ignored (no echo-triggered sends)');
 
   // Delay composes with a message trigger.
   const dflow = seedFlow({ name: 'DM kw delay', keywords: ['demo'], dmMessage: 'Booking link 👉', triggerType: 'message', delay: { min_seconds: 120, max_seconds: 300 } });

@@ -110,6 +110,13 @@ export async function onMessage(event) {
   const { workspaceId, accountId, zernioAccountId, platform, payload } = event;
   if (!workspaceId || !zernioAccountId) return { skipped: 'unresolved' };
 
+  // Ignore messages WE sent. message.received is inbound by definition, but the
+  // payload carries an explicit `direction` and the engine now sends DMs — never
+  // let an outgoing/echoed message resume a wait_for_reply or trigger a keyword
+  // flow (that would be a self-reply loop). Only skip on an explicit 'outgoing'.
+  const direction = pick(payload, 'message.direction', 'direction');
+  if (String(direction || '').toLowerCase() === 'outgoing') return { skipped: 'outgoing' };
+
   const conversationId = pick(payload, 'message.conversationId', 'conversation.id', 'conversationId');
   const senderId = pick(payload, 'message.sender.id', 'message.from.id', 'sender.id', 'from.id');
   const text = pick(payload, 'message.text', 'text', 'message.message') || event.text || '';

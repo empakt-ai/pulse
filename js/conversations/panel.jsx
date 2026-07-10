@@ -477,6 +477,64 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
   </Card>
 );
 
+// Read-only "did the webhook actually carry what we need" inspector. Pulls the
+// fields the engine depends on (isFollower, interactive-tap metadata) straight
+// off recent real message.received payloads, so follower/tap behavior can be
+// verified against live data without touching your follow state. Additive.
+const SignalsInspector = () => {
+  const [open, setOpen] = React.useState(false);
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+
+  const fetchSignals = async () => {
+    setLoading(true); setErr(null);
+    try { setData(await api('/engage/automations?signals=1')); }
+    catch (e) { setErr(e.message || 'Failed to load signals'); }
+    setLoading(false);
+  };
+  const toggle = () => { const next = !open; setOpen(next); if (next && !data && !loading) fetchSignals(); };
+  const s = data?.summary;
+  const follows = (v) => v === true ? 'yes' : v === false ? 'no' : v === null ? 'unknown' : 'n/a';
+
+  return (
+    <div className="pt-1">
+      <button onClick={toggle} className="text-[11px] text-mute dark:text-muteDark hover:text-ink dark:hover:text-paper">
+        {open ? '▾' : '▸'} Webhook signals <span className="opacity-70">— verify follower + tap data from real DMs</span>
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded-lg border border-line dark:border-lineDark p-2.5 space-y-2">
+          {loading && <p className="text-[11px] text-mute dark:text-muteDark">Loading…</p>}
+          {err && <p className="text-[11px] text-magenta">{err}</p>}
+          {data && s && (
+            <>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-mute dark:text-muteDark">
+                <span>{s.total} recent DMs</span>
+                <span>· <b>{s.with_ig_profile}</b> w/ IG profile</span>
+                <span>· <b>{s.with_isfollower_bool}</b> w/ isFollower</span>
+                <span>· <b>{s.with_tap}</b> taps</span>
+              </div>
+              {s.total === 0
+                ? <p className="text-[11px] text-mute dark:text-muteDark">No inbound DMs recorded yet — this fills in once real messages arrive.</p>
+                : <div className="space-y-1">
+                    {data.signals.slice(0, 8).map((sig, i) => (
+                      <div key={i} className="text-[11px] text-mute dark:text-muteDark flex items-start gap-2">
+                        <span className="opacity-70 shrink-0 w-14">{sig.at ? timeAgo(sig.at) : ''}</span>
+                        <span className="min-w-0 truncate">
+                          @{sig.from || '—'} · follows <b>{follows(sig.is_follower)}</b>
+                          {sig.tap && <span> · tap <b>{sig.tap.kind}</b>: {sig.tap.payload}</span>}
+                        </span>
+                      </div>
+                    ))}
+                  </div>}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AutomationsView = () => {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -560,6 +618,8 @@ const AutomationsView = () => {
             onToggle={toggle} onEdit={(x) => { setFormErr(null); setEditing(x); }} onDelete={del} />
         ))}
       </div>
+
+      {data?.engine_available && accounts.length > 0 && <SignalsInspector />}
     </div>
   );
 };
