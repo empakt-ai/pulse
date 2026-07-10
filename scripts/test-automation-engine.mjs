@@ -13,6 +13,7 @@ import assert from 'node:assert';
 import { supabase } from '../api/_lib/supabase.js';
 import zernioDefault, { zernio } from '../api/_lib/zernio.js';
 import { buildFlowDefinition, buildTrigger } from '../api/_lib/automation/flow-builder.js';
+import { toZernioBody } from '../api/engage/automations.js';
 
 process.env.AUTOMATION_ENGINE = '1';   // flags.engineEnabled() reads this at call time
 
@@ -273,11 +274,43 @@ async function testButtons() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TEST 5 — Zernio hosted body: an empty buttons array must NOT be sent
+// (regression: `buttons: []` flips button_template mode and drops commentReply)
+// ─────────────────────────────────────────────────────────────────────────────
+async function testZernioBodyButtons() {
+  console.log('\nZernio hosted body — empty buttons omitted, comment reply preserved');
+
+  // Plain rule with a public comment reply and NO buttons (the common case).
+  const plain = toZernioBody({
+    zernio_account_id: ZACC, name: 'Plain', keywords: ['link'], match_mode: 'contains',
+    dm_message: 'Here you go', comment_reply: 'Check your DMs 📩', is_active: true, buttons: [],
+  });
+  assert.equal(plain.commentReply, 'Check your DMs 📩', 'comment reply is included');
+  assert.ok(!('buttons' in plain), 'empty buttons array is NOT sent to Zernio');
+  ok('no buttons → commentReply preserved, no buttons field (pre-P3 payload restored)');
+
+  // undefined buttons (partial PATCH that never touched buttons) → also omitted.
+  const patch = toZernioBody({ zernio_account_id: ZACC, comment_reply: 'hi', buttons: undefined });
+  assert.ok(!('buttons' in patch), 'undefined buttons is not sent');
+  ok('undefined buttons → field omitted');
+
+  // Real buttons → passed through unchanged.
+  const withBtns = toZernioBody({
+    zernio_account_id: ZACC, dm_message: 'Here you go', comment_reply: 'Check your DMs 📩',
+    buttons: [{ type: 'url', title: 'Get it', url: 'https://example.com' }],
+  });
+  assert.equal(withBtns.buttons.length, 1, 'real buttons are sent');
+  assert.equal(withBtns.commentReply, 'Check your DMs 📩', 'comment reply still included alongside buttons');
+  ok('non-empty buttons → sent through with the comment reply');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 try {
   await testDelay();
   await testFollowGate();
   await testIdempotency();
   await testButtons();
+  await testZernioBodyButtons();
   console.log(`\n✅ All ${passed} assertions passed — P1 delay + P2 follow-gate execute correctly end-to-end.\n`);
   process.exit(0);
 } catch (e) {

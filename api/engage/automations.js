@@ -182,7 +182,7 @@ function parseRule(body, { partial = false } = {}) {
 // Our rule fields → Zernio's create/update body. Only includes provided keys
 // so PATCH stays partial. profileId is required by Zernio on create (the
 // account lives under a profile); update keys on the automation id in the URL.
-function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active, buttons }) {
+export function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active, buttons }) {
   const b = {};
   if (zernio_profile_id != null) b.profileId = zernio_profile_id;
   if (zernio_account_id != null) b.accountId = zernio_account_id;
@@ -194,7 +194,12 @@ function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, ma
   if (is_active != null) b.isActive = is_active;
   // Zernio's hosted comment-automations accept the same button shape, so plain
   // rules get buttons too (native rules attach them in the flow instead).
-  if (buttons !== undefined) b.buttons = Array.isArray(buttons) ? buttons : [];
+  // ONLY send buttons when there's at least one. Sending an empty `buttons: []`
+  // flips the hosted automation into Meta's button_template mode, which drops
+  // the public `commentReply` — that silently killed the comment reply on every
+  // plain rule after P3 (they all store `buttons: []`). Mirror the same guard
+  // sendPrivateReply uses (`if (buttons && buttons.length)`).
+  if (Array.isArray(buttons) && buttons.length) b.buttons = buttons;
   return b;
 }
 
