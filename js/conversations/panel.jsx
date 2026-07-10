@@ -154,6 +154,11 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
   const [delayEnabled, setDelayEnabled] = React.useState(!!initial?.delay_enabled);
   const [requireFollow, setRequireFollow] = React.useState(!!initial?.require_follow);
   const [followPrompt, setFollowPrompt] = React.useState(initial?.follow_prompt || '');
+  // Up to 3 URL buttons on the DM (render even in the Requests folder).
+  const [buttons, setButtons] = React.useState(
+    Array.isArray(initial?.buttons) ? initial.buttons.map(b => ({ title: b.title || '', url: b.url || '' })) : []
+  );
+  const updateBtn = (i, k, v) => setButtons(buttons.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
 
   // The follow-gate is Instagram-only (only IG reports whether a commenter
   // follows you), so it keys off the selected account's platform.
@@ -180,6 +185,9 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
       payload.require_follow = gateOn;
       if (gateOn) payload.follow_prompt = followPrompt.trim() || null;
     }
+    payload.buttons = buttons
+      .filter(b => (b.title || '').trim() && (b.url || '').trim())
+      .map(b => ({ title: b.title.trim(), url: b.url.trim() }));
     if (!editing) payload.account_id = accountId;
     onSave(payload, editing ? initial.id : null);
   };
@@ -210,6 +218,28 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
         placeholder="DM to auto-send (e.g. Here's the link you asked for 👉 …)" className={FIELD_CLS + ' resize-y'} />
       <textarea value={commentReply} onChange={e => setCommentReply(e.target.value)} rows={2}
         placeholder="Optional public reply to the comment (leave blank for none)" className={FIELD_CLS + ' resize-y'} />
+
+      <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark">Buttons (optional)</div>
+          {buttons.length < 3 && (
+            <button onClick={() => setButtons([...buttons, { title: '', url: '' }])}
+              className="text-[11px] text-ultra hover:underline">+ Add button</button>
+          )}
+        </div>
+        {buttons.length === 0
+          ? <p className="text-[11px] text-mute dark:text-muteDark">Add up to 3 tappable link buttons to the DM (e.g. “Follow @you” or “Get the link”). They render even in the Requests folder, where cold DMs land.</p>
+          : buttons.map((b, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={b.title} onChange={e => updateBtn(i, 'title', e.target.value)} maxLength={20}
+                placeholder="Label (max 20)" className={FIELD_CLS + ' flex-[0_0_38%] min-w-0'} />
+              <input value={b.url} onChange={e => updateBtn(i, 'url', e.target.value)}
+                placeholder="https://…" className={FIELD_CLS + ' flex-1 min-w-0'} />
+              <button onClick={() => setButtons(buttons.filter((_, j) => j !== i))}
+                className="text-[13px] text-magenta hover:opacity-70 shrink-0" title="Remove">✕</button>
+            </div>
+          ))}
+      </div>
 
       {engineAvailable && (
         <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-3">
@@ -267,6 +297,7 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
           {!a.is_active && <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">paused</span>}
           {a.delay_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Sends 2–5 minutes later">⏱ delayed</span>}
           {a.require_follow && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Only delivers once they follow you">✓ followers only</span>}
+          {(a.buttons?.length > 0) && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title={a.buttons.map(b => b.title).join(', ')}>🔘 {a.buttons.length} button{a.buttons.length > 1 ? 's' : ''}</span>}
           {a.last_sync_error && <span className="text-[10px] text-magenta" title={a.last_sync_error}>⚠ sync error</span>}
         </div>
         <div className="flex flex-wrap items-center gap-1 mb-1.5">

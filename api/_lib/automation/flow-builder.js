@@ -35,6 +35,22 @@ const DEFAULT_FOLLOW_PROMPT =
 const DEFAULT_REPROMPT =
   "Looks like you're not following yet — give the account a follow, then reply here once more and I'll send it. 🙏";
 
+// Normalize the buttons array into what Zernio's private-reply expects
+// ({type:'url', title, url}). Drops anything malformed; caps at 3 (Meta's
+// button_template limit). URL-only for v1 — postback/phone come later.
+export function normalizeButtons(buttons) {
+  if (!Array.isArray(buttons)) return [];
+  const out = [];
+  for (const b of buttons) {
+    if (!b || out.length >= 3) break;
+    const title = String(b.title || '').trim();
+    const url = String(b.url || '').trim();
+    if (!title || !/^https?:\/\//i.test(url)) continue;
+    out.push({ type: 'url', title: title.slice(0, 20), url });
+  }
+  return out;
+}
+
 // Normalize a delay config into { min, max } seconds, or null when disabled.
 export function normalizeDelay(delay) {
   if (!delay) return null;
@@ -74,6 +90,10 @@ export function buildFlowDefinition(cfg = {}) {
   const requireFollow = !!cfg.requireFollow;
   const followPrompt = String(cfg.followPrompt || DEFAULT_FOLLOW_PROMPT).trim();
   const rePrompt = String(cfg.rePrompt || DEFAULT_REPROMPT).trim();
+  const buttons = normalizeButtons(cfg.buttons);
+  // Buttons ride on the private-reply opener (the cold-reach message that lands
+  // in the Requests folder, where buttons — unlike chips — actually render).
+  const withButtons = (step) => (buttons.length ? { ...step, buttons } : step);
 
   const steps = [];
   const delayStep = () => ({ type: 'delay', min_seconds: delay.min, max_seconds: delay.max });
@@ -83,7 +103,7 @@ export function buildFlowDefinition(cfg = {}) {
     // must open the thread, so it's a private_reply.
     if (delay) steps.push(delayStep());
     if (commentReply) steps.push({ type: 'comment_reply', text: commentReply });
-    steps.push({ type: 'send_dm', via: 'private_reply', text: dmMessage });
+    steps.push(withButtons({ type: 'send_dm', via: 'private_reply', text: dmMessage }));
     return steps;
   }
 
@@ -92,7 +112,7 @@ export function buildFlowDefinition(cfg = {}) {
   //   0  opener (private reply asking them to follow + reply)
   //   1  wait for their reply  (no reply → run expires)
   //   2  condition: are they now a follower?   yes → fall through; no → re-prompt
-  steps.push({ type: 'send_dm', via: 'private_reply', text: followPrompt });
+  steps.push(withButtons({ type: 'send_dm', via: 'private_reply', text: followPrompt }));
   steps.push({ type: 'wait_for_reply', timeout_seconds: REPLY_WAIT_SECONDS });
   const condOpen = { type: 'condition', field: 'contact.is_follower', op: 'is_true', else: null };
   steps.push(condOpen);

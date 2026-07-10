@@ -22,7 +22,7 @@ import { engageGate } from '../_lib/tiers.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
 import { engineEnabled } from '../_lib/automation/flags.js';
-import { deriveEngine, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } from '../_lib/automation/flow-builder.js';
+import { deriveEngine, normalizeButtons, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } from '../_lib/automation/flow-builder.js';
 import { syncAutomationToEngine, removeEngineFlow } from '../_lib/automation/sync.js';
 
 const MATCH_MODES = ['contains', 'exact'];
@@ -56,6 +56,7 @@ function toPublic(row) {
     require_follow: !!row.require_follow,
     follow_prompt: row.follow_prompt || null,
     reprompt: row.reprompt || null,
+    buttons: Array.isArray(row.buttons) ? row.buttons : [],
     synced: row.engine === 'native' ? !!row.flow_id : !!row.zernio_automation_id,
     last_sync_error: row.last_sync_error || null,
     stats: {
@@ -159,6 +160,21 @@ function parseRule(body, { partial = false } = {}) {
     else out.reprompt = rp || null;
   }
 
+  // ── P3: inline DM buttons (v1 = URL buttons, max 3) ───────────────────────
+  if ('buttons' in body) {
+    const raw = Array.isArray(body.buttons) ? body.buttons : [];
+    if (raw.length > 3) errors.push('at most 3 buttons are allowed');
+    for (const b of raw) {
+      const title = String(b?.title || '').trim();
+      const url = String(b?.url || '').trim();
+      if (!title || !url) errors.push('each button needs a label and a URL');
+      else if (title.length > 20) errors.push(`button label "${title}" exceeds 20 chars`);
+      else if (!/^https?:\/\//i.test(url)) errors.push(`button URL must start with http(s): "${url}"`);
+    }
+    // normalizeButtons is the single source of truth for the stored/sent shape.
+    if (!errors.length) out.buttons = normalizeButtons(raw);
+  }
+
   if (errors.length) return { error: errors.join('; ') };
   return { value: out };
 }
@@ -166,7 +182,7 @@ function parseRule(body, { partial = false } = {}) {
 // Our rule fields → Zernio's create/update body. Only includes provided keys
 // so PATCH stays partial. profileId is required by Zernio on create (the
 // account lives under a profile); update keys on the automation id in the URL.
-function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active }) {
+function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, match_mode, dm_message, comment_reply, is_active, buttons }) {
   const b = {};
   if (zernio_profile_id != null) b.profileId = zernio_profile_id;
   if (zernio_account_id != null) b.accountId = zernio_account_id;
@@ -176,6 +192,9 @@ function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywords, ma
   if (dm_message != null) b.dmMessage = dm_message;
   if (comment_reply !== undefined) b.commentReply = comment_reply || '';
   if (is_active != null) b.isActive = is_active;
+  // Zernio's hosted comment-automations accept the same button shape, so plain
+  // rules get buttons too (native rules attach them in the flow instead).
+  if (buttons !== undefined) b.buttons = Array.isArray(buttons) ? buttons : [];
   return b;
 }
 
@@ -247,6 +266,7 @@ async function reconcileExecution(desired, acct, ws, { createdBy = null } = {}) 
     zernio_account_id: acct.zernio_account_id,
     name: desired.name, keywords: desired.keywords, match_mode: desired.match_mode,
     dm_message: desired.dm_message, comment_reply: desired.comment_reply, is_active: desired.is_active,
+    buttons: desired.buttons,
   });
   try {
     if (zid) await zernio.updateCommentAutomation(zid, zbody);
@@ -401,6 +421,7 @@ export default async function handler(req, res) {
       require_follow: value.require_follow ?? false,
       follow_prompt: value.follow_prompt ?? null,
       reprompt: value.reprompt ?? null,
+      buttons: value.buttons ?? [],
       engine,
       created_by: auth.user.id,
     };

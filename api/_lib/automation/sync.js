@@ -23,6 +23,7 @@ export async function syncAutomationToEngine(automation, { workspaceId, accountI
     requireFollow: automation.require_follow,
     followPrompt: automation.follow_prompt,
     rePrompt: automation.reprompt,
+    buttons: automation.buttons,
   });
   const trigger = buildTrigger({ keywords: automation.keywords, matchMode: automation.match_mode });
 

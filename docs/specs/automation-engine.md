@@ -176,7 +176,10 @@ client (one provider seam).
 - **✅ P2 — Verified follow-gate (IG)** (ask #2): open-DM (verified `sendPrivateReply`) → `wait_for_reply`
   → check `isFollower` → deliver after the delay, or re-prompt once. FB has no follow field, so the gate is
   IG-only (enforced in the API). Built + offline-tested. *One live check outstanding — see Go-live.*
-- **P3 — Buttons/quick replies + in-DM keyword trigger.** (`sendPrivateReply` already accepts `buttons`.)
+- **P3 — Buttons/quick replies + in-DM keyword trigger.** ✅ **URL buttons shipped** (config `buttons`,
+  flow-builder attaches them to the private-reply opener, UI editor, both surfaces) — they render in IG's
+  Requests folder where cold openers land, unlike chips. *Next:* postback buttons (tap → resume the run,
+  needs the button-tap webhook), quick-reply chips, and the in-DM keyword trigger.
 - **P4 — Contact maturity:** tags, custom fields, conditions/branching, new-follower trigger.
 - **P5 — Sequences/drips. P6 — Broadcasts + live-chat handoff. P7 — Analytics + click tracking.**
 - **Future — AI step, multi-channel, deep integrations.**

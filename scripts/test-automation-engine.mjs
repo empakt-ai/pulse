@@ -250,10 +250,34 @@ async function testIdempotency() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TEST 4 — URL buttons flow through to the private-reply send
+// ─────────────────────────────────────────────────────────────────────────────
+async function testButtons() {
+  console.log('\nButtons — URL buttons on the DM');
+  const flow = seedFlow({
+    name: 'Btn rule', keywords: ['kit'], dmMessage: 'Here you go!',
+    buttons: [{ type: 'url', title: 'Follow @me', url: 'https://instagram.com/me' },
+              { type: 'url', title: 'Get the kit', url: 'https://example.com/kit' }],
+  });
+  const send = flow.definition.find(s => s.type === 'send_dm');
+  assert.ok(Array.isArray(send.buttons) && send.buttons.length === 2, 'buttons compiled onto the send_dm step');
+  ok('buttons compile onto the DM step');
+
+  await ingestFromWebhook(commentEvent({ userId: 'dan', handle: 'dan', commentId: 'c4', text: 'send the kit please' }));
+  const pr = [...calls].reverse().find(c => c.op === 'private_reply');
+  assert.ok(pr?.buttons?.length === 2, 'both buttons passed to sendPrivateReply');
+  assert.equal(pr.buttons[0].title, 'Follow @me', 'button label preserved');
+  assert.equal(pr.buttons[0].url, 'https://instagram.com/me', 'button URL preserved');
+  assert.equal(pr.buttons[0].type, 'url', 'button type is url');
+  ok('URL buttons flow through to the private-reply send with correct shape');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 try {
   await testDelay();
   await testFollowGate();
   await testIdempotency();
+  await testButtons();
   console.log(`\n✅ All ${passed} assertions passed — P1 delay + P2 follow-gate execute correctly end-to-end.\n`);
   process.exit(0);
 } catch (e) {
