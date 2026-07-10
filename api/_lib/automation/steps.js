@@ -90,7 +90,10 @@ async function send_dm(step, ctx) {
     } else {
       const conversationId = ctx.contact?.conversation_id || ctx.context?.conversation_id;
       if (!conversationId) return { fail: 'send_dm: no conversation_id on contact' };
-      res = await zernio.sendDirectMessage({ accountId, conversationId, message, tag: step.tag || null });
+      res = await zernio.sendDirectMessage({
+        accountId, conversationId, message, tag: step.tag || null,
+        buttons: step.buttons || null, quickReplies: step.quick_replies || null,
+      });
     }
     await bumpFlowStat(ctx.flow.id, 'stat_dms_sent');
     await logEvent({ workspaceId: ctx.flow.workspace_id, flowId: ctx.flow.id, runId: ctx.run.id, contactId: ctx.contact?.id, kind: 'dm_sent', meta: { via, chars: message.length } });

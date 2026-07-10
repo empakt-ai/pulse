@@ -66,9 +66,11 @@ export function normalizeDelay(delay) {
 }
 
 // Decide which execution surface an automation belongs on:
-//   'native'  — our engine (needs delay and/or follow-gate)
+//   'native'  — our engine (needs delay and/or follow-gate, or a DM-keyword
+//               trigger, which Zernio's comment-only hosted automation can't do)
 //   'zernio'  — Zernio's instant hosted automation (plain comment→DM)
-export function deriveEngine({ delay, requireFollow } = {}) {
+export function deriveEngine({ delay, requireFollow, triggerType } = {}) {
+  if (triggerType === 'message') return 'native';   // Zernio hosts comments only
   return (normalizeDelay(delay) || requireFollow) ? 'native' : 'zernio';
 }
 
@@ -79,6 +81,7 @@ export function deriveEngine({ delay, requireFollow } = {}) {
 //     delay: { min_seconds, max_seconds } | null,
 //     requireFollow: bool,
 //     followPrompt, rePrompt,    // optional custom gate copy
+//     triggerType: 'comment' | 'message',
 //   }
 // The delay is applied to the *delivery* (the requested DM + public reply) —
 // for the gate that means "after they follow, send after the delay", matching
@@ -91,12 +94,22 @@ export function buildFlowDefinition(cfg = {}) {
   const followPrompt = String(cfg.followPrompt || DEFAULT_FOLLOW_PROMPT).trim();
   const rePrompt = String(cfg.rePrompt || DEFAULT_REPROMPT).trim();
   const buttons = normalizeButtons(cfg.buttons);
-  // Buttons ride on the private-reply opener (the cold-reach message that lands
-  // in the Requests folder, where buttons — unlike chips — actually render).
+  // Buttons ride on the primary DM. On a comment→DM opener they render in IG's
+  // Requests folder (where chips don't); on a DM-keyword reply they render
+  // inline in the open thread. Either way, attach them only when present.
   const withButtons = (step) => (buttons.length ? { ...step, buttons } : step);
 
   const steps = [];
   const delayStep = () => ({ type: 'delay', min_seconds: delay.min, max_seconds: delay.max });
+
+  // DM-keyword trigger: the person already DMed us, so the thread is open —
+  // reply straight into it (via 'conversation', not a private-reply opener) and
+  // there's no comment to publicly reply to. Delay + buttons still apply.
+  if (cfg.triggerType === 'message') {
+    if (delay) steps.push(delayStep());
+    steps.push(withButtons({ type: 'send_dm', via: 'conversation', text: dmMessage }));
+    return steps;
+  }
 
   if (!requireFollow) {
     // Plain (optionally delayed) comment→DM. The first DM to a fresh commenter
@@ -135,12 +148,19 @@ export function buildFlowDefinition(cfg = {}) {
   return steps;
 }
 
-// Build the trigger object for a comment→DM flow from the automation config.
-export function buildTrigger({ keywords, matchMode, platformPostId } = {}) {
+// Build the trigger object for a flow from the automation config.
+//   'comment' (default) — keyword comment, scoped to a post or all posts.
+//   'message'           — keyword in an inbound DM (no post scope — no post).
+export function buildTrigger({ keywords, matchMode, platformPostId, triggerType } = {}) {
+  const kw = Array.isArray(keywords) ? keywords : [];
+  const match_mode = matchMode === 'exact' ? 'exact' : 'contains';
+  if (triggerType === 'message') {
+    return { type: 'message', keywords: kw, match_mode };
+  }
   const t = {
     type: 'comment',
-    keywords: Array.isArray(keywords) ? keywords : [],
-    match_mode: matchMode === 'exact' ? 'exact' : 'contains',
+    keywords: kw,
+    match_mode,
     post_scope: platformPostId ? 'post' : 'all',
   };
   if (platformPostId) t.platform_post_id = String(platformPostId);

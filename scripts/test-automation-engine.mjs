@@ -12,7 +12,7 @@
 import assert from 'node:assert';
 import { supabase } from '../api/_lib/supabase.js';
 import zernioDefault, { zernio } from '../api/_lib/zernio.js';
-import { buildFlowDefinition, buildTrigger } from '../api/_lib/automation/flow-builder.js';
+import { buildFlowDefinition, buildTrigger, deriveEngine } from '../api/_lib/automation/flow-builder.js';
 import { toZernioBody } from '../api/engage/automations.js';
 
 process.env.AUTOMATION_ENGINE = '1';   // flags.engineEnabled() reads this at call time
@@ -119,7 +119,7 @@ function seedFlow(cfg) {
   const flow = {
     id: genId('flow'), workspace_id: WS, account_id: ACC, zernio_account_id: ZACC,
     platform: 'instagram', name: cfg.name, is_active: true,
-    trigger: buildTrigger({ keywords: cfg.keywords, matchMode: 'contains' }),
+    trigger: buildTrigger({ keywords: cfg.keywords, matchMode: 'contains', triggerType: cfg.triggerType }),
     definition: buildFlowDefinition(cfg), source: 'comment_automation',
     stat_triggered: 0, stat_dms_sent: 0, stat_dms_failed: 0, stat_completed: 0,
     created_at: nowIso(),
@@ -305,12 +305,56 @@ async function testZernioBodyButtons() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TEST 6 — P3: in-DM keyword trigger (keyword in a DM → in-thread auto-reply)
+// ─────────────────────────────────────────────────────────────────────────────
+async function testMessageTrigger() {
+  console.log('\nP3 — in-DM keyword trigger');
+
+  // Message triggers are native-only: Zernio hosts comment-automations only.
+  assert.equal(deriveEngine({ triggerType: 'message' }), 'native', 'message trigger → native regardless of delay/gate');
+  assert.equal(deriveEngine({ triggerType: 'comment' }), 'zernio', 'plain comment trigger stays on Zernio');
+  ok('a DM-keyword trigger always routes to the native engine');
+
+  const flow = seedFlow({
+    name: 'DM kw', keywords: ['price'], dmMessage: 'It’s $49 — here you go!', triggerType: 'message',
+    buttons: [{ type: 'url', title: 'Buy now', url: 'https://example.com/buy' }],
+  });
+  assert.equal(flow.trigger.type, 'message', 'trigger compiles to type "message"');
+  assert.ok(!('post_scope' in flow.trigger), 'no post scope on a DM trigger (there is no post)');
+  assert.deepEqual(flow.definition.map(s => s.type), ['send_dm'], 'plain message flow is a single in-thread DM');
+  assert.equal(flow.definition[0].via, 'conversation', 'the reply goes into the open thread, not a private-reply opener');
+  ok('flow compiles to a single in-thread send_dm (no comment reply, no opener)');
+
+  // An inbound DM containing the keyword → auto-reply into the same thread.
+  const before = calls.length;
+  await ingestFromWebhook(messageEvent({ userId: 'erin', handle: 'erin', conversationId: 'conv_erin', text: 'hey whats the price?' }));
+  assert.equal(calls.length, before + 1, 'exactly one reply sent');
+  assert.equal(lastCall().op, 'dm', 'reply is an in-thread DM (sendDirectMessage)');
+  assert.equal(lastCall().conversationId, 'conv_erin', 'reply lands in their conversation');
+  assert.equal(lastCall().message, 'It’s $49 — here you go!', 'the configured reply is sent');
+  assert.ok(lastCall().buttons?.length === 1 && lastCall().buttons[0].title === 'Buy now', 'buttons flow through to the in-thread DM');
+  ok('inbound DM keyword → in-thread auto-reply, with buttons attached');
+
+  // A DM that does NOT contain the keyword → nothing fires.
+  const before2 = calls.length;
+  await ingestFromWebhook(messageEvent({ userId: 'fred', handle: 'fred', conversationId: 'conv_fred', text: 'just saying hi' }));
+  assert.equal(calls.length, before2, 'a non-matching DM does not trigger a reply');
+  ok('a DM without the keyword does not fire');
+
+  // Delay composes with a message trigger.
+  const dflow = seedFlow({ name: 'DM kw delay', keywords: ['demo'], dmMessage: 'Booking link 👉', triggerType: 'message', delay: { min_seconds: 120, max_seconds: 300 } });
+  assert.deepEqual(dflow.definition.map(s => s.type), ['delay', 'send_dm'], 'delayed message flow is [delay, send_dm]');
+  ok('delay composes with a DM-keyword trigger');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 try {
   await testDelay();
   await testFollowGate();
   await testIdempotency();
   await testButtons();
   await testZernioBodyButtons();
+  await testMessageTrigger();
   console.log(`\n✅ All ${passed} assertions passed — P1 delay + P2 follow-gate execute correctly end-to-end.\n`);
   process.exit(0);
 } catch (e) {

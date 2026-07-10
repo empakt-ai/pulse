@@ -26,6 +26,7 @@ import { deriveEngine, normalizeButtons, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } 
 import { syncAutomationToEngine, removeEngineFlow } from '../_lib/automation/sync.js';
 
 const MATCH_MODES = ['contains', 'exact'];
+const TRIGGER_TYPES = ['comment', 'message'];
 const AUTOMATION_PLATFORMS = ['instagram', 'facebook'];
 const MAX_KEYWORDS = 50;
 const MAX_DM_LEN = 1000;   // IG DM ceiling
@@ -43,6 +44,7 @@ function toPublic(row) {
     account_id: row.account_id,
     platform: row.platform,
     name: row.name,
+    trigger_type: row.trigger_type || 'comment',
     keywords: row.keywords || [],
     match_mode: row.match_mode,
     dm_message: row.dm_message,
@@ -110,6 +112,14 @@ function parseRule(body, { partial = false } = {}) {
     const mm = String(body.match_mode || 'contains').trim().toLowerCase();
     if (!MATCH_MODES.includes(mm)) errors.push(`match_mode must be one of: ${MATCH_MODES.join(', ')}`);
     else out.match_mode = mm;
+  }
+  // Trigger surface: a keyword comment ('comment', default) or a keyword in an
+  // inbound DM ('message'). Message triggers are native-only (Zernio hosts
+  // comment-automations only) — enforced in nativeGuard/reconcile.
+  if ('trigger_type' in body) {
+    const tt = String(body.trigger_type || 'comment').trim().toLowerCase();
+    if (!TRIGGER_TYPES.includes(tt)) errors.push(`trigger_type must be one of: ${TRIGGER_TYPES.join(', ')}`);
+    else out.trigger_type = tt;
   }
   if (!partial || 'dm_message' in body) {
     const dm = String(body.dm_message || '').trim();
@@ -241,6 +251,7 @@ async function reconcileExecution(desired, acct, ws, { createdBy = null } = {}) 
   const engine = deriveEngine({
     delay: { min_seconds: desired.delay_min_seconds, max_seconds: desired.delay_max_seconds },
     requireFollow: desired.require_follow,
+    triggerType: desired.trigger_type,
   });
 
   if (engine === 'native') {
@@ -294,13 +305,20 @@ function nativeGuard(cfg, platform) {
   const wantsNative = deriveEngine({
     delay: { min_seconds: cfg.delay_min_seconds, max_seconds: cfg.delay_max_seconds },
     requireFollow: cfg.require_follow,
+    triggerType: cfg.trigger_type,
   }) === 'native';
   if (!wantsNative) return null;
   if (!engineEnabled()) {
-    return 'The delay and follow-gate options aren’t enabled yet on your workspace.';
+    return 'The delay, follow-gate, and DM-keyword options aren’t enabled yet on your workspace.';
   }
   if (cfg.require_follow && String(platform).toLowerCase() !== 'instagram') {
     return 'The follow-gate is Instagram-only — Instagram is the only platform that reports whether a commenter follows you.';
+  }
+  // The follow-gate is comment-only for now: it opens a DM from the comment and
+  // verifies isFollower on the reply. A DM-keyword trigger has no comment to
+  // open from, so the two can't be combined yet.
+  if (cfg.trigger_type === 'message' && cfg.require_follow) {
+    return 'The follow-gate isn’t available on DM-keyword triggers yet — it needs a comment to open the conversation from.';
   }
   return null;
 }
@@ -403,6 +421,7 @@ export default async function handler(req, res) {
     const engine = deriveEngine({
       delay: { min_seconds: value.delay_min_seconds, max_seconds: value.delay_max_seconds },
       requireFollow: value.require_follow,
+      triggerType: value.trigger_type,
     });
     if (engine === 'zernio' && !ws.zernio_profile_id) {
       return json(res, 400, { error: 'This workspace isn’t linked to a Zernio profile yet — reconnect the account and try again.' });
@@ -416,10 +435,12 @@ export default async function handler(req, res) {
       zernio_account_id: acct.zernio_account_id,
       platform: acct.platform,
       name: value.name,
+      trigger_type: value.trigger_type || 'comment',
       keywords: value.keywords,
       match_mode: value.match_mode,
       dm_message: value.dm_message,
-      comment_reply: value.comment_reply ?? null,
+      // A DM-keyword rule has no comment to publicly reply to.
+      comment_reply: value.trigger_type === 'message' ? null : (value.comment_reply ?? null),
       is_active: value.is_active ?? true,
       delay_min_seconds: value.delay_min_seconds ?? null,
       delay_max_seconds: value.delay_max_seconds ?? null,

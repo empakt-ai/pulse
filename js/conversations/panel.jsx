@@ -145,6 +145,11 @@ const FIELD_CLS = 'w-full rounded-lg border border-line dark:border-lineDark bg-
 const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, engineAvailable }) => {
   const editing = !!(initial && initial.id);
   const [name, setName] = React.useState(initial?.name || '');
+  // 'comment' — keyword comment → DM (default). 'message' — keyword in a DM →
+  // auto-reply. DM-keyword triggers are native-only (shown only when the engine
+  // is available).
+  const [triggerType, setTriggerType] = React.useState(initial?.trigger_type || 'comment');
+  const isMessage = triggerType === 'message';
   const [accountId, setAccountId] = React.useState(initial?.account_id || accounts[0]?.id || '');
   const [keywords, setKeywords] = React.useState((initial?.keywords || []).join(', '));
   const [matchMode, setMatchMode] = React.useState(initial?.match_mode || 'contains');
@@ -161,12 +166,14 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
   const updateBtn = (i, k, v) => setButtons(buttons.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
 
   // The follow-gate is Instagram-only (only IG reports whether a commenter
-  // follows you), so it keys off the selected account's platform.
+  // follows you), so it keys off the selected account's platform. It's also
+  // comment-only for now (it opens the DM from the comment), so it's off for
+  // DM-keyword triggers.
   const selectedPlatform = String(
     (accounts.find(a => a.id === accountId)?.platform) || initial?.platform || accounts[0]?.platform || ''
   ).toLowerCase();
   const isIG = selectedPlatform === 'instagram';
-  const gateOn = requireFollow && isIG;
+  const gateOn = requireFollow && isIG && !isMessage;
 
   const kwList = keywords.split(',').map(s => s.trim()).filter(Boolean);
   const valid = name.trim() && dmMessage.trim() && kwList.length && (editing || accountId);
@@ -175,10 +182,12 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
     if (!valid) return;
     const payload = {
       name: name.trim(),
+      trigger_type: triggerType,
       keywords: kwList,
       match_mode: matchMode,
       dm_message: dmMessage.trim(),
-      comment_reply: commentReply.trim() || null,
+      // No public comment to reply to on a DM-keyword trigger.
+      comment_reply: isMessage ? null : (commentReply.trim() || null),
     };
     if (engineAvailable) {
       payload.delay_enabled = delayEnabled;
@@ -194,17 +203,34 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
 
   return (
     <Card className="!p-4 space-y-3">
-      <div className="text-[13px] font-semibold">{editing ? 'Edit automation' : 'New comment→DM automation'}</div>
+      <div className="text-[13px] font-semibold">
+        {editing ? 'Edit automation' : (isMessage ? 'New DM-keyword automation' : 'New comment→DM automation')}
+      </div>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="Name (e.g. Link in bio)" className={FIELD_CLS} />
       {!editing && (
         <select value={accountId} onChange={e => setAccountId(e.target.value)} className={FIELD_CLS}>
           {accounts.map(ac => <option key={ac.id} value={ac.id}>{ac.platform} · @{ac.username}</option>)}
         </select>
       )}
+      {engineAvailable && (
+        <div>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[['comment', 'Comment → DM', 'Someone comments a keyword'],
+              ['message', 'DM keyword → reply', 'Someone DMs a keyword']].map(([v, label, sub]) => (
+              <button key={v} onClick={() => setTriggerType(v)}
+                className={cls('text-left rounded-lg border px-2.5 py-2 transition',
+                  triggerType === v ? 'border-ultra bg-ultra/10' : 'border-line dark:border-lineDark hover:border-ultra/50')}>
+                <div className="text-[12px] font-medium">{label}</div>
+                <div className="text-[10.5px] text-mute dark:text-muteDark">{sub}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <input value={keywords} onChange={e => setKeywords(e.target.value)} placeholder="Keywords, comma-separated (e.g. link, price, guide)" className={FIELD_CLS} />
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-mute dark:text-muteDark">
-          <span>Trigger when the comment</span>
+          <span>Trigger when the {isMessage ? 'DM' : 'comment'}</span>
           {['contains', 'exact'].map(m => (
             <button key={m} onClick={() => setMatchMode(m)}
               className={cls('px-2 py-0.5 rounded', matchMode === m ? 'bg-ultra/15 text-ultra font-medium' : 'hover:text-ink dark:hover:text-paper')}>
@@ -215,9 +241,12 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
         </div>
       </div>
       <textarea value={dmMessage} onChange={e => setDmMessage(e.target.value)} rows={3}
-        placeholder="DM to auto-send (e.g. Here's the link you asked for 👉 …)" className={FIELD_CLS + ' resize-y'} />
-      <textarea value={commentReply} onChange={e => setCommentReply(e.target.value)} rows={2}
-        placeholder="Optional public reply to the comment (leave blank for none)" className={FIELD_CLS + ' resize-y'} />
+        placeholder={isMessage ? 'Auto-reply to send back (e.g. Thanks for reaching out! Here you go 👉 …)' : "DM to auto-send (e.g. Here's the link you asked for 👉 …)"}
+        className={FIELD_CLS + ' resize-y'} />
+      {!isMessage && (
+        <textarea value={commentReply} onChange={e => setCommentReply(e.target.value)} rows={2}
+          placeholder="Optional public reply to the comment (leave blank for none)" className={FIELD_CLS + ' resize-y'} />
+      )}
 
       <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-2">
         <div className="flex items-center justify-between">
@@ -228,7 +257,7 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
           )}
         </div>
         {buttons.length === 0
-          ? <p className="text-[11px] text-mute dark:text-muteDark">Add up to 3 tappable link buttons to the DM (e.g. “Follow @you” or “Get the link”). They render even in the Requests folder, where cold DMs land.</p>
+          ? <p className="text-[11px] text-mute dark:text-muteDark">Add up to 3 tappable link buttons to the {isMessage ? 'reply (e.g. “Get the link” or “Book a call”). They render inline in the DM thread.' : 'DM (e.g. “Follow @you” or “Get the link”). They render even in the Requests folder, where cold DMs land.'}</p>
           : buttons.map((b, i) => (
             <div key={i} className="flex items-center gap-2">
               <input value={b.title} onChange={e => updateBtn(i, 'title', e.target.value)} maxLength={20}
@@ -254,22 +283,25 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
             </span>
           </label>
 
-          <label className={cls('flex items-start gap-2.5', isIG ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed')}>
-            <input type="checkbox" checked={gateOn} disabled={!isIG} onChange={e => setRequireFollow(e.target.checked)}
-              className="mt-0.5 accent-ultra w-3.5 h-3.5" />
-            <span className="text-[12.5px]">
-              <span className="font-medium">Only send to followers{' '}
-                <span className="text-[9px] font-mono uppercase tracking-wide text-ultra align-middle">Instagram</span>
+          {/* Follow-gate is comment-only (it opens the DM from the comment). */}
+          {!isMessage && (
+            <label className={cls('flex items-start gap-2.5', isIG ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed')}>
+              <input type="checkbox" checked={gateOn} disabled={!isIG} onChange={e => setRequireFollow(e.target.checked)}
+                className="mt-0.5 accent-ultra w-3.5 h-3.5" />
+              <span className="text-[12.5px]">
+                <span className="font-medium">Only send to followers{' '}
+                  <span className="text-[9px] font-mono uppercase tracking-wide text-ultra align-middle">Instagram</span>
+                </span>
+                <span className="block text-[11px] text-mute dark:text-muteDark mt-0.5">
+                  {isIG
+                    ? 'If they’re not following you yet, Mashal asks them to follow first, then delivers once they do — a verified follow check, like ManyChat.'
+                    : 'Available on Instagram only — it’s the one platform that reports whether a commenter follows you.'}
+                </span>
               </span>
-              <span className="block text-[11px] text-mute dark:text-muteDark mt-0.5">
-                {isIG
-                  ? 'If they’re not following you yet, Mashal asks them to follow first, then delivers once they do — a verified follow check, like ManyChat.'
-                  : 'Available on Instagram only — it’s the one platform that reports whether a commenter follows you.'}
-              </span>
-            </span>
-          </label>
+            </label>
+          )}
 
-          {gateOn && (
+          {!isMessage && gateOn && (
             <textarea value={followPrompt} onChange={e => setFollowPrompt(e.target.value)} rows={2}
               placeholder="Follow-request DM (optional — leave blank for a friendly default)" className={FIELD_CLS + ' resize-y'} />
           )}
@@ -294,6 +326,7 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="text-[13px] font-medium truncate">{a.name}</span>
           <span className="text-[11px] text-mute dark:text-muteDark capitalize">{a.platform}</span>
+          {a.trigger_type === 'message' && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08] text-mute dark:text-muteDark" title="Triggers on a keyword in a DM">💬 DM keyword</span>}
           {!a.is_active && <span className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark px-1.5 py-0.5 rounded bg-ink/[0.06] dark:bg-paper/[0.08]">paused</span>}
           {a.delay_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Sends 2–5 minutes later">⏱ delayed</span>}
           {a.require_follow && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Only delivers once they follow you">✓ followers only</span>}

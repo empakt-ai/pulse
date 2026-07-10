@@ -177,9 +177,12 @@ client (one provider seam).
   → check `isFollower` → deliver after the delay, or re-prompt once. FB has no follow field, so the gate is
   IG-only (enforced in the API). Built + offline-tested. *One live check outstanding — see Go-live.*
 - **P3 — Buttons/quick replies + in-DM keyword trigger.** ✅ **URL buttons shipped** (config `buttons`,
-  flow-builder attaches them to the private-reply opener, UI editor, both surfaces) — they render in IG's
-  Requests folder where cold openers land, unlike chips. *Next:* postback buttons (tap → resume the run,
-  needs the button-tap webhook), quick-reply chips, and the in-DM keyword trigger.
+  flow-builder attaches them to the private-reply opener AND to in-thread DM sends, UI editor, both
+  surfaces) — they render in IG's Requests folder where cold openers land, unlike chips. ✅ **In-DM
+  keyword trigger shipped** (`trigger_type:'message'` → keyword in a DM → in-thread auto-reply via
+  `send_dm{via:'conversation'}`; native-only, since Zernio hosts comment-automations only, so it needs
+  the engine flag on; migration 033; UI trigger selector + card badge; offline-tested). *Next:* postback
+  buttons (tap → resume the run, needs the button-tap webhook) and quick-reply chips.
 - **P4 — Contact maturity:** tags, custom fields, conditions/branching, new-follower trigger.
 - **P5 — Sequences/drips. P6 — Broadcasts + live-chat handoff. P7 — Analytics + click tracking.**
 - **Future — AI step, multi-channel, deep integrations.**

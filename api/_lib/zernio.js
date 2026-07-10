@@ -268,14 +268,18 @@ export const zernio = {
   // on the message.received webhook); `accountId` is the connected account.
   // Note the message is a nested resource of the conversation, not /inbox/messages.
   //   POST /v1/inbox/conversations/{conversationId}/messages
-  //   body { accountId, message, messagingType?, messageTag? }
+  //   body { accountId, message, messagingType?, messageTag?, buttons?, quickReplies? }
   //
   // `tag` (e.g. 'HUMAN_AGENT') sends via messagingType MESSAGE_TAG so a person
   // can reply outside the platform's 24h standard window (Meta allows
   // HUMAN_AGENT up to 7 days). Omit for platforms without a messaging window.
-  async sendDirectMessage({ accountId, conversationId, message, tag = null }) {
+  // `buttons`/`quickReplies` render inline in the open thread (e.g. a DM-keyword
+  // auto-reply); they're mutually exclusive, same as the private-reply opener.
+  async sendDirectMessage({ accountId, conversationId, message, tag = null, buttons = null, quickReplies = null }) {
     const body = { accountId, message };
     if (tag) { body.messagingType = 'MESSAGE_TAG'; body.messageTag = tag; }
+    if (buttons && buttons.length) body.buttons = buttons;
+    else if (quickReplies && quickReplies.length) body.quickReplies = quickReplies;
     return call(`/inbox/conversations/${encodeURIComponent(conversationId)}/messages`, {
       method: 'POST',
       body: JSON.stringify(body),

@@ -24,8 +24,11 @@ export async function syncAutomationToEngine(automation, { workspaceId, accountI
     followPrompt: automation.follow_prompt,
     rePrompt: automation.reprompt,
     buttons: automation.buttons,
+    triggerType: automation.trigger_type,
   });
-  const trigger = buildTrigger({ keywords: automation.keywords, matchMode: automation.match_mode });
+  const trigger = buildTrigger({
+    keywords: automation.keywords, matchMode: automation.match_mode, triggerType: automation.trigger_type,
+  });
 
   const base = {
     workspace_id: workspaceId,
