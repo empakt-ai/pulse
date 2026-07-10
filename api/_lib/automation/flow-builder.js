@@ -35,18 +35,55 @@ const DEFAULT_FOLLOW_PROMPT =
 const DEFAULT_REPROMPT =
   "Looks like you're not following yet — give the account a follow, then reply here once more and I'll send it. 🙏";
 
-// Normalize the buttons array into what Zernio's private-reply expects
-// ({type:'url', title, url}). Drops anything malformed; caps at 3 (Meta's
-// button_template limit). URL-only for v1 — postback/phone come later.
+// Meta button_template hard limits (verified against Zernio's OpenAPI DmButton).
+const MAX_BUTTONS = 3;
+const MAX_QUICK_REPLIES = 13;
+const BTN_TITLE_MAX = 20;
+const PAYLOAD_MAX = 1000;      // Meta's postback/quick-reply payload ceiling
+
+// Normalize the buttons array into Zernio's DmButton shape. Three types
+// (verified against the OpenAPI spec): `url` and `postback` work on IG + FB,
+// `phone` is FB-only. Drops anything malformed for its type; caps at 3 (Meta's
+// button_template limit). A postback tap comes back on message.received as
+// metadata.postbackPayload — see ingest's tap handling.
 export function normalizeButtons(buttons) {
   if (!Array.isArray(buttons)) return [];
   const out = [];
   for (const b of buttons) {
-    if (!b || out.length >= 3) break;
+    if (!b || out.length >= MAX_BUTTONS) break;
     const title = String(b.title || '').trim();
-    const url = String(b.url || '').trim();
-    if (!title || !/^https?:\/\//i.test(url)) continue;
-    out.push({ type: 'url', title: title.slice(0, 20), url });
+    if (!title) continue;
+    const type = String(b.type || 'url').trim().toLowerCase();
+    if (type === 'postback') {
+      const payload = String(b.payload || '').trim();
+      if (!payload) continue;
+      out.push({ type: 'postback', title: title.slice(0, BTN_TITLE_MAX), payload: payload.slice(0, PAYLOAD_MAX) });
+    } else if (type === 'phone') {
+      const phone = String(b.phone || '').trim();
+      if (!/^\+?[0-9][0-9\s\-().]{4,}$/.test(phone)) continue;
+      out.push({ type: 'phone', title: title.slice(0, BTN_TITLE_MAX), phone });
+    } else {
+      const url = String(b.url || '').trim();
+      if (!/^https?:\/\//i.test(url)) continue;
+      out.push({ type: 'url', title: title.slice(0, BTN_TITLE_MAX), url });
+    }
+  }
+  return out;
+}
+
+// Normalize quick-reply chips: { title, payload }, max 13 (Zernio/Meta limit).
+// Payload defaults to the title so a chip is usable without a separate value.
+// Chips render only in an OPEN thread (not IG's Requests folder), so the
+// flow-builder attaches them to in-thread sends, never the cold opener.
+export function normalizeQuickReplies(quickReplies) {
+  if (!Array.isArray(quickReplies)) return [];
+  const out = [];
+  for (const q of quickReplies) {
+    if (!q || out.length >= MAX_QUICK_REPLIES) break;
+    const title = String(q.title || '').trim();
+    if (!title) continue;
+    const payload = String(q.payload || title).trim();
+    out.push({ title: title.slice(0, BTN_TITLE_MAX), payload: payload.slice(0, PAYLOAD_MAX) });
   }
   return out;
 }
@@ -94,29 +131,36 @@ export function buildFlowDefinition(cfg = {}) {
   const followPrompt = String(cfg.followPrompt || DEFAULT_FOLLOW_PROMPT).trim();
   const rePrompt = String(cfg.rePrompt || DEFAULT_REPROMPT).trim();
   const buttons = normalizeButtons(cfg.buttons);
-  // Buttons ride on the primary DM. On a comment→DM opener they render in IG's
-  // Requests folder (where chips don't); on a DM-keyword reply they render
-  // inline in the open thread. Either way, attach them only when present.
-  const withButtons = (step) => (buttons.length ? { ...step, buttons } : step);
+  const quickReplies = normalizeQuickReplies(cfg.quickReplies);
+  // Attach interactive elements to a send step. Buttons and chips are mutually
+  // exclusive (Meta), so buttons win when both are set. Buttons render even in
+  // IG's Requests folder (cold openers); chips render only in an OPEN thread, so
+  // they're allowed only where chips:true (in-thread sends), never on a cold
+  // private-reply opener. Handlers forward `buttons`/`quick_replies` to Zernio.
+  const withInteractive = (step, { chips = false } = {}) => {
+    if (buttons.length) return { ...step, buttons };
+    if (chips && quickReplies.length) return { ...step, quick_replies: quickReplies };
+    return step;
+  };
 
   const steps = [];
   const delayStep = () => ({ type: 'delay', min_seconds: delay.min, max_seconds: delay.max });
 
   // DM-keyword trigger: the person already DMed us, so the thread is open —
   // reply straight into it (via 'conversation', not a private-reply opener) and
-  // there's no comment to publicly reply to. Delay + buttons still apply.
+  // there's no comment to publicly reply to. Delay + buttons/chips still apply.
   if (cfg.triggerType === 'message') {
     if (delay) steps.push(delayStep());
-    steps.push(withButtons({ type: 'send_dm', via: 'conversation', text: dmMessage }));
+    steps.push(withInteractive({ type: 'send_dm', via: 'conversation', text: dmMessage }, { chips: true }));
     return steps;
   }
 
   if (!requireFollow) {
     // Plain (optionally delayed) comment→DM. The first DM to a fresh commenter
-    // must open the thread, so it's a private_reply.
+    // must open the thread, so it's a private_reply (opener → buttons only).
     if (delay) steps.push(delayStep());
     if (commentReply) steps.push({ type: 'comment_reply', text: commentReply });
-    steps.push(withButtons({ type: 'send_dm', via: 'private_reply', text: dmMessage }));
+    steps.push(withInteractive({ type: 'send_dm', via: 'private_reply', text: dmMessage }));
     return steps;
   }
 
@@ -125,7 +169,7 @@ export function buildFlowDefinition(cfg = {}) {
   //   0  opener (private reply asking them to follow + reply)
   //   1  wait for their reply  (no reply → run expires)
   //   2  condition: are they now a follower?   yes → fall through; no → re-prompt
-  steps.push(withButtons({ type: 'send_dm', via: 'private_reply', text: followPrompt }));
+  steps.push(withInteractive({ type: 'send_dm', via: 'private_reply', text: followPrompt }));
   steps.push({ type: 'wait_for_reply', timeout_seconds: REPLY_WAIT_SECONDS });
   const condOpen = { type: 'condition', field: 'contact.is_follower', op: 'is_true', else: null };
   steps.push(condOpen);
@@ -167,4 +211,4 @@ export function buildTrigger({ keywords, matchMode, platformPostId, triggerType 
   return t;
 }
 
-export default { buildFlowDefinition, buildTrigger, deriveEngine, normalizeDelay, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX };
+export default { buildFlowDefinition, buildTrigger, deriveEngine, normalizeDelay, normalizeButtons, normalizeQuickReplies, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX };

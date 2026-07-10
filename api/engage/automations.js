@@ -22,7 +22,7 @@ import { engageGate } from '../_lib/tiers.js';
 import { supabase } from '../_lib/supabase.js';
 import { zernio } from '../_lib/zernio.js';
 import { engineEnabled } from '../_lib/automation/flags.js';
-import { deriveEngine, normalizeButtons, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } from '../_lib/automation/flow-builder.js';
+import { deriveEngine, normalizeButtons, normalizeQuickReplies, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX } from '../_lib/automation/flow-builder.js';
 import { syncAutomationToEngine, removeEngineFlow } from '../_lib/automation/sync.js';
 
 const MATCH_MODES = ['contains', 'exact'];
@@ -30,6 +30,7 @@ const TRIGGER_TYPES = ['comment', 'message'];
 const AUTOMATION_PLATFORMS = ['instagram', 'facebook'];
 const MAX_KEYWORDS = 50;
 const MAX_DM_LEN = 1000;   // IG DM ceiling
+const MAX_DM_WITH_BUTTONS = 640;   // Meta button_template caps the text at 640
 const MAX_REPLY_LEN = 2200;
 const MAX_NAME_LEN = 120;
 const DELAY_CEIL = 6 * 60 * 60;   // 6h — matches the flow-builder's cap
@@ -59,6 +60,7 @@ function toPublic(row) {
     follow_prompt: row.follow_prompt || null,
     reprompt: row.reprompt || null,
     buttons: Array.isArray(row.buttons) ? row.buttons : [],
+    quick_replies: Array.isArray(row.quick_replies) ? row.quick_replies : [],
     synced: row.engine === 'native' ? !!row.flow_id : !!row.zernio_automation_id,
     last_sync_error: row.last_sync_error || null,
     stats: {
@@ -170,19 +172,48 @@ function parseRule(body, { partial = false } = {}) {
     else out.reprompt = rp || null;
   }
 
-  // ── P3: inline DM buttons (v1 = URL buttons, max 3) ───────────────────────
+  // ── P3: interactive DM elements — buttons + quick-reply chips ─────────────
+  // Buttons (max 3): type url | postback | phone. url→url, postback→payload,
+  // phone→phone (FB-only). url+postback work on IG+FB.
   if ('buttons' in body) {
     const raw = Array.isArray(body.buttons) ? body.buttons : [];
     if (raw.length > 3) errors.push('at most 3 buttons are allowed');
     for (const b of raw) {
       const title = String(b?.title || '').trim();
-      const url = String(b?.url || '').trim();
-      if (!title || !url) errors.push('each button needs a label and a URL');
-      else if (title.length > 20) errors.push(`button label "${title}" exceeds 20 chars`);
-      else if (!/^https?:\/\//i.test(url)) errors.push(`button URL must start with http(s): "${url}"`);
+      const type = String(b?.type || 'url').trim().toLowerCase();
+      if (!title) { errors.push('each button needs a label'); continue; }
+      if (title.length > 20) errors.push(`button label "${title}" exceeds 20 chars`);
+      if (type === 'postback') {
+        if (!String(b?.payload || '').trim()) errors.push(`postback button "${title}" needs a payload`);
+      } else if (type === 'phone') {
+        if (!/^\+?[0-9][0-9\s\-().]{4,}$/.test(String(b?.phone || '').trim())) errors.push(`phone button "${title}" needs a valid phone number`);
+      } else if (type === 'url') {
+        if (!/^https?:\/\//i.test(String(b?.url || '').trim())) errors.push(`URL button "${title}" needs an http(s) URL`);
+      } else {
+        errors.push(`unknown button type "${type}" (use url, postback, or phone)`);
+      }
     }
     // normalizeButtons is the single source of truth for the stored/sent shape.
     if (!errors.length) out.buttons = normalizeButtons(raw);
+  }
+  // Quick-reply chips (max 13): { title, payload }. Payload defaults to title.
+  if ('quick_replies' in body) {
+    const raw = Array.isArray(body.quick_replies) ? body.quick_replies : [];
+    if (raw.length > 13) errors.push('at most 13 quick replies are allowed');
+    for (const q of raw) {
+      const title = String(q?.title || '').trim();
+      if (!title) errors.push('each quick reply needs a label');
+      else if (title.length > 20) errors.push(`quick reply "${title}" exceeds 20 chars`);
+    }
+    if (!errors.length) out.quick_replies = normalizeQuickReplies(raw);
+  }
+  // Buttons and quick replies are mutually exclusive (Meta button_template vs
+  // quick-reply payload), and a button_template caps the DM text at 640 chars.
+  if (out.buttons?.length && out.quick_replies?.length) {
+    errors.push('use either buttons or quick replies, not both');
+  }
+  if (out.buttons?.length && out.dm_message && out.dm_message.length > MAX_DM_WITH_BUTTONS) {
+    errors.push(`with buttons, the DM must be ${MAX_DM_WITH_BUTTONS} characters or less`);
   }
 
   if (errors.length) return { error: errors.join('; ') };
@@ -448,6 +479,7 @@ export default async function handler(req, res) {
       follow_prompt: value.follow_prompt ?? null,
       reprompt: value.reprompt ?? null,
       buttons: value.buttons ?? [],
+      quick_replies: value.quick_replies ?? [],
       engine,
       created_by: auth.user.id,
     };

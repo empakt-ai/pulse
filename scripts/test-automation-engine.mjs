@@ -12,7 +12,7 @@
 import assert from 'node:assert';
 import { supabase } from '../api/_lib/supabase.js';
 import zernioDefault, { zernio } from '../api/_lib/zernio.js';
-import { buildFlowDefinition, buildTrigger, deriveEngine } from '../api/_lib/automation/flow-builder.js';
+import { buildFlowDefinition, buildTrigger, deriveEngine, normalizeButtons, normalizeQuickReplies } from '../api/_lib/automation/flow-builder.js';
 import { toZernioBody } from '../api/engage/automations.js';
 
 process.env.AUTOMATION_ENGINE = '1';   // flags.engineEnabled() reads this at call time
@@ -137,7 +137,10 @@ const commentEvent = (over = {}) => ({
 const messageEvent = (over = {}) => ({
   kind: 'message.received', workspaceId: WS, accountId: ACC, zernioAccountId: ZACC,
   platform: 'instagram',
-  payload: { message: { conversationId: over.conversationId || 'conv1', text: over.text || 'done', sender: { id: over.userId || 'user1', username: over.handle || 'alice', instagramProfile: { isFollower: !!over.isFollower } } } },
+  payload: {
+    message: { conversationId: over.conversationId || 'conv1', text: over.text != null ? over.text : (over.metadata ? '' : 'done'), sender: { id: over.userId || 'user1', username: over.handle || 'alice', instagramProfile: { isFollower: !!over.isFollower } } },
+    ...(over.metadata ? { metadata: over.metadata } : {}),   // interactive tap (postback/quick-reply)
+  },
 });
 
 // Fast-forward: make every pending job due now, then drain the worker.
@@ -348,6 +351,68 @@ async function testMessageTrigger() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TEST 7 — P3: interactive replies (postback buttons, quick-reply chips, tap routing)
+// ─────────────────────────────────────────────────────────────────────────────
+async function testInteractiveReplies() {
+  console.log('\nP3 — interactive replies (postback buttons, quick-reply chips, tap routing)');
+
+  // normalizeButtons is type-aware: url needs a url, postback needs a payload.
+  const nb = normalizeButtons([
+    { type: 'url', title: 'Site', url: 'https://x.com' },
+    { type: 'postback', title: 'Pricing', payload: 'pricing' },
+    { type: 'postback', title: 'NoPayload' },          // dropped — postback needs a payload
+    { type: 'url', title: 'Bad', url: 'ftp://x' },      // dropped — not http(s)
+  ]);
+  assert.deepEqual(nb, [
+    { type: 'url', title: 'Site', url: 'https://x.com' },
+    { type: 'postback', title: 'Pricing', payload: 'pricing' },
+  ], 'keeps valid url+postback, drops malformed');
+  ok('normalizeButtons validates per type (url/postback)');
+
+  // Quick replies default their payload to the label.
+  assert.deepEqual(
+    normalizeQuickReplies([{ title: 'Yes' }, { title: 'No', payload: 'no_thanks' }]),
+    [{ title: 'Yes', payload: 'Yes' }, { title: 'No', payload: 'no_thanks' }],
+    'chip payload defaults to the label');
+  ok('normalizeQuickReplies defaults the payload to the label');
+
+  // Chips attach to a DM-keyword reply (in-thread); buttons win when both set.
+  const chipFlow = buildFlowDefinition({ triggerType: 'message', dmMessage: 'Pick one', quickReplies: [{ title: 'A' }, { title: 'B' }] });
+  assert.equal(chipFlow[0].quick_replies?.length, 2, 'chips attach to the in-thread reply');
+  assert.ok(!chipFlow[0].buttons, 'no buttons when only chips set');
+  const bothFlow = buildFlowDefinition({ triggerType: 'message', dmMessage: 'Hi', buttons: [{ type: 'postback', title: 'Go', payload: 'go' }], quickReplies: [{ title: 'A' }] });
+  assert.ok(bothFlow[0].buttons && !bothFlow[0].quick_replies, 'buttons take precedence (Meta mutual exclusivity)');
+  ok('chips ride the DM-keyword reply; buttons win when both are set');
+
+  // The cold private-reply opener never carries chips (Requests folder eats them).
+  const openerFlow = buildFlowDefinition({ dmMessage: 'DM', quickReplies: [{ title: 'A' }] });
+  assert.ok(!openerFlow[openerFlow.length - 1].quick_replies, 'no chips on the cold opener');
+  ok('cold opener never carries chips');
+
+  // Chips are native-only — never sent to Zernio's hosted automation; postback
+  // buttons DO pass through.
+  const zb = toZernioBody({ zernio_account_id: ZACC, dm_message: 'Hi', buttons: [{ type: 'postback', title: 'Go', payload: 'go' }] });
+  assert.ok(!('quickReplies' in zb) && !('quick_replies' in zb), 'chips are never sent to Zernio');
+  assert.equal(zb.buttons?.[0]?.type, 'postback', 'postback buttons pass through to the hosted automation');
+  ok('toZernioBody forwards postback buttons, never chips');
+
+  // Tap routing: a postback tap carries NO message text — its payload/title must
+  // still route to a DM-keyword flow, and be recorded in run context.
+  seedFlow({ name: 'Refund kw', keywords: ['refund'], dmMessage: 'Refunds within 30 days 👍', triggerType: 'message' });
+  const before = calls.length;
+  await ingestFromWebhook(messageEvent({ userId: 'gwen', handle: 'gwen', conversationId: 'conv_gwen', metadata: { postbackPayload: 'refund', postbackTitle: 'Refund' } }));
+  assert.equal(calls.length, before + 1, 'the textless postback tap fired exactly one keyword flow');
+  assert.equal(lastCall().message, 'Refunds within 30 days 👍', 'the tapped payload routed to the refund automation');
+  ok('a textless postback tap routes to a DM-keyword flow by its payload');
+
+  const gwen = store.automation_contacts.find(c => c.platform_user_id === 'gwen');
+  const gwenRun = store.automation_runs.find(r => r.contact_id === gwen.id);
+  assert.equal(gwenRun.context?.last_tap?.payload, 'refund', 'the tap is captured in run context (last_tap)');
+  assert.equal(gwenRun.context?.last_tap?.kind, 'postback', 'the tap kind is recorded');
+  ok('the tap is captured in run context for downstream steps');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 try {
   await testDelay();
   await testFollowGate();
@@ -355,6 +420,7 @@ try {
   await testButtons();
   await testZernioBodyButtons();
   await testMessageTrigger();
+  await testInteractiveReplies();
   console.log(`\n✅ All ${passed} assertions passed — P1 delay + P2 follow-gate execute correctly end-to-end.\n`);
   process.exit(0);
 } catch (e) {

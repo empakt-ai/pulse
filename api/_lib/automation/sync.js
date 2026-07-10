@@ -24,6 +24,7 @@ export async function syncAutomationToEngine(automation, { workspaceId, accountI
     followPrompt: automation.follow_prompt,
     rePrompt: automation.reprompt,
     buttons: automation.buttons,
+    quickReplies: automation.quick_replies,
     triggerType: automation.trigger_type,
   });
   const trigger = buildTrigger({

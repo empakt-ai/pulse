@@ -117,6 +117,22 @@ export async function onMessage(event) {
   const name = pick(payload, 'message.sender.name', 'message.from.name');
   if (!senderId) return { skipped: 'no_sender_id' };
 
+  // Interactive tap metadata. Zernio surfaces button/chip taps on
+  // message.received under a top-level `metadata` object (verified against the
+  // OpenAPI spec): postback → { postbackPayload, postbackTitle }, chip →
+  // { quickReplyPayload }. A postback tap often carries NO message text, so we
+  // fold the tapped title/payload into the text we keyword-match AND stash the
+  // structured tap in run context so a later step can read exactly what was
+  // tapped. `metadata` sits at the payload root; check message.metadata too,
+  // since Zernio's payload field names aren't fully pinned in their docs.
+  const meta = (payload && (payload.metadata || (payload.message && payload.message.metadata))) || {};
+  const tapKind = meta.postbackPayload != null ? 'postback'
+    : (meta.quickReplyPayload != null ? 'quick_reply' : null);
+  const tap = tapKind
+    ? { kind: tapKind, payload: (tapKind === 'postback' ? meta.postbackPayload : meta.quickReplyPayload) || null, title: meta.postbackTitle || null }
+    : null;
+  const matchText = String(text || (tap && (tap.title || tap.payload)) || '');
+
   let contact = await upsertContact({
     workspaceId, accountId, zernioAccountId, platform,
     platformUserId: senderId, handle, name, conversationId,
@@ -125,6 +141,9 @@ export async function onMessage(event) {
   // The verified follow answer lives on the received message — apply it now so
   // any condition step the resume runs reads fresh follower state.
   contact = await applyFollowerFromMessage(contact, payload);
+  if (tap) {
+    await logEvent({ workspaceId, contactId: contact.id, kind: 'tap_received', meta: tap }).catch(() => {});
+  }
 
   const resumed = [];
   if (!contact.automation_paused) {
@@ -132,7 +151,11 @@ export async function onMessage(event) {
       select: '*', eq: { contact_id: contact.id, status: 'waiting', wait_kind: 'reply' },
     }).catch(() => []);
     for (const run of (waiting || [])) {
-      run.context = { ...(run.context || {}), last_reply: { text, at: new Date().toISOString(), conversation_id: conversationId } };
+      run.context = {
+        ...(run.context || {}),
+        last_reply: { text, at: new Date().toISOString(), conversation_id: conversationId },
+        ...(tap ? { last_tap: tap } : {}),      // what they tapped — a step can branch on it
+      };
       await supabase.update('automation_runs', { context: run.context }, { eq: { id: run.id } }).catch(() => {});
       await cancelJobsForRun(run.id, { kinds: ['timeout'] });   // reply beat the timeout
       const r = await resumeRun(run).catch((e) => ({ status: 'failed', error: e.message }));
@@ -142,16 +165,18 @@ export async function onMessage(event) {
 
   // Independent message-keyword flows (DM auto-replies). Kept separate from the
   // resume path above so a reply can both continue a gate AND trigger a flow.
+  // A tapped chip/postback fans out here too: its title/payload is in matchText,
+  // so a "menu" reply can route taps to keyword flows (the in-DM keyword trigger).
   const started = [];
   if (!contact.automation_paused) {
     const flows = (await activeFlowsFor(workspaceId, zernioAccountId))
       .filter(f => (f.trigger?.type) === 'message')
       .filter(f => !f.platform || !platform || f.platform === platform)
-      .filter(f => keywordMatch(f.trigger, text));
+      .filter(f => keywordMatch(f.trigger, matchText));
     for (const flow of flows) {
       const r = await startRun(flow, contact, {
         triggerRef: conversationId ? `message:${conversationId}:${Date.now()}` : null,
-        context: { conversation_id: conversationId, message_text: text, platform, zernio_account_id: zernioAccountId, account_id: accountId },
+        context: { conversation_id: conversationId, message_text: matchText, platform, zernio_account_id: zernioAccountId, account_id: accountId, ...(tap ? { last_tap: tap } : {}) },
       }).catch((e) => ({ error: e.message }));
       started.push({ flow_id: flow.id, ...r });
     }

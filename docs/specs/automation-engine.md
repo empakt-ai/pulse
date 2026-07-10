@@ -176,13 +176,23 @@ client (one provider seam).
 - **✅ P2 — Verified follow-gate (IG)** (ask #2): open-DM (verified `sendPrivateReply`) → `wait_for_reply`
   → check `isFollower` → deliver after the delay, or re-prompt once. FB has no follow field, so the gate is
   IG-only (enforced in the API). Built + offline-tested. *One live check outstanding — see Go-live.*
-- **P3 — Buttons/quick replies + in-DM keyword trigger.** ✅ **URL buttons shipped** (config `buttons`,
-  flow-builder attaches them to the private-reply opener AND to in-thread DM sends, UI editor, both
-  surfaces) — they render in IG's Requests folder where cold openers land, unlike chips. ✅ **In-DM
-  keyword trigger shipped** (`trigger_type:'message'` → keyword in a DM → in-thread auto-reply via
-  `send_dm{via:'conversation'}`; native-only, since Zernio hosts comment-automations only, so it needs
-  the engine flag on; migration 033; UI trigger selector + card badge; offline-tested). *Next:* postback
-  buttons (tap → resume the run, needs the button-tap webhook) and quick-reply chips.
+- **✅ P3 — Buttons/quick replies + in-DM keyword trigger.** Complete.
+  - **URL/postback/phone buttons** (config `buttons`, `{type:url|postback|phone,…}`; url+postback IG+FB,
+    phone FB-only; ≤3; DM text ≤640 when buttons present). Attached to the private-reply opener AND
+    in-thread sends; work on both surfaces (native flow + Zernio-hosted `DmButton`). Verified against
+    Zernio's OpenAPI.
+  - **In-DM keyword trigger** (`trigger_type:'message'` → keyword in a DM → in-thread auto-reply via
+    `send_dm{via:'conversation'}`; native-only, needs the engine flag; migration 033; UI trigger selector).
+  - **Quick-reply chips** (config `quick_replies` `{title,payload}`, ≤13, mutually exclusive with buttons;
+    render only in an open thread, so attached to the DM-keyword reply, native-only; migration 034).
+  - **Tap routing** ("tap → resume the run"): postback/chip taps arrive on `message.received` under
+    `metadata.{postbackPayload,postbackTitle,quickReplyPayload}` (verified — no separate webhook needed).
+    Ingest folds the tapped title/payload into the keyword-match text (a textless postback still routes)
+    and records `last_tap` in run context; a tapped chip/button both resumes a waiting run and can fan out
+    to a DM-keyword flow (button/chip as a menu). Offline-tested (28 assertions).
+  - *Deferred to P4:* tap-driven **branching** (a `condition` on `context.last_tap.payload` → different
+    replies) lands with conditions/branching. Postback/phone all pass through today; branching is the
+    only tap capability not yet exposed.
 - **P4 — Contact maturity:** tags, custom fields, conditions/branching, new-follower trigger.
 - **P5 — Sequences/drips. P6 — Broadcasts + live-chat handoff. P7 — Analytics + click tracking.**
 - **Future — AI step, multi-channel, deep integrations.**

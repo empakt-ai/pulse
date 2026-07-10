@@ -159,11 +159,23 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
   const [delayEnabled, setDelayEnabled] = React.useState(!!initial?.delay_enabled);
   const [requireFollow, setRequireFollow] = React.useState(!!initial?.require_follow);
   const [followPrompt, setFollowPrompt] = React.useState(initial?.follow_prompt || '');
-  // Up to 3 URL buttons on the DM (render even in the Requests folder).
+  // Up to 3 buttons on the DM (render even in the Requests folder). Each is a
+  // Link (url) or a Postback (tap sends `payload` back — see the engine's tap
+  // routing). Phone buttons are API-only for now.
   const [buttons, setButtons] = React.useState(
-    Array.isArray(initial?.buttons) ? initial.buttons.map(b => ({ title: b.title || '', url: b.url || '' })) : []
+    Array.isArray(initial?.buttons)
+      ? initial.buttons.map(b => ({ type: b.type === 'postback' ? 'postback' : 'url', title: b.title || '', url: b.url || '', payload: b.payload || '' }))
+      : []
   );
   const updateBtn = (i, k, v) => setButtons(buttons.map((b, j) => (j === i ? { ...b, [k]: v } : b)));
+  // Quick-reply chips (DM-keyword rules only — they render in an open thread,
+  // not the Requests folder). Mutually exclusive with buttons.
+  const [quickReplies, setQuickReplies] = React.useState(
+    Array.isArray(initial?.quick_replies) ? initial.quick_replies.map(q => ({ title: q.title || '', payload: q.payload || '' })) : []
+  );
+  const updateChip = (i, k, v) => setQuickReplies(quickReplies.map((q, j) => (j === i ? { ...q, [k]: v } : q)));
+  const hasButtons = buttons.length > 0;
+  const hasChips = quickReplies.length > 0;
 
   // The follow-gate is Instagram-only (only IG reports whether a commenter
   // follows you), so it keys off the selected account's platform. It's also
@@ -194,9 +206,17 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
       payload.require_follow = gateOn;
       if (gateOn) payload.follow_prompt = followPrompt.trim() || null;
     }
+    // Buttons and quick replies are mutually exclusive; the UI blocks adding one
+    // while the other has entries, so at most one of these is non-empty.
     payload.buttons = buttons
-      .filter(b => (b.title || '').trim() && (b.url || '').trim())
-      .map(b => ({ title: b.title.trim(), url: b.url.trim() }));
+      .filter(b => (b.title || '').trim() && (b.type === 'postback' ? (b.payload || '').trim() : (b.url || '').trim()))
+      .map(b => b.type === 'postback'
+        ? { type: 'postback', title: b.title.trim(), payload: b.payload.trim() }
+        : { type: 'url', title: b.title.trim(), url: b.url.trim() });
+    // Chips only apply to DM-keyword replies (open thread).
+    payload.quick_replies = isMessage
+      ? quickReplies.filter(q => (q.title || '').trim()).map(q => ({ title: q.title.trim(), payload: (q.payload || q.title).trim() }))
+      : [];
     if (!editing) payload.account_id = accountId;
     onSave(payload, editing ? initial.id : null);
   };
@@ -251,24 +271,66 @@ const AutomationForm = ({ accounts, initial, onSave, onCancel, saving, error, en
       <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-2">
         <div className="flex items-center justify-between">
           <div className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark">Buttons (optional)</div>
-          {buttons.length < 3 && (
-            <button onClick={() => setButtons([...buttons, { title: '', url: '' }])}
+          {buttons.length < 3 && !hasChips && (
+            <button onClick={() => setButtons([...buttons, { type: 'url', title: '', url: '', payload: '' }])}
               className="text-[11px] text-ultra hover:underline">+ Add button</button>
           )}
         </div>
         {buttons.length === 0
-          ? <p className="text-[11px] text-mute dark:text-muteDark">Add up to 3 tappable link buttons to the {isMessage ? 'reply (e.g. “Get the link” or “Book a call”). They render inline in the DM thread.' : 'DM (e.g. “Follow @you” or “Get the link”). They render even in the Requests folder, where cold DMs land.'}</p>
+          ? <p className="text-[11px] text-mute dark:text-muteDark">
+              {hasChips
+                ? 'Using quick replies below — remove them to switch to buttons.'
+                : <>Add up to 3 tappable buttons to the {isMessage ? 'reply. They render inline in the DM thread.' : 'DM. They render even in the Requests folder, where cold DMs land.'} A <b>Link</b> opens a URL; a <b>Postback</b> sends a keyword back so a DM-keyword automation can pick it up.</>}
+            </p>
           : buttons.map((b, i) => (
             <div key={i} className="flex items-center gap-2">
+              <select value={b.type} onChange={e => updateBtn(i, 'type', e.target.value)}
+                className={FIELD_CLS + ' flex-[0_0_22%] min-w-0'}>
+                <option value="url">Link</option>
+                <option value="postback">Postback</option>
+              </select>
               <input value={b.title} onChange={e => updateBtn(i, 'title', e.target.value)} maxLength={20}
-                placeholder="Label (max 20)" className={FIELD_CLS + ' flex-[0_0_38%] min-w-0'} />
-              <input value={b.url} onChange={e => updateBtn(i, 'url', e.target.value)}
-                placeholder="https://…" className={FIELD_CLS + ' flex-1 min-w-0'} />
+                placeholder="Label (max 20)" className={FIELD_CLS + ' flex-[0_0_30%] min-w-0'} />
+              {b.type === 'postback'
+                ? <input value={b.payload} onChange={e => updateBtn(i, 'payload', e.target.value)}
+                    placeholder="Keyword sent on tap (e.g. pricing)" className={FIELD_CLS + ' flex-1 min-w-0'} />
+                : <input value={b.url} onChange={e => updateBtn(i, 'url', e.target.value)}
+                    placeholder="https://…" className={FIELD_CLS + ' flex-1 min-w-0'} />}
               <button onClick={() => setButtons(buttons.filter((_, j) => j !== i))}
                 className="text-[13px] text-magenta hover:opacity-70 shrink-0" title="Remove">✕</button>
             </div>
           ))}
       </div>
+
+      {/* Quick-reply chips — DM-keyword replies only (they need an open thread,
+          unlike buttons). Mutually exclusive with buttons. */}
+      {isMessage && (
+        <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] font-mono uppercase tracking-wide text-mute dark:text-muteDark">Quick replies (optional)</div>
+            {quickReplies.length < 13 && !hasButtons && (
+              <button onClick={() => setQuickReplies([...quickReplies, { title: '', payload: '' }])}
+                className="text-[11px] text-ultra hover:underline">+ Add chip</button>
+            )}
+          </div>
+          {quickReplies.length === 0
+            ? <p className="text-[11px] text-mute dark:text-muteDark">
+                {hasButtons
+                  ? 'Using buttons above — remove them to switch to quick replies.'
+                  : 'Tappable canned-reply chips under the message. Tapping one sends its keyword back, so a DM-keyword automation can answer it — a simple menu.'}
+              </p>
+            : quickReplies.map((q, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={q.title} onChange={e => updateChip(i, 'title', e.target.value)} maxLength={20}
+                  placeholder="Label (max 20)" className={FIELD_CLS + ' flex-[0_0_38%] min-w-0'} />
+                <input value={q.payload} onChange={e => updateChip(i, 'payload', e.target.value)}
+                  placeholder="Keyword sent on tap (defaults to the label)" className={FIELD_CLS + ' flex-1 min-w-0'} />
+                <button onClick={() => setQuickReplies(quickReplies.filter((_, j) => j !== i))}
+                  className="text-[13px] text-magenta hover:opacity-70 shrink-0" title="Remove">✕</button>
+              </div>
+            ))}
+        </div>
+      )}
 
       {engineAvailable && (
         <div className="rounded-lg border border-line dark:border-lineDark p-3 space-y-3">
@@ -331,6 +393,7 @@ const AutomationCard = ({ a, busy, onToggle, onEdit, onDelete }) => (
           {a.delay_enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Sends 2–5 minutes later">⏱ delayed</span>}
           {a.require_follow && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title="Only delivers once they follow you">✓ followers only</span>}
           {(a.buttons?.length > 0) && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title={a.buttons.map(b => b.title).join(', ')}>🔘 {a.buttons.length} button{a.buttons.length > 1 ? 's' : ''}</span>}
+          {(a.quick_replies?.length > 0) && <span className="text-[10px] px-1.5 py-0.5 rounded bg-ultra/10 text-ultra" title={a.quick_replies.map(q => q.title).join(', ')}>💬 {a.quick_replies.length} quick repl{a.quick_replies.length > 1 ? 'ies' : 'y'}</span>}
           {a.last_sync_error && <span className="text-[10px] text-magenta" title={a.last_sync_error}>⚠ sync error</span>}
         </div>
         <div className="flex flex-wrap items-center gap-1 mb-1.5">
