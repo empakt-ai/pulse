@@ -13,7 +13,7 @@ import assert from 'node:assert';
 import { supabase } from '../api/_lib/supabase.js';
 import zernioDefault, { zernio } from '../api/_lib/zernio.js';
 import { buildFlowDefinition, buildTrigger, deriveEngine, normalizeButtons, normalizeQuickReplies } from '../api/_lib/automation/flow-builder.js';
-import { toZernioBody } from '../api/engage/automations.js';
+import { toZernioBody, buttonsForZernio } from '../api/engage/automations.js';
 
 process.env.AUTOMATION_ENGINE = '1';   // flags.engineEnabled() reads this at call time
 
@@ -277,33 +277,50 @@ async function testButtons() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TEST 5 — Zernio hosted body: an empty buttons array must NOT be sent
-// (regression: `buttons: []` flips button_template mode and drops commentReply)
+// TEST 5 — Zernio hosted body: spec-correct button semantics.
+// Zernio (per its OpenAPI): create "omit or [] = plain-text DM"; update "[] =
+// clear all buttons". So a plain rule with no buttons must OMIT (keep its
+// payload identical to a pre-buttons rule), and [] is sent only to clear real
+// buttons — with the comment reply always preserved.
 // ─────────────────────────────────────────────────────────────────────────────
 async function testZernioBodyButtons() {
-  console.log('\nZernio hosted body — empty buttons omitted, comment reply preserved');
+  console.log('\nZernio hosted body — spec-correct button semantics + comment reply');
+  const oneBtn = [{ type: 'url', title: 'x', url: 'https://x.com' }];
 
-  // Plain rule with a public comment reply and NO buttons (the common case).
+  // buttonsForZernio — the set/clear/omit decision (Zernio docs: create omit/[]
+  // = plain text; update [] = clear). The safety-critical case is a plain rule
+  // (no buttons, none before): it must OMIT, never send [], so the payload is
+  // identical to a rule from before buttons existed.
+  assert.equal(buttonsForZernio([], undefined), undefined, 'no buttons + none before → omit (plain rule untouched)');
+  assert.equal(buttonsForZernio([], []), undefined, 'no buttons + none before → omit');
+  assert.deepEqual(buttonsForZernio([], oneBtn), [], 'removing buttons that existed → [] to clear (Zernio-documented)');
+  assert.deepEqual(buttonsForZernio(oneBtn, []), oneBtn, 'buttons present → set them');
+  ok('buttonsForZernio: omit for plain rules, [] only to clear real buttons, set when present');
+
+  // toZernioBody faithfully forwards what buttonsForZernio decided.
+  // Plain rule (omit) → no buttons key at all → the exact pre-buttons payload.
   const plain = toZernioBody({
     zernio_account_id: ZACC, name: 'Plain', keywords: ['link'], match_mode: 'contains',
-    dm_message: 'Here you go', comment_reply: 'Check your DMs 📩', is_active: true, buttons: [],
+    dm_message: 'Here you go', comment_reply: 'Check your DMs 📩', is_active: true,
+    buttons: buttonsForZernio([], undefined),
   });
-  assert.equal(plain.commentReply, 'Check your DMs 📩', 'comment reply is included');
-  assert.ok(!('buttons' in plain), 'empty buttons array is NOT sent to Zernio');
-  ok('no buttons → commentReply preserved, no buttons field (pre-P3 payload restored)');
+  assert.equal(plain.commentReply, 'Check your DMs 📩', 'comment reply included');
+  assert.ok(!('buttons' in plain), 'no buttons key for a plain rule (payload unchanged, comment reply safe)');
+  ok('plain rule → comment reply preserved, no buttons field sent');
 
-  // undefined buttons (partial PATCH that never touched buttons) → also omitted.
-  const patch = toZernioBody({ zernio_account_id: ZACC, comment_reply: 'hi', buttons: undefined });
-  assert.ok(!('buttons' in patch), 'undefined buttons is not sent');
-  ok('undefined buttons → field omitted');
+  // Clearing a rule that had buttons → [] forwarded, comment reply still sent.
+  const cleared = toZernioBody({ zernio_account_id: ZACC, comment_reply: 'hi', buttons: buttonsForZernio([], oneBtn) });
+  assert.deepEqual(cleared.buttons, [], 'explicit [] forwarded to clear buttons on update');
+  assert.equal(cleared.commentReply, 'hi', 'comment reply sent alongside a clear');
+  ok('[] forwarded only to clear real buttons — with the comment reply intact');
 
-  // Real buttons → passed through unchanged.
+  // Real buttons → sent with the comment reply.
   const withBtns = toZernioBody({
     zernio_account_id: ZACC, dm_message: 'Here you go', comment_reply: 'Check your DMs 📩',
-    buttons: [{ type: 'url', title: 'Get it', url: 'https://example.com' }],
+    buttons: buttonsForZernio([{ type: 'url', title: 'Get it', url: 'https://example.com' }], null),
   });
   assert.equal(withBtns.buttons.length, 1, 'real buttons are sent');
-  assert.equal(withBtns.commentReply, 'Check your DMs 📩', 'comment reply still included alongside buttons');
+  assert.equal(withBtns.commentReply, 'Check your DMs 📩', 'comment reply sent alongside buttons');
   ok('non-empty buttons → sent through with the comment reply');
 }
 

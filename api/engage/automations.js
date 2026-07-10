@@ -220,6 +220,25 @@ function parseRule(body, { partial = false } = {}) {
   return { value: out };
 }
 
+// Decide the `buttons` value for a Zernio hosted-automation write, honoring
+// Zernio's DOCUMENTED semantics (verified against their OpenAPI):
+//   • create: "Omit or pass [] for a plain-text DM"
+//   • update: "Pass [] to clear all buttons"
+// So:
+//   • buttons present            → send them (set)
+//   • none now, but the rule had some on Zernio → send [] (clear)
+//   • none now, and none before  → OMIT (undefined) — never send [] to a rule
+//     that never had buttons, so a plain comment→DM rule's payload stays
+//     byte-identical to the pre-buttons behavior (nothing about it changes).
+// Returns an array (set/clear) or undefined (omit). `priorButtons` is the rule's
+// last-persisted buttons (its current Zernio state); null/absent on create.
+export function buttonsForZernio(desiredButtons, priorButtons) {
+  const now = Array.isArray(desiredButtons) ? desiredButtons : [];
+  if (now.length) return now;
+  const hadButtons = Array.isArray(priorButtons) && priorButtons.length > 0;
+  return hadButtons ? [] : undefined;
+}
+
 // Our rule fields → Zernio's create/update body. Only includes provided keys
 // so PATCH stays partial. profileId is required by Zernio on create (the
 // account lives under a profile); update keys on the automation id in the URL.
@@ -233,14 +252,9 @@ export function toZernioBody({ zernio_profile_id, zernio_account_id, name, keywo
   if (dm_message != null) b.dmMessage = dm_message;
   if (comment_reply !== undefined) b.commentReply = comment_reply || '';
   if (is_active != null) b.isActive = is_active;
-  // Zernio's hosted comment-automations accept the same button shape, so plain
-  // rules get buttons too (native rules attach them in the flow instead).
-  // ONLY send buttons when there's at least one. Sending an empty `buttons: []`
-  // flips the hosted automation into Meta's button_template mode, which drops
-  // the public `commentReply` — that silently killed the comment reply on every
-  // plain rule after P3 (they all store `buttons: []`). Mirror the same guard
-  // sendPrivateReply uses (`if (buttons && buttons.length)`).
-  if (Array.isArray(buttons) && buttons.length) b.buttons = buttons;
+  // Forward exactly what buttonsForZernio decided: an array to set, [] to clear
+  // (Zernio's documented "pass [] to clear"), or undefined to leave untouched.
+  if (buttons !== undefined) b.buttons = buttons;
   return b;
 }
 
@@ -278,7 +292,7 @@ async function resolveAccount(workspaceId, accountId, zernioAccountId) {
 // Handles every transition: create on either surface, and flip native⇄zernio on
 // edit (deleting the Zernio twin when going native, deactivating the flow when
 // going back). Best-effort on the far side — surfaced via last_sync_error.
-async function reconcileExecution(desired, acct, ws, { createdBy = null } = {}) {
+async function reconcileExecution(desired, acct, ws, { createdBy = null, prior = null } = {}) {
   const engine = deriveEngine({
     delay: { min_seconds: desired.delay_min_seconds, max_seconds: desired.delay_max_seconds },
     requireFollow: desired.require_follow,
@@ -313,7 +327,9 @@ async function reconcileExecution(desired, acct, ws, { createdBy = null } = {}) 
     zernio_account_id: acct.zernio_account_id,
     name: desired.name, keywords: desired.keywords, match_mode: desired.match_mode,
     dm_message: desired.dm_message, comment_reply: desired.comment_reply, is_active: desired.is_active,
-    buttons: desired.buttons,
+    // Send buttons only to set or to clear ones Zernio still has — never an empty
+    // [] to a rule that never had buttons (keeps plain rules' payload unchanged).
+    buttons: buttonsForZernio(desired.buttons, prior?.buttons),
   });
   try {
     if (zid) await zernio.updateCommentAutomation(zid, zbody);
@@ -525,7 +541,7 @@ export default async function handler(req, res) {
     const guardErr = nativeGuard(desired, acct.platform);
     if (guardErr) return json(res, 400, { error: guardErr });
 
-    const recon = await reconcileExecution(desired, acct, ws, { createdBy: existing.created_by });
+    const recon = await reconcileExecution(desired, acct, ws, { createdBy: existing.created_by, prior: existing });
     const patch = {
       ...value,
       engine: recon.engine,
