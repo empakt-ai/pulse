@@ -465,9 +465,9 @@ export default async function handler(req, res) {
     if (isTrue(req.query?.signals)) {
       const limit = Math.min(Number(req.query?.limit) || 20, 50);
       const events = await supabase.select('inbox_events', {
-        select: 'id,platform,author_handle,created_at,payload',
+        select: 'id,platform,author_handle,received_at,payload',
         eq: { workspace_id: ws.id, kind: 'message.received' },
-        order: 'created_at.desc', limit,
+        order: 'received_at.desc', limit,
       }).catch(() => []);
       const at = (o, path) => path.split('.').reduce((x, k) => (x == null ? undefined : x[k]), o);
       const signals = (events || []).map(e => {
@@ -476,7 +476,7 @@ export default async function handler(req, res) {
         const meta = p.metadata || at(p, 'message.metadata') || {};
         const tapKind = meta.postbackPayload != null ? 'postback' : (meta.quickReplyPayload != null ? 'quick_reply' : null);
         return {
-          at: e.created_at, platform: e.platform, from: e.author_handle,
+          at: e.received_at, platform: e.platform, from: e.author_handle,
           ig_profile_present: !!ig,
           is_follower: ig && typeof ig.isFollower === 'boolean' ? ig.isFollower : (ig ? null : undefined),
           tap: tapKind ? { kind: tapKind, payload: (tapKind === 'postback' ? meta.postbackPayload : meta.quickReplyPayload) || null, title: meta.postbackTitle || null } : null,
