@@ -19,6 +19,24 @@ import React from 'react';
 const SUPABASE_URL  = 'https://gyiiccstlrgzfbwgtuww.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd5aWljY3N0bHJnemZid2d0dXd3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg1MTcyOTEsImV4cCI6MjA5NDA5MzI5MX0.mC7iQ73NhSsER1c22zT63ntRXwsVLwq6Pv-oRv15kDA';
 
+// GoTrue returns errors in several shapes depending on version/endpoint:
+//   • { error_description, error }        (OAuth-style token errors)
+//   • { msg }                             (older GoTrue)
+//   • { code, message, error_code }       (current GoTrue v2)
+// The original client only read `error_description || msg`, so a v2
+// `{ code, message }` error (e.g. the "Database error saving new user" that a
+// failing signup trigger produces, or "Signups not allowed for this instance")
+// collapsed to the generic fallback — hiding the one string that explains why
+// signup fails. Read every shape so the real reason reaches the user + console.
+const authError = (data, status, fallback) => {
+  const msg = (data && (data.error_description || data.message || data.msg || data.error)) || fallback;
+  const err = new Error(msg);
+  err.status = status;
+  err.code   = data && (data.error_code || data.code);
+  err.raw    = data;
+  return err;
+};
+
 // ── Lightweight Supabase auth client (no SDK needed) ─────────────────────────
 const sbAuth = {
   headers: () => ({
@@ -35,7 +53,7 @@ const sbAuth = {
       body: JSON.stringify({ email, create_user: true, options: { emailRedirectTo: window.location.origin } })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Could not send link');
+    if (!res.ok) throw authError(data, res.status, 'Could not send link');
     return data;
   },
 
@@ -47,7 +65,7 @@ const sbAuth = {
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign up failed');
+    if (!res.ok) throw authError(data, res.status, 'Sign up failed');
     return data;
   },
 
@@ -59,7 +77,7 @@ const sbAuth = {
       body: JSON.stringify({ email, password })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign in failed');
+    if (!res.ok) throw authError(data, res.status, 'Sign in failed');
     return data; // { access_token, refresh_token, user }
   },
 
@@ -71,7 +89,7 @@ const sbAuth = {
       body: JSON.stringify({ type: 'magiclink', token, email })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || 'Verification failed');
+    if (!res.ok) throw authError(data, res.status, 'Verification failed');
     return data;
   },
 
@@ -88,7 +106,7 @@ const sbAuth = {
       body: JSON.stringify(patch),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Update failed');
+    if (!res.ok) throw authError(data, res.status, 'Update failed');
     return data; // updated user
   },
 
@@ -102,7 +120,7 @@ const sbAuth = {
       body: JSON.stringify({ refresh_token: refreshToken })
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error_description || data.msg || 'Token refresh failed');
+    if (!res.ok) throw authError(data, res.status, 'Token refresh failed');
     return data; // { access_token, refresh_token (new), expires_in, user }
   },
 

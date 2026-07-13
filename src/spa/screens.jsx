@@ -169,6 +169,12 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
         onAuthed(data);
       }
     } catch (err) {
+      // Surface the real reason to the user, and log the full shape (status +
+      // GoTrue error code + raw body) to devtools so a failing signup can be
+      // diagnosed from the console without server access.
+      console.error('[auth] password flow failed:', {
+        step, status: err.status, code: err.code, message: err.message, raw: err.raw,
+      });
       setError(err.message);
     } finally {
       setLoading(false);
