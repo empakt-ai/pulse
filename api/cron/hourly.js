@@ -345,19 +345,29 @@ export default async function handler(req, res) {
     // scrape path (trials) vs the paid Zernio /analytics path. Without these the
     // cron synced every trial account through Zernio, which returns [] without the
     // paid add-on → 0 posts every morning → stale/empty briefs.
-    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email,trial_locked,trial_started_at,trial_ends_at,trial_converted_at',
+    // stripe_subscription_status/current_period_end feed attachTrialState()'s
+    // subscription-lapse check so a converted customer whose sub has since
+    // been canceled/unpaid is treated as locked here too — not just on the
+    // request path — and stops receiving auto-syncs and morning briefs.
+    select: 'id,name,tier,timezone,account_age,zernio_profile_id,owner_id,weekly_digest_enabled,digest_email,trial_locked,trial_started_at,trial_ends_at,trial_converted_at,stripe_subscription_status,stripe_current_period_end',
   }).catch(() => []);
 
   // Sequential to stay under the 60s function budget. With 50ish workspaces
   // and most no-op at any given hour, we're well under.
   const results = [];
   for (const ws of (workspaces || [])) {
-    // Skip locked trials — they're effectively dormant until upgrade.
-    if (ws.trial_locked) { results.push({ workspace_id: ws.id, skipped: true, reason: 'trial_locked' }); continue; }
-    // Derive trial_active (+locked/days_left) in-memory so runSync picks the
-    // right data path: trial → Apify scrape, paid → Zernio analytics. Mirrors
-    // exactly what authenticate() does on the request path.
+    // Derive trial_active (+locked/days_left/lock_reason) in-memory FIRST so
+    // runSync picks the right data path (trial → Apify scrape, paid → Zernio
+    // analytics) and so the lock check below sees the freshly-computed state.
+    // Mirrors exactly what authenticate() does on the request path.
     attachTrialState(ws);
+    // Skip locked workspaces — they're dormant until they (re)subscribe.
+    // This now covers both expired-unconverted trials and converted
+    // customers whose subscription has lapsed (canceled/unpaid), so neither
+    // burns an auto-sync or a morning brief. Computed here rather than read
+    // from the persisted column so the lapse case is caught without waiting
+    // for a sweep to write it.
+    if (ws.trial_locked) { results.push({ workspace_id: ws.id, skipped: true, reason: ws.lock_reason || 'trial_locked' }); continue; }
     try {
       if (force) {
         // Generate the brief immediately from current data (no sync). Records
