@@ -110,6 +110,27 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
   const [error, setError]     = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [usePassword, setUsePassword] = React.useState(false);
+  const [forgot, setForgot] = React.useState(false);
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    if (!email) return;
+    setError('');
+    setLoading(true);
+    try {
+      await sbAuth.resetPasswordForEmail(email);
+      setSent(true);
+    } catch (err) {
+      const msg = err.message || '';
+      if (/rate limit|too many|429/i.test(msg)) {
+        setError('Too many reset requests for this email. Wait a few minutes and try again.');
+      } else {
+        setError(msg || 'Could not send reset link');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleMagicLink = async (e) => {
     e.preventDefault();
@@ -182,7 +203,7 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
         <span className="text-[13px] text-mute dark:text-muteDark">
           {step === 'signin' ? 'New here? ' : 'Have an account? '}
           <button
-            onClick={() => { setStep(step === 'signin' ? 'signup' : 'signin'); setSent(false); setError(''); }}
+            onClick={() => { setStep(step === 'signin' ? 'signup' : 'signin'); setSent(false); setError(''); setForgot(false); }}
             className="text-ink dark:text-paper underline underline-offset-4"
           >
             {step === 'signin' ? 'Create account' : 'Sign in'}
@@ -210,9 +231,9 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
                 </div>
                 <h3 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Check your inbox.</h3>
                 <p className="text-[14px] text-mute dark:text-muteDark mb-6">
-                  We sent a {usePassword ? 'confirmation' : 'magic'} link to{' '}
+                  We sent a {forgot ? 'password reset' : usePassword ? 'confirmation' : 'magic'} link to{' '}
                   <strong className="text-ink dark:text-paper">{email}</strong>.
-                  {usePassword ? ' Confirm your email then sign in.' : ' Click it to sign in — no password needed.'}
+                  {forgot ? ' Click it to set a new password.' : usePassword ? ' Confirm your email then sign in.' : ' Click it to sign in — no password needed.'}
                 </p>
                 <div className="text-[12px] text-mute dark:text-muteDark">
                   Didn't get it?{' '}
@@ -230,7 +251,30 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
                   </div>
                 )}
 
-                {usePassword ? (
+                {forgot ? (
+                  /* ── Forgot-password form ── */
+                  <form onSubmit={handleForgot} className="space-y-3">
+                    <div>
+                      <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Email address</label>
+                      <input
+                        type="email" required value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        placeholder="you@studio.com"
+                        className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                      />
+                    </div>
+                    <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                      {loading ? <><Icon name="clock" className="w-4 h-4" /> Sending link...</> : 'Send reset link'}
+                    </Btn>
+                    <button
+                      type="button"
+                      onClick={() => { setForgot(false); setError(''); }}
+                      className="w-full text-[12.5px] text-mute dark:text-muteDark hover:text-ultra transition text-center"
+                    >
+                      ← Back to sign in
+                    </button>
+                  </form>
+                ) : usePassword ? (
                   /* ── Password form ── */
                   <form onSubmit={handlePassword} className="space-y-3">
                     <div>
@@ -251,6 +295,17 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
                         className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
                       />
                     </div>
+                    {step === 'signin' && (
+                      <div className="text-right -mt-1">
+                        <button
+                          type="button"
+                          onClick={() => { setForgot(true); setError(''); }}
+                          className="text-[12px] text-mute dark:text-muteDark hover:text-ultra transition"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
                     <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
                       {loading
                         ? <><Icon name="clock" className="w-4 h-4" /> {step === 'signup' ? 'Creating...' : 'Signing in...'}</>
@@ -320,6 +375,103 @@ const Auth = ({ mode = 'signin', onAuthed, onBack }) => {
               <span className="text-paper/50 mt-2 inline-block">— Maya Chen, 240K IG</span>
             </p>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Password recovery — set a new password ──────────────────────────────────
+// Reached only from a Supabase recovery link (hash type=recovery). The
+// recovery access_token is captured at app init and passed in as `token`; we
+// use it to PUT the new password via sbAuth.updateUser, then send the user to
+// sign in fresh (the one-time recovery token isn't kept as a session).
+const ResetPassword = ({ token, onDone, onBack }) => {
+  const [password, setPassword] = React.useState('');
+  const [confirm, setConfirm]   = React.useState('');
+  const [error, setError]       = React.useState('');
+  const [loading, setLoading]   = React.useState(false);
+  const [done, setDone]         = React.useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError('');
+    if (!token) { setError('This reset link has expired. Request a new one from the sign-in screen.'); return; }
+    if (password.length < 8) { setError('Use at least 8 characters.'); return; }
+    if (password !== confirm) { setError('Passwords don’t match.'); return; }
+    setLoading(true);
+    try {
+      await sbAuth.updateUser(token, { password });
+      // Don't keep the user signed in on the one-time recovery token — clear
+      // any session and route them to a clean sign-in with the new password.
+      sbAuth.clearSession();
+      setDone(true);
+    } catch (err) {
+      setError(err.message || 'Could not update your password.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+      <header className="max-w-7xl w-full mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
+        <button onClick={onBack}><MashalLogo /></button>
+      </header>
+      <div className="flex-1 flex items-center justify-center p-5 sm:p-12">
+        <div className="w-full max-w-sm fade-up">
+          {done ? (
+            <div className="text-center py-8">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-lime/20 text-limeDeep dark:text-lime flex items-center justify-center mb-5">
+                <Icon name="check" className="w-6 h-6" />
+              </div>
+              <h3 className="font-display text-[22px] font-semibold tracking-tighter mb-2">Password updated.</h3>
+              <p className="text-[14px] text-mute dark:text-muteDark mb-6">You can now sign in with your new password.</p>
+              <Btn variant="ink" size="md" className="w-full" onClick={onDone}>Go to sign in</Btn>
+            </div>
+          ) : (
+            <>
+              <Eyebrow color="text-ultra">Reset password</Eyebrow>
+              <h1 className="font-display text-[36px] sm:text-[44px] leading-[1] font-semibold tracking-tightest mt-3 mb-2">Set a new password.</h1>
+              <p className="text-[14px] text-mute dark:text-muteDark mb-8">Choose a new password for your account.</p>
+              {error && (
+                <div className="mb-4 px-4 py-3 rounded-xl bg-magenta/10 border border-magenta/20 text-[13px] text-magenta flex items-center gap-2">
+                  <Icon name="x" className="w-3.5 h-3.5 flex-shrink-0" />
+                  {error}
+                </div>
+              )}
+              <form onSubmit={submit} className="space-y-3">
+                <div>
+                  <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">New password</label>
+                  <input
+                    type="password" required value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="8+ characters"
+                    className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[12px] font-medium mb-1.5 text-mute dark:text-muteDark">Confirm password</label>
+                  <input
+                    type="password" required value={confirm}
+                    onChange={e => setConfirm(e.target.value)}
+                    placeholder="Re-enter password"
+                    className="w-full h-11 px-3.5 rounded-xl border border-line dark:border-lineDark bg-chalk dark:bg-coalsoft text-[14px] focus:outline-none focus:border-ultra transition"
+                  />
+                </div>
+                <Btn variant="ink" size="md" className="w-full" as="button" type="submit" disabled={loading}>
+                  {loading ? <><Icon name="clock" className="w-4 h-4" /> Updating...</> : 'Update password'}
+                </Btn>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="w-full text-[12.5px] text-mute dark:text-muteDark hover:text-ultra transition text-center"
+                >
+                  ← Back to sign in
+                </button>
+              </form>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -6321,6 +6473,9 @@ function App() {
   const [briefData, setBriefData]       = React.useState(null);
   const [briefError, setBriefError]     = React.useState(null);
   const [dataKey, setDataKey]           = React.useState(0);  // remount trigger
+  // Captured from a Supabase password-recovery link (hash type=recovery) at
+  // app init; handed to the ResetPassword screen to PUT the new password.
+  const [recoveryToken, setRecoveryToken] = React.useState(null);
 
   // Fetch the live brief whenever the user is in the app tab.
   // Sends x-workspace-id so the response matches the currently-active
@@ -6356,6 +6511,19 @@ function App() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok || !data || data.error) {
+        // Locked trial / lapsed subscription: /api/brief now hard-blocks with
+        // 402 and a lightweight { trial } object (no dashboard payload).
+        // Synthesize a briefData carrying just that trial state so the
+        // full-screen paywall — gated on briefData.trial.locked — mounts
+        // exactly as it did when the 200 body carried trial.locked. We do NOT
+        // hydrateD() here: there's no brief content, and the paywall reads
+        // only trial + tier.key. Anything else is a genuine error.
+        if (res.status === 402 && data?.trial_locked && data?.trial) {
+          setBriefError(null);
+          setBriefData({ trial: data.trial, tier: { key: data.trial.intent_tier || 'creator' } });
+          setDataKey(k => k + 1);
+          return;
+        }
         setBriefError({
           status: res.status,
           message: data?.error || `HTTP ${res.status}`,
@@ -6653,6 +6821,22 @@ function App() {
     };
 
     const init = async () => {
+      // Password-recovery links land here with type=recovery in the hash.
+      // Intercept BEFORE checkMagicLinkHash (which would auto-sign-in and
+      // scrub the hash): capture the recovery access token, route to the
+      // set-new-password screen, and clean the token out of the URL/history.
+      if (window.location.hash.includes('type=recovery')) {
+        try {
+          const p = new URLSearchParams(window.location.hash.replace('#', ''));
+          const tok = p.get('access_token');
+          if (tok) {
+            setRecoveryToken(tok);
+            window.history.replaceState({}, document.title, window.location.pathname);
+            setRoute('reset');
+            return;
+          }
+        } catch { /* fall through to normal handling */ }
+      }
       if (window.location.hash.includes('access_token')) {
         const handled = await checkMagicLinkHash((sess) => {
           setSession(sess);
@@ -6790,6 +6974,14 @@ function App() {
           mode={route}
           onAuthed={handleAuthed}
           onBack={() => setRoute('landing')}
+        />
+      )}
+
+      {route === 'reset' && (
+        <ResetPassword
+          token={recoveryToken}
+          onDone={() => setRoute('signin')}
+          onBack={() => setRoute('signin')}
         />
       )}
 

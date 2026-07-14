@@ -26,7 +26,7 @@
 //   POST   /api/workspaces  { name }  → create a new workspace
 //   PATCH  /api/workspaces  { ... }   → update the active workspace's settings
 
-import { authenticate, json } from './_lib/auth.js';
+import { authenticate, json, trialLockoutEnvelope } from './_lib/auth.js';
 import { supabase } from './_lib/supabase.js';
 import { tierFor, getMonthlyUsage } from './_lib/tiers.js';
 import { recordReferralAttribution } from './_lib/referral.js';
@@ -80,6 +80,14 @@ export default async function handler(req, res) {
 
   // ── GET: full active context ──────────────────────────────────────────
   if (req.method === 'GET') {
+    // Hard-block the read for a locked trial / lapsed subscription — the same
+    // 402 the mutating routes return. Defense in depth: the SPA's paywall
+    // already replaces the whole app UI when locked (so Settings isn't
+    // reachable), but a raw API caller must not pull workspace/tier/usage
+    // data after lockout.
+    const lock = trialLockoutEnvelope(workspace);
+    if (lock) return json(res, lock.status, lock.body);
+
     const tier = tierFor(workspace);
     const usage = await getMonthlyUsage(workspace.id).catch(() => ({ used: 0, cost_cents: 0 }));
     // SECURITY (audit, May 2026): owners see the full row; everyone else
