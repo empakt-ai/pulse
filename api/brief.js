@@ -75,6 +75,30 @@ export default async function handler(req, res) {
   const ws = auth.workspace;
   if (!ws) return json(res, 404, { error: 'Workspace not found' });
 
+  // Hard-block the dashboard read for a locked trial / lapsed subscription.
+  // We return 402 with a LIGHTWEIGHT trial object and none of the dashboard
+  // payload — a raw API caller gets no data — while the SPA reads the same
+  // trial shape out of the 402 body to mount the full-screen paywall exactly
+  // as it did from the old 200 body. (Enforcement parity with the mutating
+  // routes, which already 402 via trialLockoutEnvelope.)
+  if (ws.trial_locked) {
+    return json(res, 402, {
+      error: ws.lock_reason === 'subscription_lapsed'
+        ? 'Your subscription has ended. Resubscribe to continue using Mashal.'
+        : 'Trial ended. Upgrade to continue using Mashal.',
+      trial_locked: true,
+      lock_reason: ws.lock_reason || 'trial_expired',
+      trial: {
+        active: !!ws.trial_active,
+        locked: true,
+        days_left: ws.trial_days_left ?? 0,
+        ends_at: ws.trial_ends_at || null,
+        intent_tier: ws.trial_intent_tier || ws.tier || null,
+        converted_at: ws.trial_converted_at || null,
+      },
+    });
+  }
+
   const wsTier = String(ws.tier || 'creator').toLowerCase();
   const audienceAllowed = wsTier === 'brand' || wsTier === 'agency';
 

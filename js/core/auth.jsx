@@ -39,9 +39,13 @@ const sbAuth = {
     return data;
   },
 
-  // Email + password sign up
+  // Email + password sign up. redirect_to pins the confirmation-email
+  // landing back to THIS origin (GoTrue's proper mechanism is the query
+  // param, not a body field); it's honored when the origin is in Supabase's
+  // redirect allowlist and otherwise falls back to the dashboard Site URL.
   signUp: async (email, password) => {
-    const res = await fetch(`${SUPABASE_URL}/auth/v1/signup`, {
+    const redirect = encodeURIComponent(window.location.origin);
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/signup?redirect_to=${redirect}`, {
       method: 'POST',
       headers: sbAuth.headers(),
       body: JSON.stringify({ email, password })
@@ -49,6 +53,25 @@ const sbAuth = {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error_description || data.msg || 'Sign up failed');
     return data;
+  },
+
+  // Send a password-reset email. GoTrue emails a recovery link that lands
+  // back on the app with #access_token=...&type=recovery in the hash; the
+  // SPA init intercepts type=recovery and shows the set-new-password screen
+  // instead of silently signing the user in. Returns 200 with {} even for
+  // unknown emails (GoTrue does not leak whether an account exists).
+  resetPasswordForEmail: async (email) => {
+    const redirect = encodeURIComponent(window.location.origin);
+    const res = await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${redirect}`, {
+      method: 'POST',
+      headers: sbAuth.headers(),
+      body: JSON.stringify({ email })
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error_description || data.msg || 'Could not send reset link');
+    }
+    return true;
   },
 
   // Email + password sign in

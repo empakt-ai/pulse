@@ -158,8 +158,25 @@ export function attachTrialState(w) {
   // get surprised by a lockout.
   if (!w.trial_started_at || converted) {
     w.trial_active = false;
-    w.trial_locked = false;
     w.trial_days_left = null;
+    // A converted (paid) workspace is normally unlocked. But "converted"
+    // is permanent — trial_converted_at never clears — so on its own it
+    // would keep granting full paid access even after the customer's
+    // Stripe subscription lapses. Re-lock when the subscription has
+    // terminated (canceled / unpaid) so a churned or non-paying customer
+    // loses access, exactly as an expired trial does. This is the
+    // enforcement the stripe-webhook comment always assumed but never had
+    // ("gating logic will read stripe_subscription_status to decide
+    // whether to lock the workspace"). past_due is deliberately NOT locked
+    // here: Stripe is still retrying the card (dunning) and the
+    // SubscriptionBanner tells the user to fix it "to avoid losing
+    // access" — the hard lock only lands once the sub actually terminates.
+    if (converted && subscriptionLapsed(w)) {
+      w.trial_locked = true;
+      w.lock_reason = 'subscription_lapsed';
+    } else {
+      w.trial_locked = false;
+    }
     return;
   }
 
@@ -174,7 +191,29 @@ export function attachTrialState(w) {
     w.trial_active = false;
     w.trial_locked = true;
     w.trial_days_left = 0;
+    w.lock_reason = 'trial_expired';
   }
+}
+
+// Has a converted (paid) workspace's Stripe subscription lapsed to the point
+// where paid access should be revoked? True only for terminal states:
+//   - 'canceled' — the subscription was deleted (churned).
+//   - 'unpaid'   — Stripe exhausted its retries and wrote the invoice off.
+// We honour any period already paid for: if stripe_current_period_end is
+// still in the future (e.g. cancel-at-period-end with time left on the
+// clock), access continues until it elapses. 'past_due' is intentionally
+// excluded — that is active dunning, not a terminated subscription, and the
+// SubscriptionBanner already nudges the user to fix their card first.
+function subscriptionLapsed(w) {
+  const status = w?.stripe_subscription_status;
+  if (status !== 'canceled' && status !== 'unpaid') return false;
+  const periodEnd = w.stripe_current_period_end
+    ? new Date(w.stripe_current_period_end).getTime()
+    : null;
+  if (periodEnd && Number.isFinite(periodEnd) && Date.now() < periodEnd) {
+    return false; // still paid through the current period
+  }
+  return true;
 }
 
 // Helper to send JSON consistently
@@ -194,11 +233,15 @@ export function json(res, status, body) {
 // most return JSON). Caller decides.
 export function trialLockoutEnvelope(workspace) {
   if (!workspace?.trial_locked) return null;
+  const lapsed = workspace.lock_reason === 'subscription_lapsed';
   return {
     status: 402,
     body: {
-      error: 'Trial ended. Upgrade to continue using Mashal.',
+      error: lapsed
+        ? 'Your subscription has ended. Resubscribe to continue using Mashal.'
+        : 'Trial ended. Upgrade to continue using Mashal.',
       trial_locked: true,
+      lock_reason: workspace.lock_reason || 'trial_expired',
       trial_ends_at: workspace.trial_ends_at || null,
       trial_intent_tier: workspace.trial_intent_tier || workspace.tier || null,
     },
